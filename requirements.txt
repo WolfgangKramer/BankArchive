@@ -1,0 +1,7 @@
+fints
+mariadb
+pandastable
+selenium
+simplejson
+yfinance
+sqlalchemy
