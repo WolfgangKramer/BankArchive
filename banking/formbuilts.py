@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2023-10-11"
+__updated__ = "2023-11-29"
 @author: Wolfgang Kramer
 """
 
@@ -25,7 +25,7 @@ from tkcalendar import DateEntry
 
 from banking.declarations import (
     DB_currency, EURO,
-    HEIGHT_TEXT,
+    HEIGHT_TEXT, HOLDING_T,
     Caller, Informations,
     INFORMATION, ERROR,
     KEY_GEOMETRY, KEY_PIN,
@@ -275,7 +275,10 @@ class MessageBoxInfo():
                 message = message.replace('\n', ' // ')
                 Informations.prices_informations = ' '.join(
                     [Informations.prices_informations, '\n' + information, message])
-
+            elif information_storage == HOLDING_T:  # messages downloading prices threading
+                message = message.replace('\n', ' // ')
+                Informations.holding_t_informations = ' '.join(
+                    [Informations.holding_t_informations, '\n' + information, message])
             else:
                 if bank:  # messages downloading bank threading
                     message = message.replace('\n', ' // ')

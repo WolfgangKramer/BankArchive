@@ -1,6 +1,6 @@
 '''
 Created on 26.11.2019
-__updated__ = "2023-10-31"
+__updated__ = "2023-12-11"
 @author: Wolfgang Kramer
 '''
 
@@ -99,14 +99,16 @@ class MariaDB(object):
     Retrieve Records from MARIADB Tables
     Insert and Modify Records of MARIADB Tables
 
-    MARIADB Tables: holdings, statements
+    holding_switch:  'ON         use table HOLDING
+                     'OFF'       use table HOLDING_
     '''
 
-    def __init__(self, user, password, database):
+    def __init__(self, user, password, database, holding_switch):
 
         self.user = user
         self.password = password
         self.database = database.lower()
+        self.holding_switch = holding_switch
         self.table_names = []  # list of table names
         self.table_fields = {}  # dict key: table_name, dict value: list of table_fieldnames
         self.host = "localhost"
@@ -210,13 +212,14 @@ class MariaDB(object):
                     field_dict = {
                         'ISIN': holding['ISIN'], DB_name: holding[DB_name]}
                     self.execute_replace(ISIN, field_dict)
+                name_ = holding[DB_name]
                 del holding[DB_name]
                 holding[DB_price_date] = price_date_holding
                 holding['iban'] = bank.iban
                 self.execute_replace(HOLDING, holding)
             # Update acquisition_amount (not in MT535 data)
                 button_state = self._set_acquisition_amount(
-                    bank, holding, price_dates)
+                    bank.iban, holding['ISIN'], name_)
                 if button_state == WM_DELETE_WINDOW:
                     self.execute('ROLLBACK')
                     MessageBoxInfo(
@@ -226,7 +229,7 @@ class MariaDB(object):
             transfer_holding_to_access(self, bank.iban)
         return holdings
 
-    def _set_acquisition_amount(self, bank, holding, price_dates):
+    def _set_acquisition_amount(self, iban, isin, name_):
 
         button_state = None
         sql_statement = ("SELECT price_date, price_currency, market_price, acquisition_price,"
@@ -235,7 +238,7 @@ class MariaDB(object):
                          " WHERE iban=? AND isin=?"
                          " ORDER BY price_date DESC"
                          " LIMIT 2")
-        vars_ = (bank.iban, holding['ISIN'])
+        vars_ = (iban, isin, )
         result = self.execute(sql_statement, vars_=vars_)
         if not result:
             return
@@ -252,7 +255,7 @@ class MariaDB(object):
                 data[-1].acquisition_amount = data[-1].total_amount
                 acquisition_input_amount = Acquisition(
                     header=MESSAGE_TEXT['ACQUISITION_HEADER'].format(
-                        bank.iban, holding[DB_name]),
+                        iban, name_),
                     data=data)
                 button_state = acquisition_input_amount.button_state
                 if button_state == WM_DELETE_WINDOW:
@@ -265,7 +268,7 @@ class MariaDB(object):
                 acquisition_amount = dec2.multiply(
                     data[-1].pieces, data[-1].acquisition_price)
         data[-1].acquisition_amount = acquisition_amount
-        self.update_holding_acquisition(bank.iban, holding['ISIN'], data[-1])
+        self.update_holding_acquisition(iban, isin, data[-1])
         return button_state
 
     def _statements(self, bank):
@@ -418,6 +421,10 @@ class MariaDB(object):
         rowcount = True   returns row_count of UPDATE, INSERT; DELETE
         '''
         # print(sql_statement, "\n", vars_, "\n")
+        if self.holding_switch == HOLDING_T:
+            sql_statement = sql_statement.replace(HOLDING, HOLDING_T)
+            sql_statement = sql_statement.replace(HOLDING_T + '_t', HOLDING_T)
+
         try:
             if vars_:
                 self.cursor.execute(sql_statement, vars_)
@@ -536,32 +543,10 @@ class MariaDB(object):
                 "mariadb+mariadbconnector://" + credentials)
             dataframe.to_sql(HOLDING_T, con=engine, index=False,
                              if_exists="append")
+            self.execute('COMMIT')
         except sqlalchemy.exc.SQLAlchemyError as info:
             _sqlalchemy_exception(title, HOLDING_T, info)
             return False
-
-    def complete_holding_t(self, *kwargs):
-        '''
-        close price_date gaps in HOLDING_T
-        '''
-        where, vars_ = self._where_clause(**kwargs)
-        sql_statement = "SELECT * FROM " + HOLDING_T + where
-        result = self.execute(sql_statement, vars_=vars_, ressult_dict=True)
-        start_date = date.today()
-        for idx, row in enumerate(result):
-            if row[DB_pieces] == 0:
-                end_date = row[DB_price_date] - timedelta(days=1)
-                # create holding_t rows in price_date gaps
-                if start_date <= end_date:
-                    price_dates = date_range(
-                        start=start_date, end=end_date, freq='B')
-                    if not price_dates.empty:
-                        pass
-            else:
-                start_date = row[DB_price_date] + timedelta(days=1)
-                end_date = None
-        if end_date is None:
-            end_date = date.today()
 
     def import_server(self, filename):
         '''
@@ -714,6 +699,8 @@ class MariaDB(object):
         if vars_:
             sql_statement = ' '.join([sql_statement, 'AND', where])
         if order is not None:
+            if isinstance(order, list):
+                order = ','.join(order)
             sql_statement = sql_statement + " ORDER BY " + order
         return self.execute(sql_statement, vars_=vars_)
 
@@ -740,13 +727,16 @@ class MariaDB(object):
         '''
         returns a list (of dictionaries)
         '''
-        where, vars_ = self._where_clause(**kwargs)
-        if isinstance(field_list, list):
-            field_list = ','.join(field_list)
-        sql_statement = "SELECT " + field_list + " FROM " + HOLDING_VIEW + where
-        result = self.execute(sql_statement, vars_=vars_,
-                              result_dict=result_dict)
-        return result
+        if field_list:
+            where, vars_ = self._where_clause(**kwargs)
+            if isinstance(field_list, list):
+                field_list = ','.join(field_list)
+            sql_statement = "SELECT " + field_list + " FROM " + HOLDING_VIEW + where
+            result = self.execute(sql_statement, vars_=vars_,
+                                  result_dict=result_dict)
+            return result
+        else:
+            return []
 
     def select_holding_all_isins_acquisition_amount(self, **kwargs):
         '''
@@ -865,47 +855,64 @@ class MariaDB(object):
 
     def select_table(self, table, field_list, order=None, result_dict=False, **kwargs):
 
-        where, vars_ = self._where_clause(**kwargs)
-        if table == STATEMENT:
-            where = where.replace(DB_price_date, 'date')
-        if field_list != '*':
-            field_list = ','.join(field_list)
-        sql_statement = "SELECT " + field_list + " FROM " + table + where
-        if order is not None:
-            sql_statement = sql_statement + " ORDER BY " + order
-        return self.execute(sql_statement, vars_=vars_, result_dict=result_dict)
+        if field_list:
+            where, vars_ = self._where_clause(**kwargs)
+            if table == STATEMENT:
+                where = where.replace(DB_price_date, 'date')
+            if isinstance(field_list, list):
+                field_list = ','.join(field_list)
+            else:
+                field_list = '*'
+            sql_statement = "SELECT " + field_list + " FROM " + table + where
+            if order is not None:
+                if isinstance(order, list):
+                    order = ','.join(order)
+                sql_statement = sql_statement + " ORDER BY " + order
+            return self.execute(sql_statement, vars_=vars_, result_dict=result_dict)
+        else:
+            return []
 
     def select_table_distinct(self, table, field_list, order=None, **kwargs):
 
-        where, vars_ = self._where_clause(**kwargs)
-        if table == STATEMENT:
-            where = where.replace(DB_price_date, 'date')
-        field_list = ','.join(field_list)
-        sql_statement = "SELECT DISTINCT " + field_list + " FROM " + table + where
-        if order is not None:
-            sql_statement = sql_statement + " ORDER BY " + order
-        return self.execute(sql_statement, vars_=vars_)
+        if field_list:
+            where, vars_ = self._where_clause(**kwargs)
+            if table == STATEMENT:
+                where = where.replace(DB_price_date, 'date')
+            if isinstance(field_list, list):
+                field_list = ','.join(field_list)
+            sql_statement = "SELECT DISTINCT " + field_list + " FROM " + table + where
+            if order is not None:
+                if isinstance(order, list):
+                    order = ','.join(order)
+                sql_statement = sql_statement + " ORDER BY " + order
+            return self.execute(sql_statement, vars_=vars_)
+        else:
+            return []
 
     def select_table_next(self, table, field_list, key_name, sign, key_value, **kwargs):
 
         assert sign in [
             '>', '>=', '<', '<='], 'Comparison Operators {} not allowed'.format(sign)
-        where, vars_ = self._where_clause(**kwargs)
-        if vars_:
-            where = where + ' AND '
+        if field_list:
+            where, vars_ = self._where_clause(**kwargs)
+            if vars_:
+                where = where + ' AND '
+            else:
+                where = ' WHERE '
+            if table == STATEMENT:
+                where = where.replace(DB_price_date, 'date')
+            if isinstance(field_list, list):
+                field_list = ','.join(field_list)
+            sql_statement = "SELECT " + field_list + " FROM " + table + \
+                where + key_name + sign + "? ORDER BY " + key_name
+            if sign in ['>', '>=']:
+                sql_statement = sql_statement + " LIMIT 1"
+            else:
+                sql_statement = sql_statement + " DESC LIMIT 1"
+            vars_ = vars_ + (key_value,)
+            return self.execute(sql_statement, vars_=vars_)
         else:
-            where = ' WHERE '
-        if table == STATEMENT:
-            where = where.replace(DB_price_date, 'date')
-        field_list = ','.join(field_list)
-        sql_statement = "SELECT " + field_list + " FROM " + table + \
-            where + key_name + sign + "? ORDER BY " + key_name
-        if sign in ['>', '>=']:
-            sql_statement = sql_statement + " LIMIT 1"
-        else:
-            sql_statement = sql_statement + " DESC LIMIT 1"
-        vars_ = vars_ + (key_value,)
-        return self.execute(sql_statement, vars_=vars_)
+            return []
 
     def select_total_amounts(self, **kwargs):
 
@@ -980,8 +987,7 @@ class MariaDB(object):
     def select_transactions_data(
             self,
             field_list='price_date, counter, transaction_type, price_currency,\
-                          price, pieces, amount_currency, posted_amount, acquisition_amount,\
-                          sold_pieces, comments',
+                          price, pieces, amount_currency, posted_amount, comments',
             **kwargs):
         ''' returns a list of tuples '''
         where, vars_ = self._where_clause(**kwargs)
@@ -1148,8 +1154,7 @@ class MariaDB(object):
             DB_price: data[-1].acquisition_price,
             DB_pieces: data[-1].pieces,
             DB_amount_currency: data[-1].amount_currency,
-            DB_posted_amount: data[-1].acquisition_amount,
-            DB_acquisition_amount: 0
+            DB_posted_amount: data[-1].acquisition_amount
         }
         generated = []
         if len(data) == 1:  # create first transaction
@@ -1172,8 +1177,6 @@ class MariaDB(object):
                 part = dec6.divide(pieces, data[0].pieces)
                 transaction_fields[DB_posted_amount] = dec2.multiply(
                     data[-1].total_amount, part)
-                transaction_fields[DB_acquisition_amount] = dec2.multiply(
-                    data[-1].acquisition_amount, part)
                 self.transaction_new(iban, transaction_fields)
                 generated.append(transaction_fields)
         return generated
@@ -1194,8 +1197,7 @@ class MariaDB(object):
             DB_price: data[-1].market_price,
             DB_pieces: data[-1].pieces,
             DB_amount_currency: data[-1].amount_currency,
-            DB_posted_amount: dec2.convert(data[-1].total_amount),
-            DB_acquisition_amount: data[-1].acquisition_amount
+            DB_posted_amount: dec2.convert(data[-1].total_amount)
         }
         if max_price_date == data[-1].price_date:
             transaction[DB_counter] = 1

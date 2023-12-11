@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2023-10-31"
+__updated__ = "2023-12-11"
 Author: Wolfang Kramer
 """
 
@@ -38,13 +38,13 @@ from banking.declarations import (
     DB_origin, DB_origin_symbol,
     DB_open, DB_low, DB_high, DB_close, DB_adjclose, DB_volume, DB_dividends, DB_splits,
     EURO, ERROR,
-    FINTS_SERVER, FINTS_SERVER_ADDRESS,
+    FALSE, FINTS_SERVER, FINTS_SERVER_ADDRESS,
     FROM_BEGINNING_DATE,
     FN_DATE, FN_PROFIT_LOSS, FN_PROFIT, FN_FROM_DATE, FN_TO_DATE,
-    FN_PIECES_CUM, FN_ALL_BANKS, FN_TOTAL,
+    FN_PIECES_CUM, FN_ALL_BANKS, FN_TOTAL, FN_SOLD_PIECES,
     FORMS_TEXT,
     HOLDING, HOLDING_VIEW, HOLDING_T,
-    INFORMATION, Informations, ISIN, ISIN_WITH_TICKER,
+    INFORMATION, Informations, ISIN,
     JSON_KEY_ERROR_MESSAGE, JSON_KEY_META_DATA,
     KEY_ACCOUNTS, KEY_ACC_BANK_CODE, KEY_ACC_OWNER_NAME, KEY_ALPHA_VANTAGE_PRICE_PERIOD,
     KEY_ACC_ACCOUNT_NUMBER, KEY_ACC_SUBACCOUNT_NUMBER, KEY_ACC_ALLOWED_TRANSACTIONS, KEY_ACC_IBAN,
@@ -64,13 +64,14 @@ from banking.declarations import (
     SEPA_PURPOSE_1, SEPA_PURPOSE_2, SEPA_REFERENCE,
     SHELVE_KEYS,
     STATEMENT,
-    TRANSACTION, TRANSACTION_VIEW, TRANSACTION_DELIVERY, TRUE,
-    UNKNOWN, WEBSITES,
+    TRANSACTION, TRANSACTION_VIEW, TRANSACTION_DELIVERY, TRUE, TRANSACTION_RECEIPT,
+    UNKNOWN, WEBSITES, WARNING,
     YAHOO, NOT_ASSIGNED,
     OUTPUTSIZE_FULL, OUTPUTSIZE_COMPACT, ALPHA_VANTAGE_DOCUMENTATION,
+    KEY_HOLDING_SWITCH,
 )
 from banking.formbuilts import (
-    BUTTON_OK, BUTTON_SAVE, BUTTON_NEW, BUTTON_APPEND, BUTTON_DELETE, BUTTON_CREATE, BUTTON_UPDATE,
+    BUTTON_OK, BUTTON_SAVE, BUTTON_NEW, BUTTON_APPEND, BUTTON_DELETE, BUTTON_REPLACE, BUTTON_UPDATE,
     MessageBoxInfo, ProgressBar,
     FileDialogue,
     BuiltRadioButtons, BuiltPandasBox,
@@ -90,7 +91,7 @@ from banking.forms import (
     PandasBoxAcquisitionTable, PandasBoxTransactionTable, PandasBoxTransactionProfit,
     PandasBoxHoldingTransaction, PandasBoxPrices,
     PrintList, PrintMessageCode,
-    SelectFields,
+    SelectFields, SelectCreateHolding_t,
     SepaCreditBox,
     TransactionNew,
     TransactionSync, VersionTransaction, SelectDownloadPrices,
@@ -101,7 +102,7 @@ from banking.sepa import SepaCreditTransfer
 from banking.tools import import_holding_from_access, update_holding_total_amount_portfolio
 from banking.utils import (
     Calculate,
-    dictaccount, dict_get_first_key,
+    Datulate, dictaccount, dict_get_first_key,
     exception_error,
     listbank_codes,
     shelve_exist, shelve_put_key, shelve_get_key,
@@ -115,6 +116,8 @@ PAGE_FEED = 50
 dec2 = Calculate(places=2)
 dec6 = Calculate(places=6)
 dec10 = Calculate(places=10)
+
+dat = Datulate()
 
 
 class FinTS_MariaDB_Banking(object):
@@ -139,7 +142,7 @@ class FinTS_MariaDB_Banking(object):
                 exception_error(message=MESSAGE_TEXT['DBLOGIN'])
             try:
                 self.mariadb = MariaDB(
-                    MariaDBuser, MariaDBpassword, MariaDBname)
+                    MariaDBuser, MariaDBpassword, MariaDBname, self.shelve_app[KEY_HOLDING_SWITCH])
             except Exception:
                 exception_error(message=MESSAGE_TEXT['CONN'].format(
                     MariaDBuser, MariaDBname))
@@ -168,6 +171,8 @@ class FinTS_MariaDB_Banking(object):
             self.message_widget = Label(self.window,
                                         textvariable=self._footer, foreground='RED', justify='center')
             self._footer.set('')
+            if self.shelve_app[KEY_HOLDING_SWITCH] == HOLDING_T:
+                self._footer.set(MESSAGE_TEXT['HOLDING_USE_TRANSACTION'])
             self.message_widget.pack()
             self.window.protocol(WM_DELETE_WINDOW, self._wm_deletion_window)
             self.alpha_vantage = AlphaVantage(self.progress, self.shelve_app[KEY_ALPHA_VANTAGE_FUNCTION],
@@ -332,15 +337,10 @@ class FinTS_MariaDB_Banking(object):
                 shelve_file[KEY_THREADING] = app_data_box.field_dict[KEY_THREADING]
                 shelve_file[KEY_MS_ACCESS] = app_data_box.field_dict[KEY_MS_ACCESS]
                 shelve_file[KEY_ALPHA_VANTAGE_PRICE_PERIOD] = app_data_box.field_dict[KEY_ALPHA_VANTAGE_PRICE_PERIOD]
-                if (self.shelve_app == {} or
-                        app_data_box.field_dict[KEY_MARIADB_NAME] !=
-                        self.shelve_app[KEY_MARIADB_NAME] or
-                        app_data_box.field_dict[KEY_MARIADB_USER] !=
-                        self.shelve_app[KEY_MARIADB_USER] or
-                        app_data_box.field_dict[KEY_MARIADB_PASSWORD] !=
-                        self.shelve_app[KEY_MARIADB_PASSWORD]):
-                    MessageBoxInfo(message=MESSAGE_TEXT['DATABASE_REFRESH'])
-                    self._wm_deletion_window()
+                shelve_file[KEY_HOLDING_SWITCH] = app_data_box.field_dict[KEY_HOLDING_SWITCH]
+            if app_data_box.button_state == BUTTON_SAVE:
+                MessageBoxInfo(message=MESSAGE_TEXT['DATABASE_REFRESH'])
+                self._wm_deletion_window()
             self.shelve_app = shelve_get_key(BANK_MARIADB_INI, APP_SHELVE_KEYS)
 
     def _create_menu(self, MariaDBname):
@@ -1036,111 +1036,121 @@ class FinTS_MariaDB_Banking(object):
         if not default_texts_holding_t:
             default_texts_holding_t = []
         while True:
-            selected_fields = SelectFields(
-                button1_text=BUTTON_CREATE, button2_text=None, button3_text=None,
-                title=title, standard=title,
-                checkbutton_texts=name_list)
+            selected_fields = SelectCreateHolding_t(
+                title=title,  checkbutton_texts=name_list)
             if selected_fields.button_state == WM_DELETE_WINDOW:
                 break
             else:
                 selected_name_list = selected_fields.field_list
-            field_list = [DB_iban, DB_ISIN, DB_price_date, DB_price_currency, DB_amount_currency,
-                          DB_price,
-                          DB_posted_amount, DB_transaction_type, DB_pieces]
-
             if selected_name_list:
                 for selected_name in selected_name_list:
                     isin = name_isin_dict[selected_name]
-                    transaction_isin = self.mariadb.select_table(
-                        TRANSACTION, field_list, order=DB_price_date, result_dict=True, iban=iban, ISIN=isin)
-                    self.mariadb.execute_delete(
-                        HOLDING_T, iban=iban, ISIN=isin)
-                    dataframe = DataFrame(transaction_isin)
-                    # prepare deliveries
-                    deliveries = dataframe[DB_transaction_type] == TRANSACTION_DELIVERY
-                    dataframe[DB_pieces].mask(
-                        deliveries, -dataframe[DB_pieces], inplace=True)
-                    dataframe[DB_pieces] = dataframe[DB_pieces].cumsum()
-                    dataframe[DB_posted_amount].mask(
-                        deliveries, dec2.convert(0), inplace=True)
-                    # calculate delivery rest of acquisition amount
-                    for idx in dataframe.index:
-                        if idx > 0:
-                            if dataframe[DB_transaction_type][idx] == TRANSACTION_DELIVERY:
-                                if dataframe[DB_pieces][idx] != 0:
-                                    part = dec2.divide(
-                                        dataframe[DB_pieces][idx], dataframe[DB_pieces][idx - 1])
-                                    dataframe.at[idx, DB_posted_amount] = dec2.multiply(
-                                        dataframe[DB_posted_amount][idx - 1], part)
-                                else:
-                                    dataframe.at[idx, DB_posted_amount] = dec2.convert(
-                                        0)
-                            else:
-                                dataframe.at[idx, DB_posted_amount] = (
-                                    dataframe[DB_posted_amount][idx - 1] + dataframe[DB_posted_amount][idx])
-                    index_label = [DB_iban, DB_ISIN, DB_price_date]
-                    dataframe.drop_duplicates(
-                        subset=index_label, keep='last', inplace=True)
-                    dataframe.rename(
-                        columns={DB_posted_amount: DB_acquisition_amount, DB_price: DB_acquisition_price}, inplace=True)
-                    del dataframe[DB_transaction_type]
-                    self._data_holding_t_prices(
-                        title, dataframe, isin, selected_name)
-                MessageBoxInfo(
-                    title=title,
-                    message=(MESSAGE_TEXT['TASK_DONE'] + '\n\n' + ' ** '.join(selected_name_list)))
-                self._show_informations()
+                    if selected_fields.button_state == BUTTON_REPLACE:
+                        # delete isin from holding_t
+                        self.mariadb.execute_delete(
+                            HOLDING_T, iban=iban, isin=isin)
+                    self._data_holding_t_create(
+                        title, iban, isin, selected_name)
             else:
                 self._footer.set(MESSAGE_TEXT['SELECT'])
+        self._show_informations()
 
-    def _data_holding_t_prices(self, title, dataframe, isin, name):
+    def _data_holding_t_create(self, title, iban, isin, name):
 
-        start_row = None
-        for end_row in dataframe.itertuples(index=False, name='Row'):
-            if start_row:
-                start_date = getattr(start_row, DB_price_date)
-                end_date = getattr(end_row, DB_price_date)
-                prices = self.mariadb.select_table(
-                    PRICES_ISIN_VIEW, [
-                        DB_price_date, DB_close], order=DB_price_date, result_dict=True,
-                    isin=isin, period=(start_date, end_date)
-                )
-                if prices:
-                    self._data_holding_t_replace(
-                        title, start_row, prices, isin, name)
-                else:
-                    message = MESSAGE_TEXT['PRICES_NO'].format(name, '', isin)
-                    Informations.holding_t_informations = ' '.join(
-                        [Informations.holding_t_informations, '\n' + INFORMATION, message])
-                    return
-            if getattr(end_row, DB_pieces) == 0:
-                start_row = None
+        result = self.mariadb.select_table(
+            ISIN, [DB_symbol, DB_name], ISIN=isin, result_dict=True)
+        if result:
+            symbol = result[0][DB_symbol]
+            name_ = result[0][DB_name]
+            if symbol == NOT_ASSIGNED:
+                message = MESSAGE_TEXT['SYMBOL_MISSING'].format(isin, name_)
+                Informations.holding_t_informations = Informations.holding_t_informations + \
+                    ' '.join(['\n', WARNING, message.replace('\n', ' / ')])
+            elif symbol:
+                transactions = self.mariadb.select_table(
+                    TRANSACTION, [DB_price_date, DB_counter,
+                                  DB_transaction_type, DB_pieces, DB_price],
+                    result_dict=True, order=[DB_iban, DB_ISIN, DB_price_date, DB_counter],
+                    iban=iban, isin=isin)
+                if transactions:
+                    # create dataframe of all transactions of isin
+                    dataframe_transactions = DataFrame(transactions)
+                    receipt = dataframe_transactions[DB_transaction_type] == TRANSACTION_RECEIPT
+                    dataframe_transactions[DB_pieces].where(
+                        receipt, other=-dataframe_transactions[DB_pieces], inplace=True)
+                    dataframe_transactions = dataframe_transactions.groupby(
+                        by=DB_price_date, as_index=False).sum()                         # condense multiple transaction of same date
+                    dataframe_transactions[FN_SOLD_PIECES] = dataframe_transactions[DB_pieces].cumsum(
+                    )
+
+                    dataframe_transactions[DB_acquisition_amount] = dataframe_transactions[DB_pieces] * \
+                        dataframe_transactions[DB_price]
+                    dataframe_transactions[DB_acquisition_amount] = dataframe_transactions[DB_acquisition_amount].cumsum(
+                    )
+                    dataframe_transactions[DB_price] = dataframe_transactions[[DB_acquisition_amount, FN_SOLD_PIECES]].apply(
+                        lambda x: x.acquisition_amount / x.sold_pieces if x.sold_pieces != 0 else 0, axis=1)
+                    start_price_date = dataframe_transactions[DB_price_date].iloc[0]
+                    _date = dataframe_transactions[DB_price_date].iloc[-1]
+                    end_price_date = dat.subtract(_date, 1)
+                    result = self.mariadb.select_table(PRICES_ISIN_VIEW, [DB_price_date, DB_close], result_dict=True,
+                                                       name=name_, period=(start_price_date, end_price_date))
+                    if result:
+                        dataframe_prices = DataFrame(result)
+                        if dataframe_prices[DB_price_date].iloc[0] > start_price_date or dataframe_prices[DB_price_date].iloc[-1] < end_price_date:
+                            message = MESSAGE_TEXT['PRICES_PERIOD'].format(
+                                name_, isin, symbol, start_price_date, end_price_date)
+                            Informations.holding_t_informations = Informations.holding_t_informations + \
+                                ' '.join(
+                                    ['\n', WARNING, message.replace('\n', ' / ')])
+                        else:
+                            dataframe_transactions.rename(
+                                columns={DB_close: DB_market_price, DB_price: DB_acquisition_price}, inplace=True)
+                            dataframe = dataframe_prices.merge(
+                                dataframe_transactions, how='outer', on=DB_price_date)      # union dataframe of prices with dataframe of transactions, result dataframe with filled gaps betweeen transactions
+                            dataframe[FN_SOLD_PIECES].ffill(inplace=True)
+                            dataframe[DB_acquisition_price].ffill(inplace=True)
+                            dataframe[DB_acquisition_amount].ffill(
+                                inplace=True)
+                            # delete all rows where FN_SOLD_PIECES = 0
+                            dataframe.query(FN_SOLD_PIECES +
+                                            ' != 0', inplace=True)
+                            dataframe.drop(
+                                columns=[DB_counter, DB_pieces, DB_transaction_type], inplace=True)
+                            dataframe.rename(
+                                columns={DB_close: DB_market_price, FN_SOLD_PIECES: DB_pieces}, inplace=True)
+                            dataframe[DB_total_amount] = dataframe[DB_market_price] * \
+                                dataframe[DB_pieces]
+                            dataframe[DB_iban] = iban
+                            dataframe[DB_ISIN] = isin
+                            # delete existing holding_t from dataframe
+                            max_price_date = self.mariadb.select_max_price_date(
+                                HOLDING_T, iban=iban, isin=isin)
+                            if max_price_date:
+                                start_price_date = max_price_date
+                                dataframe = dataframe[dataframe.price_date >
+                                                      start_price_date]
+                            # create isin in holding_t
+                            self.mariadb.import_holding_t('Title', dataframe)
+                            message = MESSAGE_TEXT['HOLDING_T'].format(
+                                name_, isin, start_price_date, end_price_date)
+                            Informations.holding_t_informations = Informations.holding_t_informations + \
+                                ' '.join(
+                                    ['\n', INFORMATION, message.replace('\n', ' / ')])
+                    else:
+                        message = MESSAGE_TEXT['PRICES_NO'].format(
+                            name_, symbol, isin, start_price_date)
+                        Informations.holding_t_informations = Informations.holding_t_informations + \
+                            ' '.join(
+                                ['\n', WARNING, message.replace('\n', ' / ')])
             else:
-                start_row = end_row
-
-    def _data_holding_t_replace(self, title, start_row, prices, isin, name):
-
-        last_price = prices[-1]
-        origin = TRANSACTION
-        for price in prices:
-            if price[DB_price_date] < last_price[DB_price_date]:
-                dict_start_row = start_row._asdict()
-                if origin == TRANSACTION:  # check price adjustment threshold
-                    adjustment = dec2.percent(
-                        price[DB_close], dict_start_row[DB_acquisition_price])
-                    adjustment = abs(dec2.subtract(adjustment, 100))
-                    if adjustment > PRICE_ADJUSTMENT_LIMIT:
-                        message = MESSAGE_TEXT['PRICES_ADJUSTED'].format(
-                            isin, name, dict_start_row[DB_price_date], adjustment)
-                        Informations.holding_t_informations = ' '.join(
-                            [Informations.holding_t_informations, '\n' + INFORMATION, message])
-                dict_start_row[DB_price_date] = price[DB_price_date]
-                dict_start_row[DB_market_price] = price[DB_close]
-                dict_start_row[DB_total_amount] = dec2.multiply(
-                    dict_start_row[DB_market_price], dict_start_row[DB_pieces])
-                dict_start_row[DB_origin] = origin
-                self.mariadb.execute_replace(HOLDING_T, dict_start_row)
-                origin = PRICES
+                message = MESSAGE_TEXT['SYMBOL_MISSING'].format(isin, name_)
+                Informations.holding_t_informations = Informations.holding_t_informations + \
+                    ' '.join(['\n', WARNING,
+                              message.replace('\n', ' / ')])
+        else:
+            message = ' '.join([isin, MESSAGE_TEXT['ISIN_DATA']])
+            Informations.holding_t_informations = Informations.holding_t_informations + \
+                ' '.join(['\n', WARNING, message.replace('\n', ' / ')])
 
     def _data_transaction_detail(self, bank_name, iban):
 
@@ -1220,7 +1230,7 @@ class FinTS_MariaDB_Banking(object):
             if selected_fields.button_state == WM_DELETE_WINDOW:
                 break
             else:
-                # slected data fields e.g. close, ..
+                # selected data fields e.g. close, ..
                 field_list = selected_fields.field_list
             db_fields = [DB_name, DB_price_date, *field_list]
             select_data = self.mariadb.select_table(PRICES_ISIN_VIEW, db_fields, order=DB_name, result_dict=True,
@@ -1442,7 +1452,7 @@ class FinTS_MariaDB_Banking(object):
                         if dataframe.empty:
                             MessageBoxInfo(title=title, information_storage=PRICES,
                                            message=MESSAGE_TEXT['PRICES_NO'].format(
-                                               name, message_symbol, isin))
+                                               name, message_symbol, isin, ''))
                         else:
                             dataframe = dataframe.reset_index()
                             dataframe[DB_symbol] = symbol
@@ -1810,6 +1820,7 @@ class FinTS_MariaDB_Banking(object):
                                              field_list=self.mariadb.table_fields[STATEMENT])
         if date_field_list.button_state == WM_DELETE_WINDOW:
             return
+
         from_date = date_field_list.field_dict[FN_FROM_DATE]
         to_date = date_field_list.field_dict[FN_TO_DATE]
         statements = self.mariadb.select_table(STATEMENT, date_field_list.field_list,
@@ -1818,8 +1829,9 @@ class FinTS_MariaDB_Banking(object):
         if statements:
             title = ' '.join(
                 [title, MESSAGE_TEXT['Period'].format(from_date, to_date)])
-            PandasBoxStatement(dataframe=(statements, date_field_list.field_list), title=title,
-                               )
+            PandasBoxStatement(dataframe=(
+                statements, date_field_list.field_list), title=title)
+            return
         else:
             self._footer.set(MESSAGE_TEXT['DATA_NO'].format(title, ''))
 
@@ -1944,16 +1956,7 @@ class FinTS_MariaDB_Banking(object):
             to_date = input_date.field_dict[FN_TO_DATE]
             result = self.mariadb.transaction_portfolio(
                 iban=iban, period=(from_date, to_date))
-            if not result:
-                MessageBoxInfo(title=title,
-                               message=MESSAGE_TEXT['TRANSACTION_NO'].format(from_date, to_date))
-                result = self.mariadb.transaction_pieces(
-                    iban=iban, period=(from_date, to_date))
-                dataframe = DataFrame(list(result), columns=[
-                                      DB_ISIN, DB_name, DB_pieces])
-                BuiltPandasBox(
-                    dataframe=dataframe, title=title)
-            elif len(result) != 0:
+            if result:
                 dataframe = DataFrame(list(result), columns=['ORIGIN',
                                                              DB_ISIN, DB_name, DB_pieces])
                 BuiltPandasBox(
@@ -2254,7 +2257,7 @@ class DataTransactionDetail(Data_ISIN_Period):
 
     def _data_processing(self):
 
-        field_list = 'price_date, counter, transaction_type, price, pieces, posted_amount, acquisition_amount'
+        field_list = 'price_date, counter, transaction_type, price, pieces, posted_amount'
 
         if self.iban:
             select_isin_transaction = self.mariadb.select_transactions_data(

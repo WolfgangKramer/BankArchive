@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2023-10-12"
+__updated__ = "2023-12-11"
 @author: Wolfgang Kramer
 """
 
@@ -149,6 +149,8 @@ MESSAGE_TEXT = {
     'ENTRY': 'Enter Data',
     'FIXED': '{} MUST HAVE {} Characters ',
     'HITAN6': 'Could not find HITAN6 task_reference',
+    'HOLDING_T': '{} / {} HOLDING_T data created in period ({} - {})',
+    'HOLDING_USE_TRANSACTION': 'Table TRANSACTION and Table PRICES used to show holding data',
     'HTTP': 'Server not connected! HTTP Status Code: {}\nBank: {}  Server: {}',
     'HTTP_INPUT': 'Server not valid or not available! HTTP Status Code: {}',
     'IBAN': 'IBAN invalid',
@@ -178,7 +180,8 @@ MESSAGE_TEXT = {
     'PRICES_ADJUSTED': '{} ISIN: {} Transaction Date: {} \n Price in tables TRANSACTION and PRICES  differs by {}%',
     'PRICES_DELETED': '{}:  Prices deleted\n\n Used Ticker Symbol {} \n ISIN: {}',
     'PRICES_LOADED': '{}:  Price loaded for Period {}\n\n Used Ticker Symbol {} \n ISIN: {}',
-    'PRICES_NO': '{}:  No new Prices found\n\n Used Ticker Symbol {} \n ISIN: {}',
+    'PRICES_NO': '{}:  No new Prices found\n\n Used Ticker Symbol {} \n ISIN: {}  {}',
+    'PRICES_PERIOD': '{} / {} /{} Prices missing in Period ({} - {})',
     'PRODUCT_ID': 'Product_ID missing, No Bank Access possible\n Get your Product_Id: https://www.hbci-zka.de/register/prod_register.htm',
     'RADIOBUTTON': 'Select one of SELECT the RadioButtons',
     'SCROLL': 'Scroll forward: CTRL+RIGHT   Scroll backwards: CTRL+LEFT',
@@ -234,7 +237,7 @@ VERSION_TRANSACTION = ['HKAKZ6', 'HKAKZ7',
 DATABASES = []
 BANKIDENTIFIER = 'bankidentifier'
 HOLDING = 'holding'
-HOLDING_T = 'holding_t'
+HOLDING_T = 'holding_t'  # Source is table TRANSACTION and PRICES
 HOLDING_VIEW = 'holding_view'
 HOLDING_T_VIEW = 'holding_t_view'
 HOLDING_SYMBOL = 'holding_symbol'
@@ -269,15 +272,19 @@ KEY_MS_ACCESS = 'MS_ACCESS'
 KEY_GEOMETRY = 'GEOMETRY'
 KEY_ALPHA_VANTAGE_FUNCTION = 'ALPHA_VANTAGE_FUNCTION'
 KEY_ALPHA_VANTAGE_PARAMETER = 'ALPHA_VANTAGE_PARAMETER'
+# True: Table HOLDING in Use else Table HOLDING_T
+KEY_HOLDING_SWITCH = 'HOLDING_SWITCH'
 APP_SHELVE_KEYS = [
     KEY_PRODUCT_ID, KEY_ALPHA_VANTAGE, KEY_DIRECTORY, KEY_LOGGING, KEY_MS_ACCESS,
     KEY_MARIADB_NAME, KEY_MARIADB_USER, KEY_MARIADB_PASSWORD,
     KEY_EXPLORER, KEY_DRIVER, KEY_SHOW_MESSAGE, KEY_THREADING, KEY_ALPHA_VANTAGE_PRICE_PERIOD,
-    KEY_ALPHA_VANTAGE_FUNCTION, KEY_ALPHA_VANTAGE_PARAMETER
+    KEY_ALPHA_VANTAGE_FUNCTION, KEY_ALPHA_VANTAGE_PARAMETER, KEY_HOLDING_SWITCH
 ]
 TRUE = 'ON'
 FALSE = 'OFF'
 SWITCH = [TRUE, FALSE]
+# FALSE: HOLDING uses Table PRICES   TRUE: HOLDING uses TABLE HOLDING,
+HOLDING_SWITCH = [HOLDING, HOLDING_T]
 KEY_ACCOUNTS = 'ACCOUNTS'
 KEY_BANK_CODE = 'BANK_CODE'
 KEY_BANK_NAME = 'BANK_NAME'
@@ -357,7 +364,8 @@ TRANSACTION_TYPES = [TRANSACTION_RECEIPT, TRANSACTION_DELIVERY]
 """
 YAHOO = 'Yahoo!'
 ALPHA_VANTAGE = 'AlphaVantage'
-ORIGIN_SYMBOLS = [NOT_ASSIGNED, ALPHA_VANTAGE, YAHOO]
+ONVISTA = 'Onvista'
+ORIGIN_SYMBOLS = [NOT_ASSIGNED, ALPHA_VANTAGE, ONVISTA, YAHOO]
 CURRENCIES = [EURO, 'USD', 'AUD', 'CAD', 'CHF',
               'GBP', 'JPY']  # ISIN currency of prices
 """
@@ -416,6 +424,7 @@ FN_PROFIT = 'Profit'
 FN_PROFIT_LOSS = 'Profit&Loss'
 FN_PROFIT_CUM = 'Performance'
 FN_PIECES_CUM = 'cumPieces'
+FN_SOLD_PIECES = 'sold_pieces'
 FN_ALL_BANKS = 'ALL BANKS '
 FN_COLUMNS_EURO = [FN_TOTAL, FN_PROFIT,
                    FN_PROFIT_LOSS, FN_PROFIT_CUM]
@@ -509,7 +518,7 @@ CREATE_HOLDING_T = "CREATE TABLE IF NOT EXISTS `holding_t` (\
     `exchange_rate` DECIMAL(14,6) NULL DEFAULT '0.000000' COMMENT ':92B:: Kurs/Satz',\
     `exchange_currency_1` CHAR(3) NULL DEFAULT NULL COMMENT ':92B:: Erste Währung' COLLATE 'latin1_swedish_ci',\
     `exchange_currency_2` CHAR(3) NULL DEFAULT NULL COMMENT ':92B:: Zweite Wöhrung' COLLATE 'latin1_swedish_ci',\
-    `origin` VARCHAR(50) NULL DEFAULT '_BANKDATA_' COMMENT 'Datensatz Herkunft:  _BANKDATA_  Download Bank' COLLATE 'latin1_swedish_ci',\
+    `origin` VARCHAR(50) NULL DEFAULT '_TRANSACTION_' COMMENT 'Datensatz Herkunft: TRANSACTION  generated using tables prices and transaction' COLLATE 'latin1_swedish_ci',\
     PRIMARY KEY (`iban`, `price_date`, `ISIN`) USING BTREE,\
     INDEX `ISIN_KEY` (`ISIN`) USING BTREE\
 )\
@@ -641,9 +650,7 @@ CREATE_TRANSACTION = "CREATE TABLE IF NOT EXISTS `transaction` (\
     `pieces` DECIMAL(14,2) NOT NULL DEFAULT '0.00' COMMENT ':36B:: Gebuchte Stueckzahl',\
     `amount_currency` CHAR(3) NOT NULL DEFAULT 'EUR' COMMENT ':19A:: Gebuchter Betrag,  ISO 4217-Waehrungscode' COLLATE 'latin1_swedish_ci',\
     `posted_amount` DECIMAL(14,2) NOT NULL DEFAULT '0.00' COMMENT ':19A:: Gebuchter Betrag, Kurswert',\
-    `acquisition_amount` DECIMAL(14,2) NOT NULL DEFAULT '0.00' COMMENT 'Acquisition Amount only if TransactionType DELI',\
     `origin` VARCHAR(50) NULL DEFAULT '_BANKDATA_' COMMENT 'Datensatz Herkunft:  _BANKDATA_  Download Bank' COLLATE 'latin1_swedish_ci',\
-    `sold_pieces` DECIMAL(14,2) NOT NULL DEFAULT '0.00' COMMENT 'Verkaufte Stückzahl, nur belegt bei transaction_type=RECE ',\
     `comments` VARCHAR(200) NULL DEFAULT NULL COMMENT 'Comments' COLLATE 'latin1_swedish_ci',\
     PRIMARY KEY (`iban`, `ISIN`, `price_date`, `counter`) USING BTREE\
 )\
@@ -763,7 +770,6 @@ DB_return_reason = 'return_reason'
 DB_return_reference = 'return_reference'
 DB_sepa_purpose = 'sepa_purpose'
 DB_server = 'server'
-DB_sold_pieces = 'sold_pieces'
 DB_statement_no = 'statement_no'
 DB_statement_no_page = 'statement_no_page'
 DB_status = 'status'

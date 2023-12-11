@@ -1,9 +1,10 @@
 """
 Created on 18.11.2019
-__updated__ = "2023-10-10"
+__updated__ = "2023-11-21"
 @author: Wolfgang Kramer
 """
 import collections
+from datetime import date, timedelta, datetime
 from decimal import Decimal, getcontext, ROUND_HALF_EVEN, DivisionByZero
 import functools
 import glob
@@ -579,6 +580,67 @@ class Calculate(object):
         match = re.search(pattern, string)
         if match:
             return self.convert(match.group())
+
+
+class Datulate(object):
+    """
+    Methods with date operations
+    PARAMETER:
+        date_format    YYY-MM-DD (standard
+        date_unit      days (standard), weeks  
+    """
+
+    DAYS = 'DAYS'
+    WEEKS = 'WEEKS'
+
+    def __init__(self, date_format='%Y-%m-%d', date_unit='DAYS'):
+        self.date_format = date_format
+        self.date_unit = date_unit
+
+    def convert(self, x):
+
+        if isinstance(x, date):
+            return x.strftime(self.date_format)  # returns string
+        if isinstance(x, str):
+            # returns date
+            return datetime.strptime(x, self.date_format).date()
+        return None
+
+    def add(self, x, y, ignore_weekend=True):
+
+        if isinstance(x, str):
+            x = self.convert(x)
+        if self.date_unit == Datulate.DAYS:
+            x = x + timedelta(days=y)
+            if ignore_weekend:
+                # day of the week as an integer, where Monday is 0 and Sunday
+                # is 6.
+                while x.weekday() in [5, 6]:
+                    x = x + timedelta(days=y)
+            return x
+        if self.date_unit == Datulate.WEEKS:
+            return x + timedelta(weeks=y)
+        return None
+
+    def subtract(self, x, y, ignore_weekend=True):
+
+        if isinstance(x, str):
+            x = self.convert(x)
+        if self.date_unit == Datulate.DAYS:
+            x = x - timedelta(days=y)
+            if ignore_weekend:
+                # day of the week as an integer, where Monday is 0 and Sunday
+                # is 6.
+                while x.weekday() in [5, 6]:
+                    x = x - timedelta(days=y)
+            return x
+        if self.date_unit == Datulate.WEEKS:
+            return x - timedelta(weeks=y)
+        return None
+
+    def today(self):
+
+        return date.today()
 
 
 class Info():

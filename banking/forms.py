@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2023-10-31"
+__updated__ = "2023-12-11"
 @author: Wolfgang Kramer
 """
 from bisect import bisect_left
@@ -32,7 +32,7 @@ from banking.declarations import (
     DB_date, DB_iban,
     DB_ISIN, DB_market_price, DB_name, DB_opening_balance, DB_opening_currency, DB_opening_status,
     DB_origin, DB_origin_symbol, DB_pieces, DB_posted_amount, DB_amount_currency, DB_price,
-    DB_price_currency, DB_price_date, DB_sold_pieces, DB_status, DB_total_amount,
+    DB_price_currency, DB_price_date, DB_status, DB_total_amount,
     DB_type, DB_validity, DB_wkn,
     DB_total_amount_portfolio, DB_transaction_type, DB_symbol,
     ERROR, EURO,
@@ -41,16 +41,18 @@ from banking.declarations import (
     FN_FROM_DATE, FN_TO_DATE, FN_SHARE, FN_TOTAL,
     FN_PROFIT_CUM, FN_PIECES_CUM, FN_PROFIT,
     FORMS_TEXT,
-    HTTP_CODE_OK, HOLDING,
+    HTTP_CODE_OK, HOLDING, HOLDING_SWITCH,
     Informations,
     PERCENT,
     INFORMATION, ISIN,
+    HOLDING_SWITCH,
     KEY_ALPHA_VANTAGE, KEY_ALPHA_VANTAGE_PRICE_PERIOD,
     KEY_BANK_CODE, KEY_BANK_NAME, KEY_DIRECTORY, KEY_MAX_PIN_LENGTH,
     KEY_MAX_TAN_LENGTH, KEY_MIN_PIN_LENGTH,
     KEY_VERSION_TRANSACTION_ALLOWED,
     KEY_TAN, MAX_PIN_LENGTH, MAX_TAN_LENGTH, KEY_THREADING,
     KEY_ACC_ALLOWED_TRANSACTIONS, KEY_ACC_PRODUCT_NAME, KEY_ACC_BANK_CODE,
+    KEY_HOLDING_SWITCH,
     KEY_LOGGING, KEY_MS_ACCESS,
     KEY_MARIADB_NAME,
     KEY_MARIADB_PASSWORD, KEY_MARIADB_USER, KEY_PIN, KEY_BIC, KEY_PRODUCT_ID,
@@ -342,7 +344,7 @@ class AppCustomizing(BuiltEnterBox):
             KEY_PRODUCT_ID, KEY_ALPHA_VANTAGE, KEY_DIRECTORY, KEY_MARIADB_NAME, KEY_MARIADB_USER,
             KEY_MARIADB_PASSWORD, KEY_SHOW_MESSAGE,
             KEY_LOGGING, KEY_THREADING, KEY_MS_ACCESS,
-            KEY_ALPHA_VANTAGE_PRICE_PERIOD])
+            KEY_ALPHA_VANTAGE_PRICE_PERIOD, KEY_HOLDING_SWITCH])
         field_defs = FieldNames(
             FieldDefinition(name=KEY_PRODUCT_ID, length=50),
             FieldDefinition(name=KEY_ALPHA_VANTAGE,
@@ -368,6 +370,9 @@ class AppCustomizing(BuiltEnterBox):
             FieldDefinition(name=KEY_ALPHA_VANTAGE_PRICE_PERIOD, length=50,
                             definition=COMBO, combo_values=ALPHA_VANTAGE_PRICE_PERIOD,
                             allowed_values=ALPHA_VANTAGE_PRICE_PERIOD),
+            FieldDefinition(name=KEY_HOLDING_SWITCH, length=10,
+                            definition=COMBO, combo_values=HOLDING_SWITCH,
+                            allowed_values=HOLDING_SWITCH),
         )
         if shelve_exist(BANK_MARIADB_INI):
             _set_defaults(field_defs=field_defs, default_values=(
@@ -377,11 +382,12 @@ class AppCustomizing(BuiltEnterBox):
                           shelve_app[KEY_MARIADB_PASSWORD],
                           shelve_app[KEY_SHOW_MESSAGE], shelve_app[KEY_LOGGING],
                           shelve_app[KEY_THREADING],
-                          shelve_app[KEY_MS_ACCESS], shelve_app[KEY_ALPHA_VANTAGE_PRICE_PERIOD]))
+                          shelve_app[KEY_MS_ACCESS], shelve_app[KEY_ALPHA_VANTAGE_PRICE_PERIOD],
+                          shelve_app[KEY_HOLDING_SWITCH]))
         else:
             _set_defaults(field_defs=field_defs,
                           default_values=('', '', '', '', '', '', ERROR, False, True,
-                                          '', TIME_SERIES_DAILY))
+                                          '', TIME_SERIES_DAILY, True))
         super().__init__(header=header, grab=False, field_defs=field_defs)
 
     def _focus_in_action(self, event):
@@ -538,7 +544,7 @@ class InputDateFieldlist(BuiltEnterBox):
         self.title = title
         self.field_list = field_list
         self.standard = standard
-        self.standard_texts = ''
+        standard_texts = ''
         self.default_texts = default_texts
         self.no_selection = True
         self.period = period
@@ -1259,7 +1265,7 @@ class Transaction(BuiltEnterBox):
             FieldNames = namedtuple(
                 'FieldNames', [DB_name, DB_ISIN, DB_price_date, DB_counter, DB_transaction_type,
                                DB_price_currency, DB_price, DB_pieces, DB_amount_currency,
-                               DB_posted_amount, DB_acquisition_amount, DB_sold_pieces, DB_comments]
+                               DB_posted_amount, DB_comments]
             )
             self.transaction_field_defs = FieldNames(
                 FieldDefinition(name=DB_name, length=35, default_value=name),
@@ -1272,7 +1278,7 @@ class Transaction(BuiltEnterBox):
                                 name=DB_transaction_type, length=4,
                                 default_value=transaction.transaction_type,
                                 combo_values=TRANSACTION_TYPES,
-                                allowed_values=TRANSACTION_TYPES, focus_out=True),
+                                allowed_values=TRANSACTION_TYPES),
                 FieldDefinition(definition=COMBO,
                                 name=DB_price_currency, length=3,
                                 default_value=transaction.price_currency,
@@ -1286,11 +1292,6 @@ class Transaction(BuiltEnterBox):
                                 default_value=transaction.amount_currency),
                 FieldDefinition(name=DB_posted_amount, length=16, typ=TYP_DECIMAL,
                                 focus_in=True, default_value=transaction.posted_amount),
-                FieldDefinition(name=DB_acquisition_amount, length=16, typ=TYP_DECIMAL,
-                                default_value=transaction.acquisition_amount,
-                                focus_out=True, focus_in=True, mandatory=False),
-                FieldDefinition(name=DB_sold_pieces, length=16, typ=TYP_DECIMAL,
-                                default_value=transaction.sold_pieces, mandatory=False),
                 FieldDefinition(name=DB_comments, length=200, mandatory=False,
                                 default_value=transaction.comments),
             )
@@ -1315,22 +1316,13 @@ class Transaction(BuiltEnterBox):
             if footer:
                 self._footer.set(footer)
                 return
-            posted_amount = dec2.multiply(
-                getattr(self.transaction_field_defs, DB_price).widget.get(),
-                getattr(self.transaction_field_defs, DB_pieces).widget.get())
-            getattr(self.transaction_field_defs,
-                    DB_posted_amount).textvar.set(posted_amount)
-
-    def _focus_out_action(self, event):
-
-        if ((event.widget.myId == DB_acquisition_amount
-                or event.widget.myId == DB_transaction_type)
-                and (getattr(self.transaction_field_defs, DB_transaction_type).widget.get()
-                     == TRANSACTION_RECEIPT)):
-            getattr(self.transaction_field_defs,
-                    DB_acquisition_amount).widget.delete(0, END)
-            getattr(self.transaction_field_defs,
-                    DB_acquisition_amount).widget.insert(0, '0.00')
+            if getattr(self.transaction_field_defs, DB_price_currency).widget.get() != PERCENT:
+                posted_amount = dec2.multiply(
+                    getattr(self.transaction_field_defs,
+                            DB_price).widget.get(),
+                    getattr(self.transaction_field_defs, DB_pieces).widget.get())
+                getattr(self.transaction_field_defs,
+                        DB_posted_amount).textvar.set(posted_amount)
 
 
 class TransactionChange(Transaction):
@@ -1613,6 +1605,44 @@ class SepaCreditBox(BuiltEnterBox):
                     SEPA_CREDITOR_BANK_LOCATION).textvar.set(location)
         if bic is not None:
             getattr(self._field_defs, SEPA_CREDITOR_BIC).textvar.set(bic)
+
+
+class SelectCreateHolding_t(BuiltCheckButton):
+    """
+    TOP-LEVEL-WINDOW        Select ISINs created in table holding_t
+
+    PARAMETER:
+        checkbutton_texts    List  of Fields
+
+        default_text         initialization of checkbox
+    INSTANCE ATTRIBUTES:
+        button_state        Text of selected Button
+        self.field_list        contains selected check_fields
+    """
+
+    def __init__(self,  title=MESSAGE_TITLE,
+                 button1_text=BUTTON_APPEND, button2_text=BUTTON_REPLACE,
+                 checkbutton_texts=['Description of Checkbox1',
+                                    'Description of Checkbox2',
+                                    'Description of Checkbox3']
+                 ):
+
+        Caller.caller = self.__class__.__name__
+        super().__init__(
+            title=title, header=MESSAGE_TEXT['CHECKBOX'],
+            button1_text=button1_text,
+            button2_text=button2_text,
+            checkbutton_texts=checkbutton_texts
+        )
+
+    def _button_1_button2(self, event):
+
+        self.button_state = self._button2_text
+        self.field_list = []
+        for idx, check_var in enumerate(self._check_vars):
+            if check_var.get() == 1:
+                self.field_list.append(self.checkbutton_texts[idx])
+        self.quit_widget()
 
 
 class SelectFields(BuiltCheckButton):
@@ -2262,8 +2292,7 @@ class PandasBoxTransactionDetail(BuiltPandasBox):
         self.dataframe = DataFrame(
             self.dataframe,
             columns=[DB_price_date, DB_counter, DB_transaction_type,
-                     DB_price, DB_pieces, DB_posted_amount,
-                     DB_acquisition_amount])
+                     DB_price, DB_pieces, DB_posted_amount])
         deliveries = self.dataframe[DB_transaction_type] == TRANSACTION_RECEIPT
         self.dataframe[DB_pieces].where(  # Replace values where the condition is False.
             deliveries, -self.dataframe[DB_pieces], inplace=True)
@@ -2277,7 +2306,7 @@ class PandasBoxTransactionDetail(BuiltPandasBox):
         self.dataframe[FN_PROFIT_CUM].where(
             closed_postion, other=0, inplace=True)
         self.dataframe.drop(
-            columns=[DB_counter, DB_acquisition_amount], inplace=True)
+            columns=[DB_counter], inplace=True)
 
     def _set_column_format(self):
 
@@ -2388,8 +2417,7 @@ class PandasBoxTransactionTable(BuiltPandasBox):
             self.dataframe,
             columns=[DB_price_date, DB_counter, DB_transaction_type,
                      DB_price_currency, DB_price, DB_pieces,
-                     DB_amount_currency, DB_posted_amount, DB_acquisition_amount,
-                     DB_sold_pieces, DB_comments])
+                     DB_amount_currency, DB_posted_amount, DB_comments])
 
     def new_row(self):  # caller class ToolBarRows
 
