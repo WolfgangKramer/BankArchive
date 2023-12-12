@@ -10,7 +10,7 @@ setup(
     name='banking',
     description='Bank Archive',
     author='Wolfgang Kramer',
-    author_email='symbolury@gmail.com',
+    author_email='simbolury@gmail.com',
     packages=['banking'],
     install_requires=['fints',
                       'mariadb'
