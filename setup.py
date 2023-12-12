@@ -8,7 +8,7 @@ from setuptools import setup
 
 setup(
     name='banking',
-    version='0.1',
+    version=version,
     description='Bank Archive',
     author='Wolfgang Kramer',
     author_email='symbolury@gmail.com',
