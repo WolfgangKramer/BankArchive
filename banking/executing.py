@@ -171,7 +171,7 @@ class FinTS_MariaDB_Banking(object):
             self.message_widget = Label(self.window,
                                         textvariable=self._footer, foreground='RED', justify='center')
             self._footer.set('')
-            if self.shelve_app[KEY_HOLDING_SWITCH] == HOLDING_T:
+            if self.shelve_app and self.shelve_app[KEY_HOLDING_SWITCH] == HOLDING_T:
                 self._footer.set(MESSAGE_TEXT['HOLDING_USE_TRANSACTION'])
             self.message_widget.pack()
             self.window.protocol(WM_DELETE_WINDOW, self._wm_deletion_window)
