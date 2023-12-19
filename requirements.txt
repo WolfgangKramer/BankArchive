@@ -1,7 +1,10 @@
 fints
 mariadb
 pandastable
+pyodbc
 selenium
 simplejson
 yfinance
 sqlalchemy
+tkcalendar
+webdriver_manager
