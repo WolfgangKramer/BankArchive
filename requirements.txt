@@ -8,3 +8,4 @@ yfinance
 sqlalchemy
 tkcalendar
 webdriver_manager
+keyboard
