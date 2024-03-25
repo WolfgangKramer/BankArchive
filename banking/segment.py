@@ -1,8 +1,9 @@
 """
 Created on 18.11.2019
-__updated__ = "2023-10-10"
+__updated__ = "2024-03-25"
 @author: Wolfgang Kramer
 """
+
 from datetime import datetime, date, timedelta
 from fints.formals import (
     AlgorithmParameterIVName, AlgorithmParameterName,
@@ -25,14 +26,14 @@ from fints.segments.auth import HKIDN2, HKVVB3, HKTAN6
 from fints.segments.depot import HKWPD5, HKWPD6
 from fints.segments.dialog import HKSYN3, HKEND1
 from fints.segments.message import HNHBK3, HNHBS1, HNSHK4, HNSHA2, HNVSD1, HNVSK3
-from fints.segments.saldo import HKSAL6, HKSAL7
 from fints.segments.statement import HKKAZ6, HKKAZ7
 from fints.segments.transfer import HKCCS1
 from fints.types import SegmentSequence
 
 from banking.declarations import MESSAGE_TEXT, PNS, SYSTEM_ID_UNASSIGNED
-from banking.fints_extension import HKCSE1, HKWDU5
-from banking.formbuilts import MessageBoxInfo, MessageBoxTermination
+from banking.fints_extension import HKCSE1
+from banking.formbuilts import MessageBoxInfo, MessageBoxTermination,\
+    WM_DELETE_WINDOW
 from banking.forms import InputTAN
 
 
@@ -118,7 +119,7 @@ def from_to_date(bank):
 
 def _get_segment(bank, segment_type):
 
-    for seg in [HKKAZ6, HKKAZ7, HKSAL6, HKSAL7, HKWPD5, HKWPD6]:
+    for seg in [HKKAZ6, HKKAZ7, HKWPD5, HKWPD6]:
         if (seg.__name__[2:5] == segment_type
                 and seg.__name__[5:6] == str(bank.transaction_versions[segment_type])):
             return seg
@@ -315,31 +316,6 @@ class Segments():
         )
         return message
 
-    def segHKWDU(self, bank, message):
-        """
-        Segment Depotumsaetze anfordern /Zeitraum
-            FINTS Dokument: Schnittstellenspezifikation Messages
-                            Multibankfaehige Geschaeftsvorfaelle
-            https://www.hbci-zka.de/dokumente/spezifikation_deutsch/fintsv3/FinTS_3.0_Messages_Geschaeftsvorfaelle_2015-08-07_final_version.pdf
-
-            Wertpapierorder stellen nur eine Teilmenge der Depotumsaetze dar.
-            Umsaetze koennen auch durch Uebertragungen aus anderen Depots desselben
-            oder anderer Kunden, Ausgabe von Gratisaktien, Herabsetzungen des Grundkapitals
-            usw. entstehen.
-
-         Kreditinstitutsrueckmeldung:
-            Umsatzauskunft: Es ist das S.W.I.F.T.-Format MT 536 in der Version SRG 1998
-                            (s. [Datenformate]) einzustellen
-        """
-        from_to_date(bank)
-        hkwdu = HKWDU5
-        message += hkwdu(
-            account=hkwdu._fields['account'].type.from_sepa_account(
-                _sepaaccount(bank)),
-            all_accounts=False
-        )
-        return message
-
     def segHKWPD(self, bank, message):
         """
         Segment Depotaufstellung anfordern
@@ -442,6 +418,8 @@ class Segments():
         if bank.system_id == SynchronizationMode.NEW_SYSTEM_ID:
             message += HKSYN3(SynchronizationMode.NEW_SYSTEM_ID)
         input_tan = InputTAN(bank.bank_code, bank.bank_name)
+        if input_tan.button_state == WM_DELETE_WINDOW:
+            return None
         message += HNSHA2(
             security_reference=bank.security_reference,
             user_defined_signature=UserDefinedSignature(

@@ -1,6 +1,6 @@
 """
 Created on 12.04.2021
-__updated__ = "2023-10-10"
+__updated__ = "2024-03-25"
 @author: Wolfg
 
     Farrell, D 2016 DataExplore: An Application for General Data Analysis in Research and Education. Journal of Open
@@ -13,6 +13,7 @@ from tkinter.ttk import Frame
 from pandastable import Table, addButton, images
 
 from banking.declarations import MESSAGE_TITLE
+
 
 BUTTON_NEW = 'NEW'
 BUTTON_DELETE = 'DELETE'

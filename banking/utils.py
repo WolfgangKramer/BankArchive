@@ -1,25 +1,26 @@
 """
 Created on 18.11.2019
-__updated__ = "2023-11-21"
+__updated__ = "2024-03-25"
 @author: Wolfgang Kramer
 """
+
 import collections
-from datetime import date, timedelta, datetime
-from decimal import Decimal, getcontext, ROUND_HALF_EVEN, DivisionByZero
 import functools
 import glob
-from inspect import stack
 import inspect
 import operator
 import os
 import re
 import shelve
 import sys
+import traceback
+import requests
+
 from threading import current_thread, main_thread
 from tkinter import Tk, messagebox, TclError
-import traceback
-
-import requests
+from inspect import stack
+from datetime import date, timedelta, datetime
+from decimal import Decimal, getcontext, ROUND_HALF_EVEN, DivisionByZero
 
 from banking.declarations import (
     BANK_MARIADB_INI,
@@ -58,8 +59,10 @@ def find_pattern(string, pattern):
 def list_positioning(listing, pattern):
 
     # returns 1st item (and index) of listing or next greater or last one
-    if not isinstance(listing, list) or not listing:
+    if not isinstance(listing, list):
         Termination()
+    if not listing:
+        return listing, 0
     item = ''
     pattern = pattern.lower()
     for _item in listing:
@@ -251,29 +254,38 @@ def delete_shelve_files(shelve_name):
         pass
 
 
+def shelve_filename(shelve_name):
+    return shelve_name
+    if shelve_name != BANK_MARIADB_INI:
+        shelve_name = shelve_get_key(
+            BANK_MARIADB_INI, KEY_DIRECTORY) + shelve_name
+    return shelve_name
+
+
 def shelve_exist(shelve_name):
     """ PARAMETER:     shelve_name
         RETURN:        True if shelve_file exists
     """
-    if shelve_name != BANK_MARIADB_INI:
-        shelve_name = shelve_get_key(
-            BANK_MARIADB_INI, KEY_DIRECTORY) + shelve_name
+    shelve_name = shelve_filename(shelve_name)
     if os.path.exists(shelve_name + '.dat') and os.path.exists(shelve_name + '.dir'):
         return True
     else:
         return False
 
 
-def shelve_get_key(shelve_name, key, none=True):
-    """ PARAMETER:     KEY of type LIST
+def shelve_get_key(shelve_name, key, none=True, flag='r'):
+    """
+        PARAMETER:     KEY of type LIST
         RETURN:        DICTIONARY {key:value,...}
                         (key not found, value = NONE or if none=False empty dict)
         PARAMETER:     KEY of type STRING
         RETURN:        Value of Key; key not found, value = NONE
+
     """
 
+    shelve_name = shelve_filename(shelve_name)
     if os.path.exists(shelve_name + '.dat') and os.path.exists(shelve_name + '.dir'):
-        with shelve.open(shelve_name, flag='r', protocol=None, writeback=False) as shelve_file:
+        with shelve.open(shelve_name, flag=flag, protocol=None, writeback=False) as shelve_file:
             if isinstance(key, list):
                 key_exist = []
                 key_missing = []
@@ -304,20 +316,30 @@ def shelve_get_key(shelve_name, key, none=True):
         Termination(info=MESSAGE_TEXT['OS_ERROR'].format(shelve_name))
 
 
-def shelve_put_key(shelve_name, data):
+def shelve_put_key(shelve_name, data, flag='w'):
     """ PARAMETER:   data: LIST of tuples (key, value)   or
                      data: TUPLE (key, value)
+
+            The optional flag argument can be:
+            Value    Meaning
+            r    Open existing database for reading only (default)
+            w    Open existing database for reading and writing
+            c    Open database for reading and writing, creating it if it not exist
+            n    Always create a new, empty database, open for reading and writing
     """
 
-    with shelve.open(shelve_name, flag='w', protocol=None, writeback=True) as shelve_file:
+    shelve_name = shelve_filename(shelve_name)
+    with shelve.open(shelve_name, flag=flag, protocol=None, writeback=True) as shelve_file:
         if isinstance(data, list):
             for tupl in data:
                 key, value = tupl
                 shelve_file[key] = value
+            shelve_file.close()
             return
         if isinstance(data, tuple):
             key, value = data
             shelve_file[key] = value
+            shelve_file.close()
             return
         value_error()
 
@@ -587,7 +609,7 @@ class Datulate(object):
     Methods with date operations
     PARAMETER:
         date_format    YYY-MM-DD (standard
-        date_unit      days (standard), weeks  
+        date_unit      days (standard), weeks
     """
 
     DAYS = 'DAYS'

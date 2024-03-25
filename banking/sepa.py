@@ -1,11 +1,13 @@
 """
 Created on 30.03.2020
-__updated__ = "2023-10-10"
+__updated__ = "2024-03-25"
 @author: Wolfg
 """
 
-from datetime import datetime
+import xml.etree.ElementTree as ET
 import logging
+
+from datetime import datetime
 from xml.dom import minidom
 
 from banking.declarations import (
@@ -15,7 +17,6 @@ from banking.declarations import (
     SEPA_PURPOSE, SEPA_REFERENCE, SEPA_EXECUTION_DATE,
 )
 from banking.utils import only_alphanumeric
-import xml.etree.ElementTree as ET
 
 
 URN_PREFIX = "urn:iso:std:iso:20022:tech:xsd:"

@@ -1,28 +1,28 @@
 '''
 Created on 26.11.2019
-__updated__ = "2023-12-11"
+__updated__ = "2024-03-25"
 @author: Wolfgang Kramer
 '''
 
+import itertools
+import re
+import mariadb
+import sqlalchemy
 
 from datetime import date, timedelta, datetime
 from inspect import stack
-import itertools
 from json import dumps, loads
-import re
-
-import mariadb
-from pandas import date_range
-import sqlalchemy
+from threading import current_thread, main_thread
 
 from banking.declarations import (
     CREDIT,
     DATABASES,
     DB_name, DB_counter, DB_price_date, DB_ISIN, DB_transaction_type,
     DB_price_currency, DB_price, DB_pieces, DB_posted_amount,
-    DB_acquisition_amount, DB_amount_currency, DB_symbol,
+    DB_amount_currency, DB_symbol,
     TRUE, FALSE,
     HoldingAcquisition,
+    Informations,
     ERROR,
     INFORMATION,
     BANKIDENTIFIER,
@@ -35,6 +35,7 @@ from banking.declarations import (
     PERCENT,
     SCRAPER_BANKDATA, SERVER, STATEMENT,
     TRANSACTION, TRANSACTION_VIEW, TRANSACTION_RECEIPT, TRANSACTION_DELIVERY,
+    WARNING,
 )
 from banking.formbuilts import (
     FIELDS_HOLDING,
@@ -196,7 +197,6 @@ class MariaDB(object):
         self.execute('START TRANSACTION;')
         holdings = bank.dialogs.holdings(bank)
         if holdings:
-            price_dates = self.select_holding_fields(iban=bank.iban)
             price_date_holding = None
             for holding in holdings:  # find more frequent price_date
                 if not price_date_holding or price_date_holding < holding[DB_price_date]:
@@ -217,9 +217,9 @@ class MariaDB(object):
                 holding[DB_price_date] = price_date_holding
                 holding['iban'] = bank.iban
                 self.execute_replace(HOLDING, holding)
-            # Update acquisition_amount (not in MT535 data)
+            # Update acquisition_amount (exists not in MT535 data)
                 button_state = self._set_acquisition_amount(
-                    bank.iban, holding['ISIN'], name_)
+                    bank, holding['ISIN'], name_)
                 if button_state == WM_DELETE_WINDOW:
                     self.execute('ROLLBACK')
                     MessageBoxInfo(
@@ -229,7 +229,7 @@ class MariaDB(object):
             transfer_holding_to_access(self, bank.iban)
         return holdings
 
-    def _set_acquisition_amount(self, iban, isin, name_):
+    def _set_acquisition_amount(self, bank, isin, name_):
 
         button_state = None
         sql_statement = ("SELECT price_date, price_currency, market_price, acquisition_price,"
@@ -238,7 +238,7 @@ class MariaDB(object):
                          " WHERE iban=? AND isin=?"
                          " ORDER BY price_date DESC"
                          " LIMIT 2")
-        vars_ = (iban, isin, )
+        vars_ = (bank.iban, isin, )
         result = self.execute(sql_statement, vars_=vars_)
         if not result:
             return
@@ -252,23 +252,28 @@ class MariaDB(object):
             acquisition_amount = data[0].acquisition_amount
         else:
             if data[-1].price_currency == PERCENT:
-                data[-1].acquisition_amount = data[-1].total_amount
-                acquisition_input_amount = Acquisition(
-                    header=MESSAGE_TEXT['ACQUISITION_HEADER'].format(
-                        iban, name_),
-                    data=data)
-                button_state = acquisition_input_amount.button_state
-                if button_state == WM_DELETE_WINDOW:
-                    return button_state
-                holding_acquisition = HoldingAcquisition(
-                    *acquisition_input_amount.array[-1])
-                acquisition_amount = dec2.convert(
-                    holding_acquisition.acquisition_amount)
+                if current_thread() is main_thread():
+                    data[-1].acquisition_amount = data[-1].total_amount
+                    acquisition_input_amount = Acquisition(
+                        header=MESSAGE_TEXT['ACQUISITION_HEADER'].format(
+                            bank.iban, name_, data[0].price_date, data[-1].price_date),
+                        data=data)
+                    button_state = acquisition_input_amount.button_state
+                    if button_state == WM_DELETE_WINDOW:
+                        return button_state
+                    holding_acquisition = HoldingAcquisition(
+                        *acquisition_input_amount.array[-1])
+                    acquisition_amount = dec2.convert(
+                        holding_acquisition.acquisition_amount)
+                else:  # ad just acquisition amount of percent price positions manually
+                    MessageBoxInfo(message=MESSAGE_TEXT['ACQUISITION_AMOUNT'].format(bank.bank_name, bank.iban, name_, isin),
+                                   bank=bank, information=WARNING)
+                    acquisition_amount = data[0].acquisition_amount
             else:
                 acquisition_amount = dec2.multiply(
                     data[-1].pieces, data[-1].acquisition_price)
         data[-1].acquisition_amount = acquisition_amount
-        self.update_holding_acquisition(iban, isin, data[-1])
+        self.update_holding_acquisition(bank.iban, isin, data[-1])
         return button_state
 
     def _statements(self, bank):
@@ -283,10 +288,10 @@ class MariaDB(object):
         )
         vars_ = (bank.iban,)
         max_entry_date = self.execute(sql_statement, vars_=vars_)
-        for i in max_entry_date:
-            bank.from_date = i[0]
-        if not bank.from_date:
-            bank.from_date = date(2010, 1, 1)
+        if max_entry_date[0][0]:
+            bank.from_date = max_entry_date[0][0]
+        else:
+            bank.from_date = date(2020, 1, 1)
         bank.to_date = date.today()
         if bank.scraper:
             bank.to_date = ''.join(str(bank.to_date))
@@ -312,14 +317,26 @@ class MariaDB(object):
         '''
         Generates WHERE Clause of kwargs items
         kwargs contain >database_fieldname<=>value< AND ....  >database_fieldname< IN >list<  ...
+               and optional key >clause< with additional >AND< >OR< condition parts
         result:  where    WHERE >database_fieldname<=? AND .... AND '
                  vars_    (>value<, ..>list<, .....)
         '''
         WHERE = ' WHERE '
         vars_ = ()
         where = WHERE
+        clause = None
         for key, value in kwargs.items():
-            if key != 'period':
+            if key == 'clause':
+                clause = value
+                where = where + ' ' + clause + '   AND '
+            elif key == 'period':
+                from_date, to_date = value
+                if where != WHERE:
+                    vars_ = vars_ + (from_date, to_date)
+                else:
+                    vars_ = (from_date, to_date)
+                where = where + " price_date>=? AND price_date<=? AND "
+            else:
                 if isinstance(value, list):
                     where = where + ' ' + key + ' IN ('
                     for item in value:
@@ -329,14 +346,7 @@ class MariaDB(object):
                 else:
                     where = where + ' ' + key + '=? AND '
                     vars_ = vars_ + (value,)
-            else:
-                from_date, to_date = value
-                if where != WHERE:
-                    vars_ = vars_ + (from_date, to_date)
-                else:
-                    vars_ = (from_date, to_date)
-                where = where + " price_date>=? AND price_date<=? AND "
-        if vars_:
+        if vars_ or clause:
             return where[0:-5], vars_
         else:
             return ' ', vars_
@@ -345,58 +355,56 @@ class MariaDB(object):
         '''
         Insert downloaded  Bank Data in Database
         '''
-        bank.message_texts = (bank.message_texts + '\n\n\n' + INFORMATION +
-                              MESSAGE_TEXT['DOWNLOAD_BANK'].format(bank.bank_name))
+        Informations.bankdata_informations = (Informations.bankdata_informations + '\n\n' + INFORMATION +
+                                              MESSAGE_TEXT['DOWNLOAD_BANK'].format(bank.bank_name) + '\n\n')
         for account in bank.accounts:
             bank.account_number = account[KEY_ACC_ACCOUNT_NUMBER]
             bank.account_product_name = account[KEY_ACC_PRODUCT_NAME]
             bank.iban = account[KEY_ACC_IBAN]
-            bank.message_texts = bank.message_texts + '\n' + (MESSAGE_TEXT['DOWNLOAD_ACCOUNT'].
-                                                              format(bank.iban, account[KEY_ACC_PRODUCT_NAME]))
+            Informations.bankdata_informations = Informations.bankdata_informations + '\n' + INFORMATION + (
+                MESSAGE_TEXT['DOWNLOAD_ACCOUNT'].format(bank.bank_name, bank.account_number,
+                                                        bank.account_product_name, bank.iban))
             if bank.scraper:
                 if 'HKKAZ' in account[KEY_ACC_ALLOWED_TRANSACTIONS]:
                     if self._statements(bank) is None:
-                        bank.message_texts = (bank.message_texts + '\n' +
-                                              MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(30 * '_', 10 * '!'))
+                        Informations.bankdata_informations = (Informations.bankdata_informations + '\n' + WARNING +
+                                                              MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(bank.bank_name))
                         return
             else:
                 if 'HKWPD' in account[KEY_ACC_ALLOWED_TRANSACTIONS]:
                     if self._holdings(bank) is None:
-                        bank.message_texts = bank.message_texts + '\n' +\
-                            MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(
-                                30 * '_', 10 * '!')
+                        Informations.bankdata_informations = (Informations.bankdata_informations + '\n' + WARNING +
+                                                              MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(bank.bank_name))
                         return
                 if 'HKKAZ' in account[KEY_ACC_ALLOWED_TRANSACTIONS]:
                     if self._statements(bank) is None:
-                        bank.message_texts = bank.message_texts + '\n' +\
-                            MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(
-                                30 * '_', 10 * '!')
+                        Informations.bankdata_informations = (Informations.bankdata_informations + '\n' + WARNING +
+                                                              MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(bank.bank_name))
                         return
+        Informations.bankdata_informations = (Informations.bankdata_informations + '\n\n' + INFORMATION +
+                                              MESSAGE_TEXT['DOWNLOAD_DONE'].format(bank.bank_name) + '\n\n')
         if bank.scraper:
             try:
                 bank.driver.quit()
             except Exception:
                 pass
-        bank.message_texts = (bank.message_texts + '\n' +
-                              MESSAGE_TEXT['DOWNLOAD_DONE'].format(40 * '_', 40 * '_'))
 
     def all_holdings(self, bank):
         '''
         Insert downloaded  Holding Bank Data in Database
         '''
-        bank.message_texts = (bank.message_texts + '\n\n\n' + INFORMATION +
-                              MESSAGE_TEXT['DOWNLOAD_BANK'].format(bank.bank_name))
+        Informations.bankdata_informations = (Informations.bankdata_informations + '\n\n' + INFORMATION +
+                                              MESSAGE_TEXT['DOWNLOAD_BANK'].format(bank.bank_name) + '\n\n')
         for account in bank.accounts:
             bank.account_number = account[KEY_ACC_ACCOUNT_NUMBER]
             bank.iban = account[KEY_ACC_IBAN]
             if 'HKWPD' in account[KEY_ACC_ALLOWED_TRANSACTIONS]:
-                bank.message_texts = (bank.message_texts + '\n' +
-                                      MESSAGE_TEXT['DOWNLOAD_ACCOUNT'].format(
-                                          bank.iban, account[KEY_ACC_PRODUCT_NAME]))
+                Informations.bankdata_informations = Informations.bankdata_informations + '\n' + INFORMATION + (
+                    MESSAGE_TEXT['DOWNLOAD_ACCOUNT'].format(bank.bank_name, bank.account_number,
+                                                            bank.account_product_name, bank.iban))
                 if self._holdings(bank) is None:
-                    bank.message_texts = bank.message_texts + '\n' +\
-                        MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(
-                            30 * '_', 10 * '!')
+                    Informations.bankdata_informations = (Informations.bankdata_informations + '\n' + WARNING +
+                                                          MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(bank.bank_name))
                     return
 
     def destroy_connection(self):
@@ -518,7 +526,7 @@ class MariaDB(object):
         sql_statement = "DELETE FROM " + BANKIDENTIFIER
         self.execute(sql_statement)
         sql_statement = ("LOAD DATA LOW_PRIORITY LOCAL INFILE '" + filename +
-                         "' REPLACE INTO TABLE `banken`.`bankidentifier`"
+                         "' REPLACE INTO TABLE " + BANKIDENTIFIER +
                          " CHARACTER SET latin1 FIELDS TERMINATED BY ';'"
                          " OPTIONALLY ENCLOSED BY '\"' ESCAPED BY '\"'"
                          " LINES TERMINATED BY '\r\n' IGNORE 1 LINES"
@@ -545,7 +553,8 @@ class MariaDB(object):
                              if_exists="append")
             self.execute('COMMIT')
         except sqlalchemy.exc.SQLAlchemyError as info:
-            _sqlalchemy_exception(title, HOLDING_T, info)
+            _sqlalchemy_exception(
+                title, Informations.HOLDING_T_INFORMATIONS, info)
             return False
 
     def import_server(self, filename):
@@ -564,7 +573,7 @@ class MariaDB(object):
         sql_statement = "DELETE FROM " + SERVER
         self.execute(sql_statement)
         sql_statement = ("LOAD DATA LOW_PRIORITY LOCAL INFILE '" + filename +
-                         "' REPLACE INTO TABLE `banken`.`server` "
+                         "' REPLACE INTO TABLE " + SERVER +
                          " CHARACTER SET latin1 FIELDS TERMINATED BY ';'"
                          " OPTIONALLY ENCLOSED BY '\"' ESCAPED BY '\"'"
                          " LINES TERMINATED BY '\\r\\n'"
@@ -628,21 +637,9 @@ class MariaDB(object):
             self.execute('COMMIT')
             return True
         except sqlalchemy.exc.SQLAlchemyError as info:
-            _sqlalchemy_exception(title, PRICES, info)
+            _sqlalchemy_exception(
+                title, Informations.PRICES_INFORMATIONS, info)
             return False
-
-    def select_bankidentifier_code(self, code=None):
-
-        sql_statement = ("SELECT t1.name, t1.location, t1.bic, t2.server FROM " +
-                         BANKIDENTIFIER + " AS t1 LEFT JOIN " +
-                         SERVER + " AS t2 ON t1.code=t2.code  "
-                         " WHERE t1.code=?;")
-        vars_ = (code,)
-        result = self.execute(sql_statement, vars_=vars_)
-        if not result:
-            return '', '', '', ''
-        name, location, bic, server = result[0]
-        return name, location, bic, server
 
     def select_data_exist(self, table, **kwargs):
 
@@ -682,7 +679,7 @@ class MariaDB(object):
         Return:  List of tuples (names, ISIN, adjustments) of table ISIN
         '''
         sql_statement = "SELECT name, symbol, adjustments FROM " + \
-            ISIN + "  WHERE adjustments is not NULL"
+            ISIN + "  WHERE adjustments not in (NULL, NONE)"
         result = self.execute(sql_statement)
         names_list = list(map(lambda x: x[0], result))
         names_symbol_dict = dict(list(map(lambda x: (x[0], x[1]), result)))
@@ -955,7 +952,7 @@ class MariaDB(object):
         '''
         Selects first price_date of symbols in symbol_list in table PRICES
         for which row exists for all symbols
-        skips symbols with no row   
+        skips symbols with no row
         '''
         where, vars_ = self._where_clause(**kwargs)
         if vars_:

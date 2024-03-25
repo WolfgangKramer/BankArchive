@@ -1,15 +1,15 @@
 """
 Created on 28.01.2020
-__updated__ = "2023-11-29"
+__updated__ = "2024-03-25"
 @author: Wolfgang Kramer
 """
 
-
-from collections import namedtuple
-from datetime import date
 import inspect
 import re
 import sys
+
+from collections import namedtuple
+from datetime import date
 from threading import current_thread, main_thread
 from tkinter import (
     Tk, TclError, ttk, messagebox, Toplevel, StringVar, IntVar, INSERT, Text,
@@ -17,7 +17,6 @@ from tkinter import (
     END, DISABLED)
 from tkinter.ttk import (
     Entry, Frame, Label, Radiobutton, Checkbutton, Scrollbar, Progressbar)
-
 from keyboard import add_hotkey
 from pandas import to_numeric
 from pandastable import setGeometry, config, TableModel
@@ -25,13 +24,12 @@ from tkcalendar import DateEntry
 
 from banking.declarations import (
     DB_currency, EURO,
-    HEIGHT_TEXT, HOLDING_T,
+    HEIGHT_TEXT,
     Caller, Informations,
     INFORMATION, ERROR,
     KEY_GEOMETRY, KEY_PIN,
     MESSAGE_TEXT, MESSAGE_TITLE,
     OPERATORS,
-    PRICES,
     WIDTH_TEXT, DB_status,
     BANK_MARIADB_INI,
     DB_opening_balance, DB_opening_currency, DB_price_currency, DB_posted_amount,
@@ -201,6 +199,8 @@ def geometry_get(standard=BUILBOXT_WINDOW_POSITION):
     get window geometry
     """
     caller = Caller.caller
+    if caller == 'AppCustomizing':
+        return standard
     GEOMETRY_DICT = shelve_get_key(BANK_MARIADB_INI, KEY_GEOMETRY)
     if GEOMETRY_DICT is None:
         GEOMETRY_DICT = {}
@@ -214,8 +214,10 @@ def geometry_put(window):
     """
     put window geometry
     """
+    caller = Caller.caller
+    if caller == 'AppCustomizing':
+        return
     if window.winfo_exists():
-        caller = Caller.caller
         geometry = geometry_string(window)
         GEOMETRY_DICT = shelve_get_key(
             BANK_MARIADB_INI, KEY_GEOMETRY, none=False)
@@ -234,7 +236,7 @@ def geometry_string(window):
 
 def extend_message_len(title, message):
     '''
-    returns possibly extended message 
+    returns possibly extended message
     '''
     try:
         title_len = max(len(x) for x in list(title.splitlines()))
@@ -270,23 +272,23 @@ class MessageBoxInfo():
     def __init__(self, message=None, title=MESSAGE_TITLE, bank=None, information_storage=None, information=INFORMATION):
 
         # check if its not the main thread, avoid Tk() or ..
-        if not(current_thread() is main_thread()) or information_storage:
-            if information_storage == PRICES:  # messages downloading prices threading
-                message = message.replace('\n', ' // ')
+        if not (current_thread() is main_thread()) or information_storage:
+            if information_storage == Informations.PRICES_INFORMATIONS:  # messages downloading prices threading
                 Informations.prices_informations = ' '.join(
                     [Informations.prices_informations, '\n' + information, message])
-            elif information_storage == HOLDING_T:  # messages downloading prices threading
-                message = message.replace('\n', ' // ')
+            elif information_storage == Informations.HOLDING_T_INFORMATIONS:  # messages downloading prices threading
                 Informations.holding_t_informations = ' '.join(
                     [Informations.holding_t_informations, '\n' + information, message])
             else:
                 if bank:  # messages downloading bank threading
-                    message = message.replace('\n', ' // ')
-                    bank.message_texts = ' '.join(
-                        [bank.message_texts, '\n' + information, message])
+                    Informations.bankdata_informations = ' '.join(
+                        [Informations.bankdata_informations, '\n' + information, message])
                 else:
                     print(message)
         else:
+            if information != INFORMATION:
+                Informations.bankdata_informations = ' '.join(
+                    [Informations.bankdata_informations, '\n' + information, message])
             window = Tk()
             window.withdraw()
             message = extend_message_len(title, message)
@@ -297,17 +299,12 @@ class MessageBoxInfo():
 
 class MessageBoxError():
 
-    def __init__(self, message=None, title=MESSAGE_TITLE, bank=None):
-
-        # check if its not the main thread avoid Tk()
-        if not(current_thread() is main_thread()):
-            if bank:
-                message = message.replace('\n', ' // ')
-                bank.message_texts = ' '.join(
-                    [bank.message_texts, '\n' + INFORMATION, message])
-            else:
-                Informations.informations = ' \n{} {} {} {}'.format(
-                    ERROR, '', '', message)
+    def __init__(self, message=None, title=MESSAGE_TITLE):
+        # check if its not the main thread avoid Tk()e
+        if not (current_thread() is main_thread()):
+            # its a banking Dialogue
+            Informations.bankdata_informations = ' '.join(
+                [Informations.bankdata_informations, '\n' + ERROR, message])
         else:
             window = Tk()
             window.withdraw()
@@ -333,13 +330,10 @@ class MessageBoxTermination(MessageBoxInfo):
                 str(line) + '   METHOD: ' + method
             )
         # check if its not the main thread avoid Tk()
-        if not(current_thread() is main_thread()):
-            if bank:
-                bank.message_texts = ' '.join([bank.message_texts, '\n' + ERROR, bank.bank_name,
-                                               bank.iban, message])
-            else:
-                Informations.informations = ' \n{} {} {} {}'.format(
-                    ERROR, bank.bank_name, bank.iban, message)
+        if not (current_thread() is main_thread()):
+            # its a banking Dialogue
+            Informations.bankdata_informations = ' '.join(
+                [Informations.bankdata_informations, '\n' + ERROR, bank.bank_name, bank.iban, message])
         else:
             super().__init__(message=message, title=MESSAGE_TITLE, bank=bank)
             sys.exit()
@@ -1361,7 +1355,7 @@ class BuiltPandasBox(Frame):
     L-WINDOW        Shows Dataframe
 
     PARAMETER:
-        dataframe           DataFrame object
+        dataframe           DataFrame object or Dataframe data
         name                Name of Data Rows of PandasTable (e.g. Pandas.>column<)
         root                >root=self< Caller must define new_row(), cHange_row(), delete_row() methods
         dataframe_sum       total sum column_names
@@ -1387,7 +1381,7 @@ class BuiltPandasBox(Frame):
     re_negative = re.compile('-')
 
     def __init__(self, title='MESSAGE_TITLE',
-                 dataframe=None, dataframe_sum=[], dataframe_group=[],
+                 dataframe=None, dataframe_sum=[],
                  message=None, name=PANDAS_NAME_SHOW,
                  root=None, showtoolbar=True, editable=True, edit_rows=False,
                  ):
@@ -1396,14 +1390,12 @@ class BuiltPandasBox(Frame):
         self.button_state = None
         self.dataframe = dataframe
         self.dataframe_sum = dataframe_sum
-        self.dataframe_group = dataframe_group
         self.column_format = {}
         self.fields = {**FIELDS_HOLDING, **FIELDS_STATEMENT, **FIELDS_TRANSACTION,
                        **FIELDS_BANKIDENTIFIER, **FIELDS_SERVER, **FIELDS_ISIN,
                        **FIELDS_PRICES}
         self._dataframe()
-        self._dataframe_group()
-        self._dataframe_sum()
+        self._dataframe_append_sum()
         self.name = name
         self.showtoolbar = showtoolbar
         self.selected_row = None
@@ -1488,24 +1480,26 @@ class BuiltPandasBox(Frame):
 
         pass
 
-    def _dataframe_group(self):
-
-        pass
-
-    def _dataframe_sum(self):
+    def _dataframe_append_sum(self):
         """
-        Append Total Row
+        Append Sum Row for columns in self.dataframe_sum
+        """
+        self.dataframe_append_sum(self.dataframe, self.dataframe_sum)
+
+    def dataframe_append_sum(self, dataframe, dataframe_sum):
+        """
+        Append Sum Row for columns in dataframe_sum
         """
         sum_row = {}
-        for column in self.dataframe_sum:
-            if column in self.dataframe.columns:
-                sum_row[column] = to_numeric(self.dataframe[column]).sum()
+        for column in dataframe_sum:
+            if column in dataframe.columns:
+                sum_row[column] = to_numeric(dataframe[column]).sum()
                 sum_row[column] = dec2.convert(sum_row[column])
         if sum_row != {}:
             sum_row[DB_price_currency] = EURO
             sum_row[DB_amount_currency] = EURO
             sum_row[DB_currency] = EURO
-            self.dataframe.loc[len(self.dataframe.index)] = sum_row
+            dataframe.loc[len(dataframe.index)] = sum_row
 
     def _processing(self):
 
@@ -1619,7 +1613,3 @@ class BuiltPandasBox(Frame):
                    'textcolor': 'blue'
                    }
         config.apply_options(options, self.pandas_table)
-
-    def _dataframe_total_sum(self):
-
-        pass

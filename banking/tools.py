@@ -1,14 +1,14 @@
 """
 Created on 01.02.2021
-__updated__ = "2023-10-10"
+__updated__ = "2024-03-25"
 @author: Wolfg
 """
 
+import re
+import pyodbc
+
 from collections import namedtuple
 from datetime import date, timedelta
-import re
-
-import pyodbc
 
 from banking.declarations import (
     DEBIT,

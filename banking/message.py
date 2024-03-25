@@ -1,26 +1,30 @@
 """
 Created on 18.11.2019
-__updated__ = "2023-08-27"
+__updated__ = "2024-03-25"
 @author: Wolfgang Kramer
 """
+
 import inspect
 import logging
 
 from fints.client import FinTS3Serializer
 
-from banking.declarations import CUSTOMER_ID_ANONYMOUS, KEY_TAN_REQUIRED
+from banking.declarations import (
+    BANK_MARIADB_INI, CUSTOMER_ID_ANONYMOUS, KEY_LOGGING, KEY_TAN_REQUIRED, TRUE
+)
 from banking.segment import Segments
-from banking.utils import shelve_get_key
+from banking.utils import shelve_get_key, shelve_exist
 
 
 def _serialize(message):
 
-    fints3serializer = FinTS3Serializer()
-    byte_message = fints3serializer.serialize_message(message).split(b"'")
-    logging.getLogger(__name__).debug('\n\n>>>>> START' + 80 * '>' + '\n')
-    logging.getLogger(__name__).debug(inspect.stack()[1])
-    for item in byte_message:
-        logging.getLogger(__name__).debug(item)
+    if shelve_exist(BANK_MARIADB_INI) and shelve_get_key(BANK_MARIADB_INI, KEY_LOGGING) == TRUE:
+        fints3serializer = FinTS3Serializer()
+        byte_message = fints3serializer.serialize_message(message).split(b"'")
+        logging.getLogger(__name__).debug('\n\n>>>>> START' + 80 * '>' + '\n')
+        logging.getLogger(__name__).debug(inspect.stack()[1])
+        for item in byte_message:
+            logging.getLogger(__name__).debug(item)
 
 
 def _get_tan_required(bank, segment_type):
@@ -92,9 +96,11 @@ class Messages():
         message = seg.segHNSHK(bank, message)
         message = seg.segHKTAN(bank, message)
         message = seg.segHNSHA_TAN(bank, message)
-        message = seg.segHNHBS(bank, message)
-        _serialize(message)
-        return message
+        if message:
+            message = seg.segHNHBS(bank, message)
+            _serialize(message)
+            return message
+        return None  # input of tun canceled
 
     def msg_statements(self, bank, seg=Segments()):
         """

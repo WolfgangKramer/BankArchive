@@ -1,47 +1,50 @@
 """
 Created on 28.01.2020
-__updated__ = "2023-12-11"
+__updated__ = "2024-03-25"
 @author: Wolfgang Kramer
 """
+
+import re
+import webbrowser
+import requests
+
 from bisect import bisect_left
 from collections import namedtuple
 from dataclasses import asdict
 from datetime import date, datetime, timedelta
 from json import loads, dumps
-import re
 from tkinter import filedialog, E
-import webbrowser
-
 from fints.formals import CreditDebit2
 from pandas import DataFrame, to_numeric, concat, to_datetime, set_option
 from pandastable import TableModel
-import requests
 
 from banking.declarations import (
     ALPHA_VANTAGE, ALPHA_VANTAGE_PRICE_PERIOD, ALPHA_VANTAGE_REQUIRED, ALPHA_VANTAGE_REQUIRED_COMBO,
     ALPHA_VANTAGE_OPTIONAL_COMBO,
     HoldingAcquisition,
-    BANK_MARIADB_INI,
+    BANK_MARIADB_INI, BANKIDENTIFIER,
     DATABASES,
     CURRENCIES, CURRENCY, CURRENCY_EXTENDED, CREDIT,
     DEBIT, DB_TYPES,
     DB_acquisition_amount, DB_acquisition_price, DB_adjustments,
     DB_amount,
+    DB_bic,
     DB_closing_balance,
     DB_closing_currency, DB_closing_status, DB_comments, DB_counter, DB_currency, DB_entry_date,
     DB_date, DB_iban,
     DB_ISIN, DB_market_price, DB_name, DB_opening_balance, DB_opening_currency, DB_opening_status,
+    DB_location,
     DB_origin, DB_origin_symbol, DB_pieces, DB_posted_amount, DB_amount_currency, DB_price,
     DB_price_currency, DB_price_date, DB_status, DB_total_amount,
-    DB_type, DB_validity, DB_wkn,
+    DB_type, DB_server, DB_validity, DB_wkn,
     DB_total_amount_portfolio, DB_transaction_type, DB_symbol,
     ERROR, EURO,
     FALSE,
-    FN_DATE, FN_PROFIT_LOSS, FN_TOTAL_PERCENT, FN_PERIOD_PERCENT,
+    FN_DATE, FN_PROFIT_LOSS, FN_TOTAL_PERCENT, FN_PERIOD_PERCENT, FN_DAILY_PERCENT,
     FN_FROM_DATE, FN_TO_DATE, FN_SHARE, FN_TOTAL,
     FN_PROFIT_CUM, FN_PIECES_CUM, FN_PROFIT,
     FORMS_TEXT,
-    HTTP_CODE_OK, HOLDING, HOLDING_SWITCH,
+    HTTP_CODE_OK, HOLDING,
     Informations,
     PERCENT,
     INFORMATION, ISIN,
@@ -64,10 +67,10 @@ from banking.declarations import (
     SCRAPER_BANKDATA,
     SEPA_AMOUNT, SEPA_CREDITOR_BANK_LOCATION, SEPA_CREDITOR_BANK_NAME, SEPA_CREDITOR_BIC,
     SEPA_CREDITOR_IBAN, SEPA_CREDITOR_NAME, SEPA_EXECUTION_DATE, SEPA_PURPOSE_1, SEPA_PURPOSE_2,
-    SEPA_REFERENCE,
+    SEPA_REFERENCE, SERVER,
     SHOW_MESSAGE,
     SWITCH,
-    TIME_SERIES_DAILY,
+    TIME_SERIES_DAILY, TRUE,
     TransactionNamedTuple, TRANSACTION_TYPES, TRANSACTION_RECEIPT, TRANSACTION_DELIVERY,
     VALIDITY_DEFAULT, WARNING, KEY_ACC_ACCOUNT_NUMBER, NOT_ASSIGNED, YAHOO,
     WWW_YAHOO)
@@ -215,10 +218,7 @@ class Adjustments(BuiltColumnBox):
         field_dict = mariadb.select_table(
             ISIN, [DB_adjustments], result_dict=True, isin=isin)[0]
         json_data = field_dict[DB_adjustments]
-        if json_data:
-            adjustments = loads(json_data)
-        else:
-            adjustments = {}
+        adjustments = loads(json_data)
         array_def = []
         if adjustments:
             # convert dictionary adjustmments of symbol to list of tuples
@@ -386,8 +386,8 @@ class AppCustomizing(BuiltEnterBox):
                           shelve_app[KEY_HOLDING_SWITCH]))
         else:
             _set_defaults(field_defs=field_defs,
-                          default_values=('', '', '', '', '', '', ERROR, False, True,
-                                          '', TIME_SERIES_DAILY, True))
+                          default_values=('', '', '', '', '', '', ERROR, FALSE, TRUE,
+                                          '', TIME_SERIES_DAILY, HOLDING))
         super().__init__(header=header, grab=False, field_defs=field_defs)
 
     def _focus_in_action(self, event):
@@ -416,9 +416,10 @@ class AppCustomizing(BuiltEnterBox):
         if event.widget.myId == KEY_MARIADB_NAME:
             mariadb_name = getattr(
                 self._field_defs, KEY_MARIADB_NAME).widget.get()
-            if mariadb_name == self.shelve_app[KEY_MARIADB_NAME]:
-                getattr(self._field_defs, KEY_MS_ACCESS).textvar.set(
-                    self.shelve_app[KEY_MS_ACCESS])
+            if shelve_exist(BANK_MARIADB_INI):
+                if mariadb_name == self.shelve_app[KEY_MARIADB_NAME]:
+                    getattr(self._field_defs, KEY_MS_ACCESS).textvar.set(
+                        self.shelve_app[KEY_MS_ACCESS])
 
 
 class InputDate(BuiltEnterBox):
@@ -915,19 +916,24 @@ class BankDataNew(BuiltEnterBox):
 
     def _comboboxselected_action(self, event):
 
-        name, location, bic, server = (
-            self.mariadb.select_bankidentifier_code(getattr(self._field_defs,
-                                                            KEY_BANK_CODE).widget.get()))
-        if name:
-            getattr(self._field_defs, KEY_BANK_NAME).textvar.set(name)
+        bank_code = getattr(self._field_defs, KEY_BANK_CODE).widget.get()
+        field_dict = self.mariadb.select_table(
+            BANKIDENTIFIER, [DB_name, DB_bic], result_dict=True, code=bank_code)
+        if field_dict and DB_name in field_dict[0]:
+            getattr(self._field_defs, KEY_BANK_NAME).textvar.set(
+                field_dict[0][DB_name])
         else:
             getattr(self._field_defs, KEY_BANK_NAME).textvar.set('')
-        if bic:
-            getattr(self._field_defs, KEY_BIC).textvar.set(bic)
+        if field_dict and DB_bic in field_dict[0]:
+            getattr(self._field_defs, KEY_BIC).textvar.set(
+                field_dict[0][DB_bic])
         else:
             getattr(self._field_defs, KEY_BIC).textvar.set('')
-        if server:
-            getattr(self._field_defs, KEY_SERVER).textvar.set(server)
+        field_dict = self.mariadb.select_table(
+            SERVER, [DB_server], result_dict=True, code=bank_code)
+        if field_dict and DB_server in field_dict[0]:
+            getattr(self._field_defs, KEY_SERVER).textvar.set(
+                field_dict[0][DB_server])
         else:
             getattr(self._field_defs, KEY_SERVER).textvar.set('')
 
@@ -1029,34 +1035,46 @@ class Isin(BuiltEnterBox):
         self.mariadb = mariadb
         self.key_aplpha_vantage = key_aplpha_vantage
         self.title = title
-        self.get_name_isin = mariadb.select_dict(ISIN, DB_name, DB_ISIN)
-        self.isins = sorted(list(self.get_name_isin.values()))
-        self.names = sorted(list(self.get_name_isin.keys()))
+        self. get_isin_lists()
         self.field_list = [DB_ISIN, DB_name, DB_type,
                            DB_validity, DB_wkn, DB_origin_symbol,
                            DB_symbol, DB_adjustments, DB_currency]
-        if isin_name == '' and self.names:
-            isin_name = self.names[0]
-        result = self.mariadb.select_table(
-            ISIN, self.field_list[2:], order=DB_name, name=isin_name)
-        if result:
-            type, validity, wkn, origin_symbol, self.symbol, adjustments, currency = result[
-                0]
+        if self.isins:
+            self.names = sorted(list(self.get_name_isin.keys()))
+            if isin_name == '' and self.names:
+                isin_name = self.names[0]
+            isin = self.get_name_isin[isin_name]
+            result = self.mariadb.select_table(
+                ISIN, self.field_list[2:], order=DB_name, name=isin_name)
+            if result:
+                type_, validity, wkn, origin_symbol, self.symbol, adjustments, currency = result[
+                    0]
+            else:
+                type_ = FN_SHARE
+                validity = VALIDITY_DEFAULT
+                wkn = ''
+                origin_symbol = NOT_ASSIGNED
+                self.symbol = NOT_ASSIGNED
+                adjustments = FALSE
+                currency = EURO
         else:
-            type = FN_SHARE
+            self.isins = []
+            self.names = []
+            isin = ''
+            self.names = ''
+            type_ = FN_SHARE
             validity = VALIDITY_DEFAULT
             wkn = ''
             origin_symbol = NOT_ASSIGNED
             self.symbol = NOT_ASSIGNED
-            adjustments = FALSE
+            adjustments = {}
             currency = EURO
         FieldNames = namedtuple(
             'FieldNames', self.field_list)
         self._field_defs = FieldNames(
             FieldDefinition(definition=COMBO,
                             name=DB_ISIN, length=12, lformat=FORMAT_FIXED,
-                            default_value=self.get_name_isin[isin_name
-                                                             ], focus_out=True,
+                            default_value=isin, focus_out=True,
                             combo_values=self.isins, selected=True),
             FieldDefinition(definition=COMBO,
                             name=DB_name, length=35,
@@ -1064,7 +1082,7 @@ class Isin(BuiltEnterBox):
                             combo_values=self.names, selected=True),
             FieldDefinition(definition=COMBO,
                             name=DB_type, length=50,
-                            default_value=type,
+                            default_value=type_,
                             combo_values=DB_TYPES),
             FieldDefinition(definition=ENTRY,
                             name=DB_validity, typ=TYP_DATE, length=10,
@@ -1091,6 +1109,12 @@ class Isin(BuiltEnterBox):
                          button3_text=BUTTON_DELETE, button4_text=BUTTON_NEW,
                          button5_text=MENU_TEXT['Prices'], button6_text=FORMS_TEXT['Adjust Prices'],
                          field_defs=self._field_defs)
+
+    def get_isin_lists(self):
+
+        self.get_name_isin = self.mariadb.select_dict(ISIN, DB_name, DB_ISIN)
+        self.isins = sorted(list(self.get_name_isin.values()))
+        self.names = sorted(list(self.get_name_isin.keys()))
 
     def _button_1_button1(self, event):
 
@@ -1594,17 +1618,18 @@ class SepaCreditBox(BuiltEnterBox):
             self._bankdata(iban)
 
     def _bankdata(self, iban):
-        bank_name, location, bic, server = (
-            self.mariadb.select_bankidentifier_code(iban[4:12])
-        )
-        if bank_name is not None:
+        bank_code = iban[4:12]
+        field_dict = self.mariadb.select_table(
+            BANKIDENTIFIER, [DB_name, DB_location, DB_bic], result_dict=True, code=bank_code)
+        if field_dict and DB_name in field_dict[0]:
             getattr(self._field_defs, SEPA_CREDITOR_BANK_NAME).textvar.set(
-                bank_name)
-        if location is not None:
+                field_dict[0][DB_name])
+        if field_dict and DB_location in field_dict[0]:
             getattr(self._field_defs,
-                    SEPA_CREDITOR_BANK_LOCATION).textvar.set(location)
-        if bic is not None:
-            getattr(self._field_defs, SEPA_CREDITOR_BIC).textvar.set(bic)
+                    SEPA_CREDITOR_BANK_LOCATION).textvar.set(field_dict[0][DB_location])
+        if field_dict and DB_bic in field_dict[0]:
+            getattr(self._field_defs, SEPA_CREDITOR_BIC).textvar.set(
+                field_dict[0][DB_bic])
 
 
 class SelectCreateHolding_t(BuiltCheckButton):
@@ -2156,31 +2181,28 @@ class PandasBoxBalancesAllBanks(PandasBoxStatement):
 
     def _dataframe(self):
 
-        dataframes = self.dataframe
-        self.dataframe = concat(dataframes)
-        PandasBoxStatement._dataframe(self)
-        """ group and sum columns   """
-        df_group = self.dataframe.groupby(KEY_ACC_BANK_CODE)[DB_amount].sum()
-        df_group = df_group.reset_index()
-        df_group = df_group.rename(columns={'index': KEY_ACC_BANK_CODE})
-        df_group[FN_TOTAL] = df_group[DB_amount]
-        df_group[DB_currency] = EURO
-        df_group = df_group.drop(axis=1, index=None, columns=[DB_amount, KEY_ACC_PRODUCT_NAME],
-                                 errors='ignore')
-        df_group = df_group.fillna(value='')
         bank_names = dictbank_names()
-        df_group.insert(0, KEY_BANK_NAME, df_group[KEY_ACC_BANK_CODE].apply(
-            lambda x: bank_names[x]))
-        """ end group and sum columns    """
-        df_group[KEY_ACC_ACCOUNT_NUMBER] = ''
-        self.dataframe = concat([self.dataframe, df_group])
-        column_to_reorder = self.dataframe.pop(FN_TOTAL)
-        self.dataframe.insert(len(self.dataframe.columns),
-                              FN_TOTAL, column_to_reorder)
-        self.dataframe = (self.dataframe.sort_values(
-            by=[KEY_ACC_BANK_CODE, KEY_ACC_PRODUCT_NAME], ascending=False)).fillna(value='')
-        self.dataframe.drop(KEY_ACC_BANK_CODE, inplace=True, axis=1)
-        self.dataframe = self.dataframe.reset_index(drop=True)
+        dataframe_all = concat(self.dataframe)
+        self.dataframe_append_sum(
+            dataframe_all, [DB_closing_balance, DB_opening_balance])
+        dataframe_all[KEY_BANK_NAME] = FN_TOTAL
+        dataframes = []
+        for dataframe in self.dataframe:
+            self.dataframe_append_sum(
+                dataframe, [DB_closing_balance, DB_opening_balance])
+            dataframe[KEY_BANK_NAME] = ''
+            dataframe.at[len(
+                dataframe)-1, KEY_BANK_NAME] = bank_names[dataframe.at[0, KEY_BANK_CODE]]
+            dataframes.append(dataframe)
+        dataframes.append(dataframe_all.tail(1))
+        self.dataframe = concat(dataframes, ignore_index=True)
+        self.dataframe.reset_index()
+        self.dataframe[FN_DAILY_PERCENT] = (
+            (self.dataframe[DB_closing_balance] - self.dataframe[DB_opening_balance]) /
+            self.dataframe[DB_opening_balance]).apply(lambda x: dec2.convert(x))
+        self.dataframe = self.dataframe[[KEY_ACC_BANK_CODE, KEY_ACC_ACCOUNT_NUMBER,
+                                         KEY_ACC_PRODUCT_NAME, DB_entry_date, DB_closing_balance,
+                                         FN_DAILY_PERCENT, KEY_BANK_NAME]]
 
     def _set_column_format(self):
 
@@ -2288,9 +2310,9 @@ class PandasBoxTransactionDetail(BuiltPandasBox):
 
     def _dataframe(self):
 
-        self.count_transactions, self.dataframe = self.dataframe
+        self.count_transactions, data = self.dataframe
         self.dataframe = DataFrame(
-            self.dataframe,
+            data,
             columns=[DB_price_date, DB_counter, DB_transaction_type,
                      DB_price, DB_pieces, DB_posted_amount])
         deliveries = self.dataframe[DB_transaction_type] == TRANSACTION_RECEIPT
@@ -2380,7 +2402,7 @@ class PandasBoxAcquisitionTable(BuiltPandasBox):
 
     def _set_properties(self):
 
-        for index, row in self.dataframe.iterrows():
+        for index, _ in self.dataframe.iterrows():
             if index != 0:
                 if ((self.dataframe.iloc[index - 1][DB_acquisition_price] !=
                         self.dataframe.iloc[index][DB_acquisition_price])
@@ -2519,17 +2541,12 @@ class VersionTransaction(BuiltEnterBox):
                                 allowed_values=transaction_version_allowed['KAZ'],
                                 combo_values=transaction_version_allowed['KAZ']),
                 FieldDefinition(definition=COMBO,
-                                name='HKSAL balances', length=1,
-                                allowed_values=transaction_version_allowed['SAL'],
-                                combo_values=transaction_version_allowed['SAL']),
-                FieldDefinition(definition=COMBO,
                                 name='HKWPD holdings', length=1,
                                 allowed_values=transaction_version_allowed['WPD'],
                                 combo_values=transaction_version_allowed['WPD']),
             ]
             _set_defaults(field_defs,
-                          (transaction_versions['KAZ'], transaction_versions['SAL'],
-                           transaction_versions['WPD']))
+                          (transaction_versions['KAZ'], transaction_versions['WPD']))
             super().__init__(title=title,
                              header='Transaction Versions ({})'.format(
                                  self.bank_code),

@@ -2,22 +2,22 @@
 # -*- coding: latin-1 -*-
 """
 Created on 27.06.2021
-__updated__ = "2023-10-10"
+__updated__ = "2024-03-25"
 @author: Wolfg
 
   Attention! new Scraper Class, see     Module: mariadb.py
                                         Method: import_server(self, filename)()
 """
 
-from datetime import date
-import logging
 import os
-import shelve
-from threading import Thread
 import time
 
+from datetime import date
+from io import StringIO
+from threading import Thread
 from pandas import read_html
 from selenium import webdriver
+from selenium.common import exceptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.edge.service import Service
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
@@ -28,16 +28,14 @@ from banking.declarations import (
     DEBIT, CREDIT, EURO,
     HTTP_CODE_OK,
     KEY_ALPHA_VANTAGE_FUNCTION, KEY_ALPHA_VANTAGE_PARAMETER,
-    KEY_USER_ID, KEY_PIN, KEY_BIC, KEY_SERVER, KEY_BANK_NAME, KEY_STORAGE_PERIOD, KEY_ACCOUNTS,
+    KEY_USER_ID, KEY_PIN, KEY_BIC, KEY_SERVER, KEY_BANK_NAME, KEY_ACCOUNTS,
     MESSAGE_TEXT, MENU_TEXT, PNS,
-    SCRAPER_BANKDATA, SHELVE_KEYS, KEY_LOGGING, INFORMATION,
-    TRUE,
-    WARNING
+    SCRAPER_BANKDATA, SHELVE_KEYS
 )
 from banking.formbuilts import MessageBoxInfo, MessageBoxError, MessageBoxTermination, WM_DELETE_WINDOW
 from banking.forms import InputPIN
 from banking.utils import (
-    Calculate, find_pattern, http_error_code, shelve_get_key, exception_error
+    Calculate, find_pattern, http_error_code, shelve_get_key, exception_error, shelve_put_key
 )
 
 
@@ -192,10 +190,9 @@ class AlphaVantage(object):
                 self.function_list = list(set(self.function_list))
                 self.function_list.sort()
                 self.driver.quit()
-                with shelve.open(BANK_MARIADB_INI, flag='c', protocol=None, writeback=True) as shelve_file:
-                    shelve_file[KEY_ALPHA_VANTAGE_FUNCTION] = self.function_list
-                    shelve_file[KEY_ALPHA_VANTAGE_PARAMETER] = self.parameter_dict
-
+                data = [(KEY_ALPHA_VANTAGE_FUNCTION, self.function_list),
+                        (KEY_ALPHA_VANTAGE_PARAMETER,  self.parameter_dict)]
+                shelve_put_key(BANK_MARIADB_INI, data)
                 return error
             except Exception as error:
                 print(error)
@@ -209,25 +206,23 @@ class BmwBank(object):
     BMW Bank
     """
 
-    def __init__(self, shelve_app):
+    def __init__(self):
 
-        self.message_texts = ''
         self.bank_code = BMW_BANK_CODE
         self.server, self.identifier_delimiter, self.storage_period = SCRAPER_BANKDATA[
             BMW_BANK_CODE]
         self.scraper = True
         self.user_id = None
-        shelve_file = shelve_get_key(self.bank_code, SHELVE_KEYS, none=False)
+        shelve_file = shelve_get_key(self.bank_code, SHELVE_KEYS)
         try:
             self.user_id = shelve_file[KEY_USER_ID]
             if KEY_PIN in shelve_file.keys() and shelve_file[KEY_PIN] not in ['', None]:
                 PNS[self.bank_code] = shelve_file[KEY_PIN]
             self.bic = shelve_file[KEY_BIC]
             self.server = shelve_file[KEY_SERVER]
-            self.accounts = shelve_file[KEY_ACCOUNTS]
-        except KeyError:
+        except KeyError as key_error:
             MessageBoxError(title=shelve_file[KEY_BANK_NAME],
-                            message=MESSAGE_TEXT['LOGIN'].format('', self.bank_code))
+                            message=MESSAGE_TEXT['LOGIN'].format(self.bank_code, key_error))
             return   # thread checking
         # Checking / Installing FINTS server connection
         http_code = http_error_code(self.server)
@@ -235,14 +230,8 @@ class BmwBank(object):
             MessageBoxError(message=MESSAGE_TEXT['HTTP'].format(http_code,
                                                                 self.bank_code, self.server))
             return  # thread checking
-
-        try:
-            self.bank_name = shelve_file[KEY_BANK_NAME]
-            self.storage_period = shelve_file[KEY_STORAGE_PERIOD]
-            self.accounts = shelve_file[KEY_ACCOUNTS]
-        except KeyError:
-            pass
-
+        self.bank_name = shelve_file[KEY_BANK_NAME]
+        self.accounts = shelve_file[KEY_ACCOUNTS]
         # Setting Dialog Variables
         self.iban = None
         self.account_number = None
@@ -252,7 +241,6 @@ class BmwBank(object):
         self.opened_bank_code = None
         self.warning_message = False
         self.period_message = False
-        self.logging = shelve_app[KEY_LOGGING]
         self.driver = setup_driver(shelve_file[KEY_BANK_NAME])
 
     def _get_url(self, url, bank):
@@ -261,36 +249,12 @@ class BmwBank(object):
             url = self.server + url
             if self.driver.current_url != url:
                 self.driver.get(url)
-                self._logging_check()
             return True
         except Exception:
             page = self.driver.page_source
             self._logoff()
             MessageBoxTermination(info=page, bank=bank)
             return False  # thread checking
-
-    def _logging_check(self):
-
-        if self.logging == TRUE:
-
-            logger = logging.getLogger('selenium')
-
-            logger.setLevel(logging.DEBUG)
-            log_path = 'C:\TEMP'
-            handler = logging.FileHandler(log_path)
-            logger.addHandler(handler)
-
-            logging.getLogger(
-                'selenium.webdriver.remote').setLevel(logging.WARN)
-            logging.getLogger(
-                'selenium.webdriver.common').setLevel(logging.DEBUG)
-
-            logger.info(INFORMATION)
-            logger.warning(WARNING)
-            logger.debug("this is detailed debug information")
-
-            with open(log_path, 'r') as fp:
-                assert len(fp.readlines()) == 3
 
     def _logoff(self):
 
@@ -323,13 +287,13 @@ class BmwBank(object):
                         return True
                     else:
                         self.driver.close()
-                except Exception as e:
-                    try:
-                        del PNS[self.bank_code]
-                    except Exception:
-                        pass
+                except exceptions.InvalidSessionIdException:
                     MessageBoxInfo(message=MESSAGE_TEXT['BANK_LOGIN'].format(
-                        e, self.server, self.driver, self.user_id))
+                        'Invalid Session Id', self.server, PNS[self.bank_code], self.user_id))
+                    del PNS[self.bank_code]
+                except Exception:
+                    exception_error()
+                    del PNS[self.bank_code]
                     return False
         else:
             return True
@@ -341,7 +305,7 @@ class BmwBank(object):
         if not self._get_url(
                 "Overview/content/BankAccounts/Overview?$event=init", bank):
             return []
-        dataframe = read_html(self.driver.page_source)[0]
+        dataframe = read_html(StringIO(self.driver.page_source))[0]
         shape = dataframe.shape
         accounts = []
         for i in range(0, shape[0]):
@@ -376,7 +340,7 @@ class BmwBank(object):
         self.driver.find_element(By.ID, "submitButton").click()
         if self.driver.page_source.find('keine Ums') != -1:
             return None
-        dataframe = read_html(self.driver.page_source)
+        dataframe = read_html(StringIO(self.driver.page_source))
         try:
             dataframe = dataframe[5]
             shape = dataframe.shape
@@ -386,7 +350,8 @@ class BmwBank(object):
                         u'\xa0EUR', '')  # Betrag
                     dataframe.iat[i, 4] = dataframe.iat[i, 4].strip()
                     dataframe.iat[i, 5] = dataframe.iat[i,
-                                                        5].replace(u'\xa0EUR', '')  # Saldo
+                                                        # Saldo
+                                                        5].replace(u'\xa0EUR', '')
                     dataframe.iat[i, 5] = dataframe.iat[i, 5].strip()
         except IndexError:
             return None

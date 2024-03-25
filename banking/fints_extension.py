@@ -1,6 +1,6 @@
 """
 Created on 11.02.2020
-__updated__ = "2023-07-01"
+__updated__ = "2024-02-23"
 @author: Wolfgang Kramer
 
 Extensions of project fints source code  copied and modified
@@ -8,7 +8,7 @@ Extensions of project fints source code  copied and modified
 """
 
 from fints.fields import DataElementField, DataElementGroupField, CodeField
-from fints.formals import DataElementGroup, KTI1, Account3
+from fints.formals import DataElementGroup, KTI1
 from fints.segments.base import ParameterSegment, ParameterSegment_22, FinTS3Segment
 from fints.utils import RepresentableEnum
 
@@ -89,20 +89,6 @@ class HIKAZS7(ParameterSegment):
         type=ParameterAccountTurnoverPeriod, _d='Parameter Kontoumsaetze/Zeitraum')
 
 
-class HISALS6(ParameterSegment):
-    """
-    Segment not implemented in Project FinTS (see module fints.segments.saldo)
-    """
-    pass
-
-
-class HISALS7(ParameterSegment):
-    """
-    Segment not implemented in Project FinTS (see module fints.segments.saldo)
-    """
-    pass
-
-
 class HIWPDS5(ParameterSegment_22):
     """
     Segment not implemented in Project FinTS (see module fints.segments.depot)
@@ -130,34 +116,3 @@ class HKCSE1(FinTS3Segment):
     sepa_descriptor = DataElementField(
         type='an', max_length=256, _d='SEPA Descriptor')
     sepa_pain_message = DataElementField(type='bin', _d='SEPA pain message')
-
-
-class HKWDU5(FinTS3Segment):
-    """
-    Depotumsaetze anfordern , version 5
-
-    Source: FinTS Financial Transaction Services, Schnittstellenspezifikation,
-            Messages -- Multibankfaehige Geschaeftsvorfaelle
-    """
-    account = DataElementGroupField(type=Account3, _d='Depot')
-    all_accounts = DataElementField(type='jn', _d='Alle Depots')
-    """
-    securities_reference = DataElementGroupField(
-        type=SecuritiesReference, required=False, _d='Wertpapierreferenz')
-    date_start = DataElementField(type='dat', required=False, _d='Von Datum')
-    date_end = DataElementField(type='dat', required=False, _d='Bis Datum')
-    max_number_responses = DataElementField(
-        type='num', max_length=4, required=False, _d='Maximale Anzahl Eintraege')
-    touchdown_point = DataElementField(
-        type='an', max_length=35, required=False, _d='Aufsetzpunkt')
-    """
-
-
-class HIWDU5(FinTS3Segment):
-    """
-    Depotumsaetze rueckmelden , version 5
-
-    Source: FinTS Financial Transaction Services, Schnittstellenspezifikation,
-            Messages -- Multibankfaehige Geschaeftsvorfaelle
-    """
-    turnovers = DataElementField(type='bin', _d='Depotumsaetze')

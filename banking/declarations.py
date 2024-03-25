@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2023-12-11"
+__updated__ = "2024-03-25"
 @author: Wolfgang Kramer
 """
 
@@ -10,6 +10,7 @@ from _datetime import date
 from collections import namedtuple
 from dataclasses import dataclass, field
 from decimal import Decimal
+
 
 PNS = {}
 """
@@ -112,9 +113,17 @@ MENU_TEXT = {
     'Application INI File': 'Application INI File',
     'Refresh Alpha Vantage': 'Create Alpha Vantage Query Selection',
 }
+
+CODE_3010 = '3010'  # Download bank data,    no entries exist'
+CODE_3040 = '3040'  # Download partially executed
+CODE_0030 = '0030'  # Download not executed
+
 MESSAGE_TEXT = {
+    CODE_0030: 'Bank: {} \n Bank Account: {}  {}       \n     Download not executed,    use single downloading bank data',
+    CODE_3040: 'Bank: {} \n Bank Account: {}  {}       \n     Download partially executed',
     'ACQUISITION_HEADER': '{}  ACQUISITION AMOUNT CHANGE {} in Period {} - {}',
     'ACQUISITION_HEADER_TABLE': 'ACQUISITION AMOUNT CHANGE in Period {} - {},  Click RowNumber',
+    'ACQUISITION_AMOUNT': 'Bank: {} \n Bank Account: {}  {}  {}      \n     Acquisition Amount must be adjusted manually',
     'ALPHA_VANTAGE': 'DOWNLOAD Prices from ALPHA_VANTAGE ({}/{}) failed (see ERROR Message before)',
     'ALPHA_VANTAGE_REFRESH_RUN': 'AlphaVantage Functions Creation started',
     'ALPHA_VANTAGE_REFRESH': 'AlphaVantage Functions successfully created',
@@ -122,11 +131,14 @@ MESSAGE_TEXT = {
     'ALPHA_VANTAGE_ERROR_MSG': 'AlphaVantage Error Message: \n{} \n\n Generated URl: \n{}',
     'ALPHA_VANTAGE_NO_DATA': 'AlphaVantage API returns no Data \n {}',
     'APP': 'APPLICATION and MARIDB Customizing Installation',
-    'BANK_CODE_EXIST': 'Bankcode exists',
+    'BANK_CODE_EXIST': 'Bank Code exists',
     'BANK_DATA_NEW': 'Created {} ({}. Next Step: SYNCHRONIZE Bank',
+    'BANK_DATA_NEW_SCRAPER': 'Created {} ({})',
     'BANK_DELETED': 'DELETE BANK LOGIN DATA \nBankcode: {}',
-    'BANK_LOGIN': 'Bank Scraper Login failed \nException: {} \nURL: {}\nDriver: {}\nUserName: {}',
-    'CHECKBOX': 'Select at least one of the Checkbox Icons',
+    'BANK_LOGIN': 'Bank Scraper Login failed \nException: {} \nURL: {}\nPassword: {}\nUserName: {}',
+    'CREDENTIALS': '{} Login failed',
+    'CREDENTIALS_CHECK': '{} Checking Credentials',
+    'CHECKBOX': 'Select at least one of the Check Box Icons',
     'CONN': 'Database Connection failed  \nMariaDBuser: {} \nMariaDBname: {}',
     'DATA_NO': '{} \n{} \nData not available',
     'DATA_SAVED': 'Data successfully saved',
@@ -139,16 +151,18 @@ MESSAGE_TEXT = {
     'DBLOGIN': 'Database Connection failed! \n Check Database LOGIN Parameter in CUSTOMIZINDG Application/MariaDB',
     'DECIMAL': 'Invalid Decimal Format Field {} e.g. 12345.00',
     'DELETE_ORIGINS': 'Cancel Insert in {}. Otherwise old Records with Origin {} will be deleted',
-    'DOWNLOAD_BANK':                'BANK: {}    ___________ Download Bank Data _____________________________________________',
-    'DOWNLOAD_ACCOUNT':              '     Download Bankdata of Account {} {}  ',
-    'DOWNLOAD_DONE': '{} Data downloading finished {}',
+    'DOWNLOAD_BANK':  'BANK: {}    Download Bank Data started',
+    'DOWNLOAD_ACCOUNT': 'Bank: {} \n Bank Account: {}  {}       \n     Download Bank Data of Account {}',
+    'DOWNLOAD_DONE': 'BANK: {}   Data downloading finished',
     'DOWNLOAD_HOLDING': 'If BUY/SELL Transaction done after Download RUN\nStart Download Holding once more! \n',
-    'DOWNLOAD_NOT_DONE': '{} Data downloading finished with E R R O R {}',
+    'DOWNLOAD_NOT_DONE': 'BANK: {}   Data downloading finished with E R R O R ',
     'DOWNLOAD_REPEAT': 'Download {} canceled by User! \n\nStart Download once more!',
     'DOWNLOAD_RUNNING': '{} Data Download running',
     'ENTRY': 'Enter Data',
     'FIXED': '{} MUST HAVE {} Characters ',
-    'HITAN6': 'Could not find HITAN6 task_reference',
+    'SEGMENT': '{} Account {}   Error_Code: {}   HIKAZ segment not received from Bank',
+    'HITAN6': 'Bank: {} \n Bank Account: {}  {}       \n     Could not find HITAN6 task_reference',
+    'HIUPD_EXTENSION': 'Bank: {} \n Bank Account: {}  {}       \n     IBAN {} received Bank Information: \n     {}',
     'HOLDING_T': '{} / {} HOLDING_T data created in period ({} - {})',
     'HOLDING_USE_TRANSACTION': 'Table TRANSACTION and Table PRICES used to show holding data',
     'HTTP': 'Server not connected! HTTP Status Code: {}\nBank: {}  Server: {}',
@@ -158,7 +172,8 @@ MESSAGE_TEXT = {
     'ISIN_DATA': 'Enter ISIN Data',
     'LENGTH': '{} Exceeds Length OF {} Characters',
     'LOAD_DATA': 'Data imported (Duplicates ignored) \nfrom File {}',
-    'LOGIN': 'LOGIN Data incomplete.   \nCustomizing LOGIN Data must be done \nBank: {} ({})',
+    'LOGGING_FILE': 'OS Error Logging_file',
+    'LOGIN': 'LOGIN Data incomplete.   \nCustomizing e.g. synchronization LOGIN Data must be done \nBank_Code: {} (Key Error: {})',
     'LOGIN_SCRAPER': 'LOGIN Data incomplete.   \nCustomizing LOGIN Data/Scraping must be done \nBank: {} ({})',
     'MANDATORY': '{} is mandatory',
     'MARIADB_DUPLICATE': 'Duplicate Entry ignored\nSQL Statement: \n{} \n Error: \n{} \n Vars: \n{}',
@@ -167,7 +182,7 @@ MESSAGE_TEXT = {
     'MIN_LENGTH': '{} Must have a Length OF {} Characters',
     'NAME_INPUT': 'Enter Query Name (Name of Stored Procedure, allowed Chars [alphanumeric and _): ',
     'NAMING': 'Fix Naming. Allowed Characters: A-Z, a-z, 0-9, _',
-    'NO_TURNOVER': 'Bank: {} ({})\n Bank Account {}  {}       \n No new turnover',
+    'NO_TURNOVER': 'Bank: {} \n Bank Account: {}  {}       \n     No new turnover',
     'NOTALLOWED': '{} is not allowed {}',
     'ORIGIN_SYMBOL_MISSING': 'No origin for symbol found. \n ISIN: {}  /  {} \n\n You must add origin symbol in Table ISIN',
     'OS_ERROR': 'Shelve File  {} not found',
@@ -184,7 +199,9 @@ MESSAGE_TEXT = {
     'PRICES_PERIOD': '{} / {} /{} Prices missing in Period ({} - {})',
     'PRODUCT_ID': 'Product_ID missing, No Bank Access possible\n Get your Product_Id: https://www.hbci-zka.de/register/prod_register.htm',
     'RADIOBUTTON': 'Select one of SELECT the RadioButtons',
+    'RESPONSE': 'Got unvalid response from bank',
     'SCROLL': 'Scroll forward: CTRL+RIGHT   Scroll backwards: CTRL+LEFT',
+    'SEGMENT': '{} Account {}   Segment {} not received from Bank, ERRORCODE: {}',
     'SEGMENT_VERSION': 'Segment {}{} Version {} not implemented',
     'SELECT': 'Enter your Selection',
     'SELECT_ACCESS_DB': 'Select MS ACCESS Database File',
@@ -202,6 +219,7 @@ MESSAGE_TEXT = {
     'TASK_DONE': 'Task finished.',
     'TASK_WARNING': 'Finished with Warnings',
     'TAN_INPUT': 'Enter TAN  {} ({}): ',
+    'TAN_CANCEL': 'Input TAN canceled, request aborted',
     'TERMINATION': 'FinTS MariaDB Banking Termination',
     'THREAD': 'Task {} aborted. No Dialogue. Its no mainthread',
     'THREAD_RUNNING': 'Background Job still running',
@@ -365,7 +383,7 @@ TRANSACTION_TYPES = [TRANSACTION_RECEIPT, TRANSACTION_DELIVERY]
 YAHOO = 'Yahoo!'
 ALPHA_VANTAGE = 'AlphaVantage'
 ONVISTA = 'Onvista'
-ORIGIN_SYMBOLS = [NOT_ASSIGNED, ALPHA_VANTAGE, ONVISTA, YAHOO]
+ORIGIN_SYMBOLS = [NOT_ASSIGNED, ALPHA_VANTAGE, YAHOO]
 CURRENCIES = [EURO, 'USD', 'AUD', 'CAD', 'CHF',
               'GBP', 'JPY']  # ISIN currency of prices
 """
@@ -428,7 +446,8 @@ FN_SOLD_PIECES = 'sold_pieces'
 FN_ALL_BANKS = 'ALL BANKS '
 FN_COLUMNS_EURO = [FN_TOTAL, FN_PROFIT,
                    FN_PROFIT_LOSS, FN_PROFIT_CUM]
-FN_COLUMNS_PERCENT = [FN_TOTAL_PERCENT, FN_PERIOD_PERCENT, FN_DAILY_PERCENT]
+FN_COLUMNS_PERCENT = [FN_TOTAL_PERCENT,
+                      FN_PERIOD_PERCENT, FN_DAILY_PERCENT]
 Y_AXE_PROFIT = 'profit'
 Y_AXE = ['market_price', 'acquisition_price', 'pieces',
          'total_amount', 'acquisition_amount', Y_AXE_PROFIT]
@@ -536,7 +555,7 @@ CREATE_ISIN = "CREATE TABLE  IF NOT EXISTS   `isin` (\
     `wkn` CHAR(6) NOT NULL DEFAULT 'NA' COMMENT 'Die Wertpapierkennnummer (WKN, vereinzelt auch WPKN oder WPK abgekürzt) ist eine in Deutschland verwendete sechsstellige Ziffern- und Buchstabenkombination zur Identifizierung von Wertpapieren (Finanzinstrumenten). Setzt man drei Nullen vor die WKN, so erhält man die neunstellige deutsche National Securities Identifying Number (NSIN) des jeweiligen Wertpapiers.' COLLATE 'latin1_swedish_ci',\
     `symbol` VARCHAR(50) NOT NULL DEFAULT 'NA' COMMENT 'ticker symbol' COLLATE 'latin1_swedish_ci',\
     `origin_symbol` VARCHAR(50) NOT NULL DEFAULT 'NA' COMMENT 'origin of symbol: Yahoo or AlphaVantage' COLLATE 'latin1_swedish_ci',\
-    `adjustments` VARCHAR(500) NULL DEFAULT NULL COMMENT 'Json String (contains adjustment factors e.g. splits, special dividends, ...) in  json format{symbol: {date_to: (r-factor,used) ...., }}' COLLATE 'latin1_swedish_ci',\
+    `adjustments` VARCHAR(500) NOT NULL DEFAULT '{}' COMMENT 'Json String (contains adjustment factors e.g. splits, special dividends, ...) in  json format{symbol: {date_to: (r-factor,used) ...., }}' COLLATE 'latin1_swedish_ci',\
     `currency` CHAR(3) NOT NULL DEFAULT 'EUR' COMMENT 'Currency Code' COLLATE 'latin1_swedish_ci',\
     `comment` TEXT NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',\
     PRIMARY KEY (`name`) USING BTREE,\
@@ -828,17 +847,24 @@ COUNTER_MANUAL = '010'  # manual insertion of transactions (counter 10-99)
 COUNTER_MT536 = '100'  # downloaded transactions, Format MT 536
 """
 ----------------------------- Scraper ------------
+
+    Adding new bank scraper routines or changing login Link -->  reload server table:
+   
+            CUSTOMIZINGG
+                Import Server CSV-File
 """
 BMW_BANK_CODE = '70220300'
 # value: [>login Link<, >identifier_delimiter<, >storage_period<]
 SCRAPER_BANKDATA = {BMW_BANK_CODE: [
     'https://banking.bmwbank.de/privat/banking/', '+', 360]}
-EXPLORER = ['Edge', 'Opera', ]
+EXPLORER = ['Edge', ]
 """
 ----------------------------- Named Tuples ------------
 """
 Balance = namedtuple(
-    'Balance', ' '.join([KEY_ACC_BANK_CODE, KEY_ACC_ACCOUNT_NUMBER, KEY_ACC_PRODUCT_NAME, DB_entry_date.upper(), DB_status, DB_amount, DB_currency]))
+    'Balance', ' '.join([KEY_ACC_BANK_CODE, KEY_ACC_ACCOUNT_NUMBER, KEY_ACC_PRODUCT_NAME, DB_entry_date.upper(),
+                         DB_closing_status, DB_closing_balance, DB_closing_currency,
+                         DB_opening_status, DB_opening_balance, DB_opening_currency]))
 TransactionNamedTuple = namedtuple(
     'TransactionNamedTuple', 'price_date counter transaction_type price_currency price pieces amount_currency posted_amount acquisition_amount, sold_pieces, comments')
 """
@@ -875,7 +901,7 @@ class Informations(object):
     Downloading Bankdata using FinTS
     Container of messages, responses of banks, errors
     """
-    bankdata_informations = ' '
+    bankdata_informations = ''
     BANKDATA_INFORMATIONS = 'BANKDATA INFORMATIONS'
     """
     Threading

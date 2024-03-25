@@ -1,13 +1,8 @@
 """
 Created on 18.11.2019
-__updated__ = "2023-10-10"
+__updated__ = "2024-03-25"
 @author: Wolfgang Kramer
 """
-from datetime import date
-from random import randint
-import re
-import webbrowser
-
 from banking.declarations import (
     BANK_MARIADB_INI, BMW_BANK_CODE,
     CUSTOMER_ID_ANONYMOUS,
@@ -25,6 +20,10 @@ from banking.formbuilts import MessageBoxError, MessageBoxInfo
 from banking.forms import InputPIN
 from banking.scraper import BmwBank
 from banking.utils import shelve_get_key, http_error_code
+from datetime import date
+from random import randint
+import re
+import webbrowser
 
 
 class InitBank:
@@ -34,7 +33,6 @@ class InitBank:
 
     def __init__(self, bank_code, mariadb):
 
-        self.message_texts = ''
         self.scraper = False
         self.bank_code = bank_code
         shelve_file = shelve_get_key(bank_code, SHELVE_KEYS, none=False)
@@ -46,9 +44,9 @@ class InitBank:
             self.server = shelve_file[KEY_SERVER]
             self.bank_name = shelve_file[KEY_BANK_NAME]
             self.accounts = shelve_file[KEY_ACCOUNTS]
-        except KeyError:
+        except KeyError as key_error:
             MessageBoxError(
-                message=MESSAGE_TEXT['LOGIN'].format('', self.bank_code))
+                message=MESSAGE_TEXT['LOGIN'].format(self.bank_code, key_error))
             return None  # thread checking
         http_code = http_error_code(self.server)
         if http_code not in HTTP_CODE_OK:
@@ -69,9 +67,9 @@ class InitBank:
             self.dialogs = Dialogs(mariadb)
             try:
                 self.security_function = shelve_file[KEY_SECURITY_FUNCTION]
-            except KeyError:
+            except KeyError as key_error:
                 MessageBoxError(
-                    message=MESSAGE_TEXT['LOGIN'].format('', self.bank_code))
+                    message=MESSAGE_TEXT['LOGIN'].format(self.bank_code, key_error))
                 return None  # thread checking
             # Checking / Installing FINTS server connection
             # register product:
@@ -129,7 +127,6 @@ class InitBankSync:
 
     def __init__(self, bank_code, mariadb):
 
-        self.message_texts = ''
         self.bank_code = bank_code
         self.scraper = False
         shelve_keys = [KEY_USER_ID, KEY_PIN, KEY_BIC, KEY_BPD, KEY_SERVER,
@@ -143,9 +140,9 @@ class InitBankSync:
             self.server = shelve_file[KEY_SERVER]
             self.security_function = shelve_file[KEY_SECURITY_FUNCTION]
             self.bpd_version = shelve_file[KEY_BPD]
-        except KeyError:
+        except KeyError as key_error:
             MessageBoxError(
-                message=MESSAGE_TEXT['LOGIN'].format('', self.bank_code))
+                message=MESSAGE_TEXT['LOGIN'].format(self.bank_code, key_error))
             return None  # thread checking
         if bank_code not in PNS.keys():
             try:
@@ -185,6 +182,9 @@ class InitBankSync:
         self.tan_process = 4
         self.security_reference = randint(10000, 99999)
         self.iban = None
+        self.account_number = None
+        self.account_product_name = ''
+        self.subaccount_number = None
         self.from_date = date.today()
         self.dialog_id = DIALOG_ID_UNASSIGNED
         self.warning_message = False
@@ -198,7 +198,6 @@ class InitBankAnonymous:
 
     def __init__(self, bank_code, mariadb):
 
-        self.message_texts = ''
         # Dialog Identification
         self.bank_code = bank_code
         self.scraper = False
@@ -206,7 +205,7 @@ class InitBankAnonymous:
         self.server = shelve_get_key(bank_code, KEY_SERVER)
         if self.server in [None, '']:
             MessageBoxError(
-                message=MESSAGE_TEXT['LOGIN'].format('', self.bank_code))
+                message=MESSAGE_TEXT['LOGIN'].format(self.bank_code, KEY_SERVER))
             return None  # thread checking
         # register product: https://www.hbci-zka.de/register/prod_register.htm
         self.product_id = shelve_get_key(BANK_MARIADB_INI, KEY_PRODUCT_ID)

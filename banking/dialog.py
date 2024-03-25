@@ -1,17 +1,19 @@
 """
 Created on 18.11.2019
-__updated__ = "2023-10-10"
+__updated__ = "2024-03-25"
 @author: Wolfgang Kramer
 """
 
 import base64
-from datetime import date, datetime
 import io
+import json
 import logging
-from operator import itemgetter
 import re
-import shelve
+import requests
 
+from datetime import date, datetime
+from operator import itemgetter
+from threading import current_thread, main_thread
 from fints.message import FinTSInstituteMessage
 from fints.segments.accounts import HISPAS1
 from fints.segments.auth import (
@@ -21,17 +23,16 @@ from fints.segments.bank import HIBPA3, HIUPA4, HIUPD6
 from fints.segments.depot import HIWPD5, HIWPD6
 from fints.segments.dialog import HISYN4, HIRMG2, HIRMS2
 from fints.segments.message import HNHBK3
-from fints.segments.saldo import HISAL6, HISAL7
 from fints.segments.statement import HIKAZ6, HIKAZ7
 from fints.utils import Password
 from mt940.models import Transactions
-import requests
 
 from banking.declarations import (
-    Balance, BANK_MARIADB_INI,
+    BANK_MARIADB_INI,
+    CODE_0030, CODE_3010, CODE_3040,
     DIALOG_ID_UNASSIGNED,
     ERROR,
-    INFORMATION, IDENTIFIER,
+    Informations, INFORMATION, IDENTIFIER,
     PERCENT,
     MESSAGE_TEXT,
     KEY_IDENTIFIER_DELIMITER, KEY_SYSTEM_ID,
@@ -44,8 +45,8 @@ from banking.declarations import (
     KEY_ACC_PRODUCT_NAME, KEY_ACC_SUBACCOUNT_NUMBER, KEY_ACC_TYPE,
     PNS,
     STATEMENT,
-    WARNING)
-from banking.fints_extension import HIWDU5, HIKAZS6, HIKAZS7, HISALS6, HISALS7, HIWPDS5, HIWPDS6
+    WARNING, KEY_LOGGING)
+from banking.fints_extension import HIKAZS6, HIKAZS7,  HIWPDS5, HIWPDS6
 from banking.formbuilts import (
     MessageBoxTermination, MessageBoxInfo, WM_DELETE_WINDOW)
 from banking.forms import PrintMessageCode, InputPIN
@@ -54,7 +55,8 @@ from banking.utils import (
     Amount,
     Calculate,
     create_iban,
-    shelve_get_key)
+    exception_error,
+    shelve_get_key, shelve_put_key)
 
 
 re_identification = re.compile(r'^:35B:ISIN\s(.*)\|(.*)\|(.*)$')
@@ -87,6 +89,7 @@ class Dialogs:
 
         self.mariadb = mariadb
         self._show_message = shelve_get_key(BANK_MARIADB_INI, KEY_SHOW_MESSAGE)
+        self._logging = shelve_get_key(BANK_MARIADB_INI, KEY_LOGGING)
         if not self._show_message:
             self._show_message = ERROR
 
@@ -106,23 +109,34 @@ class Dialogs:
                     if input_pin.button_state == WM_DELETE_WINDOW:
                         return None
                     PNS[bank.bank_code] = input_pin.pin
-                response = self._send_msg(
+                response, _ = self._send_msg(
                     bank, msg.msg_dialog_init(bank), dialog_init=True)
                 if response is not None:
+                    for seg in response.find_segments(HIUPD6):
+                        if bank.iban == seg.iban and seg.extension:
+                            formatted_string = json.dumps(
+                                seg.extension, indent=4)
+                            MessageBoxInfo(message=MESSAGE_TEXT['HIUPD_EXTENSION'].format(
+                                bank.bank_name, bank.account_number, bank.account_product_name, bank.iban, formatted_string),
+                                bank=bank, information_storage=Informations.BANKDATA_INFORMATIONS)
                     seg = response.find_segment_first(HNHBK3)
                     if seg:
                         break
-                bank.message_texts = ''
+                Informations.bankdata_informations = ''
                 PNS.pop(bank.bank_code, None)
                 response = None
             bank.dialog_id = seg.dialog_id
             seg = response.find_segment_first(HITAN6)
             if not seg:
-                MessageBoxInfo(message=MESSAGE_TEXT['HITAN6'], bank=bank)
+                MessageBoxInfo(message=MESSAGE_TEXT['HITAN6'].format(
+                    bank.bank_name, bank.account_number, bank.account_product_name), bank=bank)
             bank.task_reference = seg.task_reference
-            response = self._get_tan(bank, msg, response)
-            bank.opened_bank_code = bank.bank_code
-            return response
+            response, _ = self._get_tan(bank, msg, response)
+            if response:
+                bank.opened_bank_code = bank.bank_code
+                return response
+            else:
+                return None  # input of Tan canceled
         else:
             return True  # thread checking
 
@@ -134,16 +148,23 @@ class Dialogs:
 
     def _get_tan(self, bank, msg, response):
 
+        hirms_codes = []
         for seg in response.find_segments(HIRMS2):
             for hirms in seg.responses:
-                if hirms.code == '0030':
+                if hirms.code == CODE_0030:
                     bank.tan_process = 2
-                    response = self._send_msg(bank, msg.msg_tan(bank))
-        return response
+                    message = msg.msg_tan(bank)
+                    if message:
+                        response, hirms_codes = self._send_msg(bank, message)
+                    else:
+                        MessageBoxInfo(message=MESSAGE_TEXT['TAN_CANCEL'].format(
+                            bank.bank_name, bank.account_number), bank=bank, information=ERROR)
+                    return None, []  # input of tan canceled
+        return response, hirms_codes
 
     def _get_segment(self, bank, segment_type):
 
-        for seg in [HIKAZ6, HIKAZ7, HISAL6, HISAL7, HIWPD5, HIWPD6]:
+        for seg in [HIKAZ6, HIKAZ7, HIWPD5, HIWPD6]:
             if (seg.__name__[2:5] == segment_type and
                     seg.__name__[5:6] == str(bank.transaction_versions[segment_type])):
                 return seg
@@ -152,224 +173,248 @@ class Dialogs:
 
     def _store_bpd_shelve(self, bank, response):
 
-        with shelve.open(bank.bank_code, flag='w', protocol=None, writeback=True) as shelve_file:
-            seg = response.find_segment_first(HIBPA3)
+        seg = response.find_segment_first(HIBPA3)
+        if seg is not None:
+            bank.bpd_version = seg.bpd_version
+            bank.bank_name = seg.bank_name
+            shelve_put_key(bank.bank_code, [
+                           (KEY_BPD, bank.bpd_version), (KEY_BANK_NAME, bank.bank_name)])
+        else:
+            return
+        for hitans in [HITANS6, HITANS5, HITANS4, HITANS3, HITANS2, HITANS1]:
+            seg = response.find_segment_first(hitans)
             if seg is not None:
-                bank.bpd_version = seg.bpd_version
-                shelve_file[KEY_BPD] = bank.bpd_version
-                bank.bank_name = seg.bank_name
-                shelve_file[KEY_BANK_NAME] = bank.bank_name
-            else:
-                return
-            for hitans in [HITANS6, HITANS5, HITANS4, HITANS3, HITANS2, HITANS1]:
-                seg = response.find_segment_first(hitans)
-                if seg is not None:
-                    bank.twostep_parameters = []
-                    for par in seg.parameter.twostep_parameters:
-                        if par.tan_process == '2':
-                            bank.twostep_parameters.append(
-                                (par.security_function, par.name))
-                    shelve_file[KEY_TWOSTEP] = bank.twostep_parameters
-                    break
-            transaction_versions_allowed = {}
-            transaction_versions_allowed['KAZ'] = []
+                bank.twostep_parameters = []
+                for par in seg.parameter.twostep_parameters:
+                    if par.tan_process == '2':
+                        bank.twostep_parameters.append(
+                            (par.security_function, par.name))
+                shelve_put_key(
+                    bank.bank_code, (KEY_TWOSTEP, bank.twostep_parameters))
+                break
+        transaction_versions_allowed = {}
+        transaction_versions_allowed['KAZ'] = []
+        seg = response.find_segment_first(HIKAZS6)
+        if seg is not None:
+            transaction_versions_allowed['KAZ'].append(seg.header.version)
+        seg = response.find_segment_first(HIKAZS7)
+        if seg is not None:
+            transaction_versions_allowed['KAZ'].append(seg.header.version)
+        transaction_versions_allowed['WPD'] = []
+        seg = response.find_segment_first(HIWPDS5)
+        if seg is not None:
+            transaction_versions_allowed['WPD'].append(seg.header.version)
+        seg = response.find_segment_first(HIWPDS6)
+        if seg is not None:
+            transaction_versions_allowed['WPD'].append(seg.header.version)
+        shelve_put_key(bank.bank_code, (KEY_VERSION_TRANSACTION_ALLOWED,
+                       transaction_versions_allowed))
+        if shelve_get_key(bank.bank_code, KEY_VERSION_TRANSACTION):
+            bank.transaction_versions = shelve_get_key(
+                bank.bank_code, KEY_VERSION_TRANSACTION)
+        else:
+            # use lowest version
+            bank.transaction_versions = {}
+            bank.transaction_versions['KAZ'] = 7
             seg = response.find_segment_first(HIKAZS6)
             if seg is not None:
-                transaction_versions_allowed['KAZ'].append(seg.header.version)
-            seg = response.find_segment_first(HIKAZS7)
-            if seg is not None:
-                transaction_versions_allowed['KAZ'].append(seg.header.version)
-            transaction_versions_allowed['SAL'] = []
-            seg = response.find_segment_first(HISALS6)
-            if seg is not None:
-                transaction_versions_allowed['SAL'].append(seg.header.version)
-            seg = response.find_segment_first(HISALS7)
-            if seg is not None:
-                transaction_versions_allowed['SAL'].append(seg.header.version)
-            transaction_versions_allowed['WPD'] = []
+                bank.transaction_versions['KAZ'] = seg.header.version
+            bank.transaction_versions['WPD'] = 6
             seg = response.find_segment_first(HIWPDS5)
             if seg is not None:
-                transaction_versions_allowed['WPD'].append(seg.header.version)
-            seg = response.find_segment_first(HIWPDS6)
-            if seg is not None:
-                transaction_versions_allowed['WPD'].append(seg.header.version)
-            shelve_file[KEY_VERSION_TRANSACTION_ALLOWED] = transaction_versions_allowed
-            if shelve_get_key(bank.bank_code, KEY_VERSION_TRANSACTION):
-                bank.transaction_versions = shelve_get_key(
-                    bank.bank_code, KEY_VERSION_TRANSACTION)
-            else:
-                # use lowest version
-                bank.transaction_versions = {}
-                bank.transaction_versions['KAZ'] = 7
-                seg = response.find_segment_first(HIKAZS6)
-                if seg is not None:
-                    bank.transaction_versions['KAZ'] = seg.header.version
-                bank.transaction_versions['SAL'] = 7
-                seg = response.find_segment_first(HISALS6)
-                if seg is not None:
-                    bank.transaction_versions['SAL'] = seg.header.version
-                bank.transaction_versions['WPD'] = 6
-                seg = response.find_segment_first(HIWPDS5)
-                if seg is not None:
-                    bank.transaction_versions['WPD'] = seg.header.version
-                shelve_file[KEY_VERSION_TRANSACTION] = bank.transaction_versions
-            seg = response.find_segment_first(HISPAS1)
-            bank.sepa_formats = []
-            if seg is not None:
-                bank.sepa_formats = seg.parameter.supported_sepa_formats
-            shelve_file[KEY_SEPA_FORMATS] = bank.sepa_formats
-            seg = response.find_segment_first(HIPINS1)
-            if seg is not None:
-                shelve_file[KEY_MIN_PIN_LENGTH] = seg.parameter.min_pin_length
-                shelve_file[KEY_MAX_PIN_LENGTH] = seg.parameter.max_pin_length
-                shelve_file[KEY_MAX_TAN_LENGTH] = seg.parameter.max_tan_length
-                tans_required = []
-                for item in seg.parameter.transaction_tans_required:
-                    tans_required.append((item.transaction, item.tan_required))
-                shelve_file[KEY_TAN_REQUIRED] = tans_required
-            else:
-                MessageBoxInfo(message=MESSAGE_TEXT['HIPINS1'], bank=bank)
-                shelve_file[KEY_MIN_PIN_LENGTH] = 3
-                shelve_file[KEY_MAX_PIN_LENGTH] = 20
-                shelve_file[KEY_MAX_TAN_LENGTH] = 10
-            seg = response.find_segment_first(HIKAZS7)
+                bank.transaction_versions['WPD'] = seg.header.version
+            shelve_put_key(
+                bank.bank_code, (KEY_VERSION_TRANSACTION, bank.transaction_versions))
+        seg = response.find_segment_first(HISPAS1)
+        bank.sepa_formats = []
+        if seg is not None:
+            bank.sepa_formats = seg.parameter.supported_sepa_formats
+        shelve_put_key(bank.bank_code, (KEY_SEPA_FORMATS, bank.sepa_formats))
+        seg = response.find_segment_first(HIPINS1)
+        if seg is not None:
+            tans_required = []
+            for item in seg.parameter.transaction_tans_required:
+                tans_required.append((item.transaction, item.tan_required))
+            shelve_put_key(bank.bank_code, [(KEY_MIN_PIN_LENGTH, seg.parameter.min_pin_length),
+                                            (KEY_MAX_PIN_LENGTH,
+                                            seg.parameter.max_pin_length),
+                                            (KEY_MAX_TAN_LENGTH,
+                                            seg.parameter.max_tan_length),
+                                            (KEY_TAN_REQUIRED, tans_required)])
+        else:
+            MessageBoxInfo(message=MESSAGE_TEXT['HIPINS1'], bank=bank)
+            shelve_put_key(bank.bank_code, [(KEY_MIN_PIN_LENGTH, 3),
+                                            (KEY_MAX_PIN_LENGTH, 20),
+                                            (KEY_MAX_TAN_LENGTH, 10)])
+        seg = response.find_segment_first(HIKAZS7)
+        if seg is not None:
+            bank.storage_period = seg.parameter.storage_period
+        else:
+            seg = response.find_segment_first(HIKAZS6)
             if seg is not None:
                 bank.storage_period = seg.parameter.storage_period
-                shelve_file[KEY_STORAGE_PERIOD] = bank.storage_period
             else:
-                seg = response.find_segment_first(HIKAZS6)
-                if seg is not None:
-                    bank.storage_period = seg.parameter.storage_period
-                    shelve_file[KEY_STORAGE_PERIOD] = bank.storage_period
-                else:
-                    bank.storage_period = 90
-                    shelve_file[KEY_STORAGE_PERIOD] = bank.storage_period
+                bank.storage_period = 90
+        shelve_put_key(
+            bank.bank_code, (KEY_STORAGE_PERIOD, bank.storage_period))
 
     def _store_sync_shelve(self, bank, response):
 
-        with shelve.open(bank.bank_code, flag='w', protocol=None, writeback=True) as shelve_file:
-            seg = response.find_segment_first(HNHBK3)
-            if seg is not None:
-                bank.dialog_id = seg.dialog_id
-            else:
-                MessageBoxTermination(info=MESSAGE_TEXT['HNHBK3'], bank=bank)
-            seg = response.find_segment_first(HISYN4)
-            if seg is not None:
-                bank.system_id = seg.system_id
-                bank.security_identifier = seg.system_id
-                shelve_file[KEY_SYSTEM_ID] = seg.system_id
-            else:
-                MessageBoxTermination(info=MESSAGE_TEXT['HISYN4'], bank=bank)
-            seg = response.find_segment_first(HISPAS1)
-            if seg is not None:
-                bank.sepa_formats = seg.parameter.supported_sepa_formats
-                shelve_file[KEY_SEPA_FORMATS] = bank.sepa_formats
-            shelve_file.close()
+        seg = response.find_segment_first(HNHBK3)
+        if seg is not None:
+            bank.dialog_id = seg.dialog_id
+        else:
+            MessageBoxTermination(info=MESSAGE_TEXT['HNHBK3'], bank=bank)
+        seg = response.find_segment_first(HISYN4)
+        if seg is not None:
+            bank.system_id = seg.system_id
+            bank.security_identifier = seg.system_id
+            shelve_put_key(bank.bank_code, (KEY_SYSTEM_ID, seg.system_id))
+        else:
+            MessageBoxTermination(info=MESSAGE_TEXT['HISYN4'], bank=bank)
+        seg = response.find_segment_first(HISPAS1)
+        if seg is not None:
+            bank.sepa_formats = seg.parameter.supported_sepa_formats
+            shelve_put_key(
+                bank.bank_code, (KEY_SEPA_FORMATS, bank.sepa_formats))
         self._store_upd_shelve(bank, response)
 
     def _store_upd_shelve(self, bank, response):
-        ' If Bank dont provide User Parameter Data during Synchronisation'
-        with shelve.open(bank.bank_code, flag='w', protocol=None, writeback=True) as shelve_file:
-            seg = response.find_segment_first(HIUPA4)
-            if seg is not None:
-                bank.upd_version = seg.upd_version
-                shelve_file[KEY_UPD] = bank.upd_version
+        ' If Bank not provide User Parameter Data during Synchronization'
+        seg = response.find_segment_first(HIUPA4)
+        if seg is not None:
+            bank.upd_version = seg.upd_version
+            shelve_put_key(bank.bank_code, (KEY_UPD, bank.upd_version))
+        else:
+            return
+        seg = response.find_segment_first(HIUPD6)
+        if seg is not None:
+            bank.accounts = []
+            for upd in response.find_segments(HIUPD6):
+                if upd.account_information.account_number:
+                    acc = {}
+                    if upd.iban:
+                        acc[KEY_ACC_IBAN] = upd.iban
+                    else:
+                        acc[KEY_ACC_IBAN] = create_iban(
+                            bank_code=upd.account_information.bank_identifier.bank_code,
+                            account_number=upd.account_information.account_number)
+                    acc[KEY_ACC_ACCOUNT_NUMBER] = upd.account_information.account_number
+                    acc[KEY_ACC_SUBACCOUNT_NUMBER] = upd.account_information.subaccount_number
+                    acc[KEY_ACC_BANK_CODE] = upd.account_information.bank_identifier.bank_code
+                    acc[KEY_ACC_CUSTOMER_ID] = upd.customer_id
+                    acc[KEY_ACC_TYPE] = upd.account_type
+                    acc[KEY_ACC_CURRENCY] = upd.account_currency
+                    if upd.name_account_owner_1:
+                        acc[KEY_ACC_OWNER_NAME] = upd.name_account_owner_1
+                    if upd.name_account_owner_2:
+                        acc[KEY_ACC_OWNER_NAME] = (acc[KEY_ACC_OWNER_NAME]
+                                                   + upd.name_account_owner_2)
+                    acc[KEY_ACC_PRODUCT_NAME] = upd.account_product_name
+                    acc[KEY_ACC_ALLOWED_TRANSACTIONS] = []
+                    for allowed_transaction in upd.allowed_transactions:
+                        if allowed_transaction.transaction is not None:
+                            acc[KEY_ACC_ALLOWED_TRANSACTIONS].append(
+                                allowed_transaction.transaction)
+                    bank.accounts.append(acc)
+            shelve_put_key(bank.bank_code, (KEY_ACCOUNTS, bank.accounts))
+
+    def _receive_msg(self, bank, msg, response, hirms_codes):
+
+        if CODE_0030 in hirms_codes:
+            seg = response.find_segment_first(HITAN6)
+            if not seg:
+                MessageBoxInfo(message=MESSAGE_TEXT[CODE_0030].format(
+                    bank.bank_name, bank.account_number, bank.account_product_name), bank=bank, information=WARNING)
+                return [], hirms_codes
+            if current_thread() is main_thread():
+                bank.task_reference = seg.task_reference
+                response, hirms_codes = self._get_tan(bank, msg, response)
             else:
-                return
-            seg = response.find_segment_first(HIUPD6)
-            if seg is not None:
-                bank.accounts = []
-                for upd in response.find_segments(HIUPD6):
-                    if upd.account_information.account_number:
-                        acc = {}
-                        if upd.iban:
-                            acc[KEY_ACC_IBAN] = upd.iban
-                        else:
-                            acc[KEY_ACC_IBAN] = create_iban(
-                                bank_code=upd.account_information.bank_identifier.bank_code,
-                                account_number=upd.account_information.account_number)
-                        acc[KEY_ACC_ACCOUNT_NUMBER] = upd.account_information.account_number
-                        acc[KEY_ACC_SUBACCOUNT_NUMBER] = upd.account_information.subaccount_number
-                        acc[KEY_ACC_BANK_CODE] = upd.account_information.bank_identifier.bank_code
-                        acc[KEY_ACC_CUSTOMER_ID] = upd.customer_id
-                        acc[KEY_ACC_TYPE] = upd.account_type
-                        acc[KEY_ACC_CURRENCY] = upd.account_currency
-                        if upd.name_account_owner_1:
-                            acc[KEY_ACC_OWNER_NAME] = upd.name_account_owner_1
-                        if upd.name_account_owner_2:
-                            acc[KEY_ACC_OWNER_NAME] = (acc[KEY_ACC_OWNER_NAME]
-                                                       + upd.name_account_owner_2)
-                        acc[KEY_ACC_PRODUCT_NAME] = upd.account_product_name
-                        acc[KEY_ACC_ALLOWED_TRANSACTIONS] = []
-                        for allowed_transaction in upd.allowed_transactions:
-                            if allowed_transaction.transaction is not None:
-                                acc[KEY_ACC_ALLOWED_TRANSACTIONS].append(
-                                    allowed_transaction.transaction)
-                        bank.accounts.append(acc)
-                shelve_file[KEY_ACCOUNTS] = bank.accounts
-            shelve_file.close()
+                MessageBoxInfo(message=MESSAGE_TEXT[CODE_0030].format(
+                    bank.bank_name, bank.account_number, bank.account_product_name), bank=bank, information=WARNING)
+        return response, hirms_codes
 
     def _send_msg(self, bank, message, dialog_init=False):
 
-        log_out = io.StringIO()
-        with Password.protect():
-            message.print_nested(stream=log_out, prefix="\t")
-            logger.debug(('Sending ' + 30 * '>' + '\n{}\n' + 40 * '>' + '\n').format
-                         (log_out.getvalue()))
-            log_out.truncate(0)
+        if self._logging:
+            log_out = io.StringIO()
+            with Password.protect():
+                message.print_nested(stream=log_out, prefix="\t")
+                logger.debug(('Sending ' + 30 * '>' + '\n{}\n' + 40 * '>' + '\n').format
+                             (log_out.getvalue()))
+                log_out.truncate(0)
         r = requests.post(bank.server,
                           headers={b'Content-Type': 'text/plain;charset=UTF-8'},
                           data=base64.b64encode(message.render_bytes()))
         if r.status_code < 200 or r.status_code > 299:
             MessageBoxTermination(info=MESSAGE_TEXT(
                 'SEND_ERROR').format(r.status_code), bank=bank)
-        response = FinTSInstituteMessage(
-            segments=base64.b64decode(r.content.decode('latin1')))
-        bank.response = response
-        with Password.protect():
-            response.print_nested(stream=log_out, prefix="\t")
-            logger.debug(('Received ' + 30 * '>' + '\n{}\n' + 40 * '>' + '\n').format
-                         (log_out.getvalue()))
-        seg = response.find_segment_first(HIRMG2)
-        error_9xxx = False
-        if self._fints_code(bank, seg):
-            error_9xxx = True
-        for seg in response.find_segments(HIRMS2):
-            if self._fints_code(bank, seg):
-                error_9xxx = True
-        if error_9xxx:
-            PrintMessageCode(text=bank.message_texts)
+        try:
+            response = FinTSInstituteMessage(
+                segments=base64.b64decode(r.content.decode('latin1')))
+        except Exception:
+            exception_error(
+                message=MESSAGE_TEXT['RESPONSE'])
+            PrintMessageCode(text=Informations.bankdata_informations)
             if dialog_init:
-                response = None
+                return None,  []
             else:
                 MessageBoxTermination(bank=bank)
-        return response
+        bank.response = response
+        if self._logging:
+            with Password.protect():
+                response.print_nested(stream=log_out, prefix="\t")
+                logger.debug(('Received ' + 30 * '>' + '\n{}\n' + 40 * '>' + '\n').format
+                             (log_out.getvalue()))
+        seg = response.find_segment_first(HIRMG2)
+        # bank feedback message
+        error, fints_codes = self._fints_code(bank, seg)
+        if error:
+            PrintMessageCode(text=Informations.bankdata_informations)
+            if dialog_init:
+                return None,  fints_codes
+            else:
+                MessageBoxTermination(bank=bank)
+        # bank feedback segments of message
+        for seg in response.find_segments(HIRMS2):
+            error, hirms_codes = self._fints_code(bank, seg)
+            fints_codes = fints_codes + hirms_codes
+            if error:
+                PrintMessageCode(text=Informations.bankdata_informations)
+                if dialog_init:
+                    return None,  fints_codes
+                else:
+                    MessageBoxTermination(bank=bank)
+        return response, fints_codes
 
     def _fints_code(self, bank, segment):
 
-        error_9xxx = False
+        codes = []
+        error = False
         for response in segment.responses:
+            codes.append(response.code)
             if response.code == '3076':      # SCA not required
                 bank.sca = False
             if response.code[0] in ['0', '1']:
                 if self._show_message == INFORMATION:
-                    bank.message_texts = bank.message_texts + '\n{} Code {} {} '.format(
+                    Informations.bankdata_informations = Informations.bankdata_informations + '\n{} Code {} {} '.format(
                         INFORMATION, response.code, response.text)
             elif response.code[0] == '3':
                 if response.code == '3010':    # no entries found
                     MessageBoxInfo(message=MESSAGE_TEXT['NO_TURNOVER'].format(
-                        bank.bank_name, bank.bank_code, bank.account_number, bank.account_product_name), bank=bank)
+                        bank.bank_name, bank.account_number, bank.account_product_name), bank=bank)
                 if self._show_message in [INFORMATION, WARNING]:
-                    bank.message_texts = bank.message_texts + '\n{} Code {} {} '.format(
+                    Informations.bankdata_informations = Informations.bankdata_informations + '\n{} Code {} {} '.format(
                         WARNING, response.code, response.text)
                     bank.warning_message = True
             else:
-                error_9xxx = True
-                bank.message_texts = bank.message_texts + '\n{} Code {} - Bezugssegment ({}) '.format(
+                error = True
+                Informations.bankdata_informations = Informations.bankdata_informations + '\n{} Code {} - Bezugssegment ({}) '.format(
                     ERROR, response.code, response.reference_element)
-                bank.message_texts = bank.message_texts + '\n{} {} Parameters {}'.format(
+                Informations.bankdata_informations = Informations.bankdata_informations + '\n{} {} Parameters {}'.format(
                     ERROR, response.text, response.parameters)
-        return error_9xxx
+        return error, codes
 
     def _mt535_listdict(self, data):
         """
@@ -516,14 +561,6 @@ class Dialogs:
                     stack.append(clause)
         return retval
 
-    def _mt536_listdict(self, data):
-        """
-        documentation:
-         https://www.hbci-zka.de/dokumente/spezifikation_deutsch/fintsv3/FinTS_3.0_Messages_Finanzdatenformate_2010-08-06_final_version.pdf
-        (For more Information Chapter  B.5 page 163)
-        """
-        pass
-
     def _mt940_listdict(self, data, bank_code):
         """
         documentation:
@@ -661,14 +698,15 @@ class Dialogs:
         ' HITANS >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
         bank.message_number = 1
         bank.dialog_id = DIALOG_ID_UNASSIGNED
-        response = self._send_msg(bank, msg.msg_dialog_anonymous(bank))
+        response, _ = self._send_msg(
+            bank, msg.msg_dialog_anonymous(bank))
         self._store_bpd_shelve(bank, response)
 
     def sync(self, bank, msg=Messages()):
         ' HISYN >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
         bank.message_number = 1
         bank.dialog_id = DIALOG_ID_UNASSIGNED
-        response = self._send_msg(bank, msg.msg_dialog_syn(bank))
+        response, _ = self._send_msg(bank, msg.msg_dialog_syn(bank))
         self._store_sync_shelve(bank, response)
         self._end_dialog(bank)
 
@@ -684,55 +722,32 @@ class Dialogs:
 
         if self._start_dialog(bank):
             bank.tan_process = 4
-            response = self._send_msg(bank, msg.msg_holdings(bank))
+            response, hirms_codes = self._send_msg(
+                bank, msg.msg_holdings(bank))
+            response, hirms_codes = self._receive_msg(
+                bank, msg, response, hirms_codes)
             if not response:
-                return False  # thread checking
+                return False
             hiwpd = self._get_segment(bank, 'WPD')
             seg = response.find_segment_first(hiwpd)
             if not seg:
                 MessageBoxTermination(
                     info=MESSAGE_TEXT['HIWPD'].format(hiwpd.__name__), bank=bank)
                 return False  # thread checking
-            if type(seg.holdings) == bytes:
+            if type(seg.holdings) is bytes:
                 try:
                     holding_str = seg.holdings.decode('utf-8')
                 except UnicodeDecodeError:
                     holding_str = seg.holdings.decode('latin1')
             else:
                 holding_str = seg.holdings
-            logger.debug('\n\n>>>>> START MT535 DATA ' + 40 * '>' + '\n')
-            log_target(holding_str)
-            logger.debug('\n\n>>>>> START MT535 DATA PARSING ' +
-                         30 * '>' + '\n')
+            if self._logging:
+                logger.debug('\n\n>>>>> START MT535 DATA ' + 40 * '>' + '\n')
+                log_target(holding_str)
+                logger.debug('\n\n>>>>> START MT535 DATA PARSING ' +
+                             30 * '>' + '\n')
             self._end_dialog(bank)
             return self._mt535_listdict(holding_str)
-        else:
-            return None
-
-    def transactions(self, bank, msg=Messages()):
-
-        if self._start_dialog(bank):
-            bank.tan_process = 4
-            response = self._send_msg(bank, msg.msg_trading(bank))
-            if not response:
-                return False  # thread checking
-            seg = response.find_segment_first(HIWDU5)
-            if not seg:
-                MessageBoxTermination(MESSAGE_TEXT['HIWDU5'], bank=bank)
-                return False  # thread checking
-            if type(seg.transactions) == bytes:
-                try:
-                    mt536 = seg.transactions.decode('utf-8')
-                except UnicodeDecodeError:
-                    mt536 = seg.transactions.decode('latin1')
-            else:
-                mt536 = seg.transactions
-            logger.debug('\n\n>>>>> START MT535 DATA ' + 40 * '>' + '\n')
-            log_target(mt536)
-            logger.debug('\n\n>>>>> START MT535 DATA PARSING ' +
-                         30 * '>' + '\n')
-            self._end_dialog(bank)
-            return self._mt536_listdict(mt536)
         else:
             return None
 
@@ -741,30 +756,35 @@ class Dialogs:
         if self._start_dialog(bank):
             statements = []
             bank.tan_process = 4
-            code = None
-            response = self._send_msg(bank, msg.msg_statements(bank))
+            response, hirms_codes = self._send_msg(
+                bank, msg.msg_statements(bank))
+            response, hirms_codes = self._receive_msg(
+                bank, msg, response, hirms_codes)
             if not response:
-                return False  # thread checking
-            for seg in response.find_segments(HIRMS2):
-                for hirms in seg.responses:
-                    if hirms.code == '3010':  # No transactions found
-                        code = hirms.code
-            if code != '3010':
+                return []
+            if CODE_3010 in hirms_codes:
+                return statements
+            if CODE_0030 not in hirms_codes:
+                if CODE_3040 in hirms_codes:  # further turnovers exist
+                    MessageBoxInfo(message=MESSAGE_TEXT[CODE_3040].format(
+                        bank.bank_name, bank.account_number, bank.account_product_name), bank=bank, information=WARNING)
                 hikaz = self._get_segment(bank, 'KAZ')
                 seg = response.find_segment_first(hikaz)
                 if not seg:
-                    MessageBoxTermination(
-                        MESSAGE_TEXT['HIKAZ'].format(hikaz.__name__), bank=bank)
+                    MessageBoxInfo(message=MESSAGE_TEXT['HIKAZ'].format(
+                        bank.bank_name, bank.account_number, bank.account_product_name), bank=bank, information=ERROR)
                     return False  # thread checking
                 try:
                     statement_booked_str = seg.statement_booked.decode('utf-8')
                 except UnicodeDecodeError:
                     statement_booked_str = seg.statement_booked.decode(
                         'latin1')
-                logger.debug('\n\n>>>>> START MT940 DATA ' + 40 * '>' + '\n')
-                log_target(statement_booked_str)
-                logging.getLogger(__name__).debug(
-                    '\n\n>>>>> START MT940 DATA PARSING ' + 30 * '>' + '\n')
+                if self._logging:
+                    logger.debug('\n\n>>>>> START MT940 DATA ' +
+                                 40 * '>' + '\n')
+                    log_target(statement_booked_str)
+                    logging.getLogger(__name__).debug(
+                        '\n\n>>>>> START MT940 DATA PARSING ' + 30 * '>' + '\n')
                 statements = self._mt940_listdict(
                     statement_booked_str, bank.bank_code)
             self._end_dialog(bank)
@@ -772,40 +792,22 @@ class Dialogs:
         else:
             return None
 
-    def balances(self, bank, msg=Messages()):
-
-        if self._start_dialog(bank):
-            bank.tan_process = 4
-            response = self._send_msg(bank, msg.msg_balances(bank))
-            hisal = self._get_segment(bank, 'SAL')
-            seg = response.find_segment_first(hisal)
-            if seg:
-                balance = Balance(bank.bank_code,
-                                  bank.account_number,
-                                  seg.account_product,
-                                  seg.balance_booked.credit_debit,
-                                  seg.balance_booked.amount.amount,
-                                  seg.balance_booked.amount.currency)
-            else:
-                MessageBoxInfo(MESSAGE_TEXT['HISAL'].format(
-                    hisal.__name__), bank=bank)
-            self._end_dialog(bank)
-            return balance
-        else:
-            return None
-
     def transfer(self, bank, msg=Messages()):
 
         if self._start_dialog(bank):
             bank.tan_process = 4
-            response = self._send_msg(bank, msg.msg_transfer(bank))
+            response, _ = self._send_msg(
+                bank, msg.msg_transfer(bank))
             seg = response.find_segment_first(HITAN6)
             if not seg:
                 MessageBoxTermination(info=MESSAGE_TEXT['HITAN6'], bank=bank)
                 return False  # thread checking
             bank.task_reference = seg.task_reference
-            self._get_tan(bank, msg, response)
-            self._end_dialog(bank)
+            response, _ = self._get_tan(bank, msg, response)
+            if response:
+                self._end_dialog(bank)
+            else:
+                return None
         else:
             return None
 
@@ -813,14 +815,17 @@ class Dialogs:
 
         if self._start_dialog(bank):
             bank.tan_process = 4
-            response = self._send_msg(bank, msg.msg_date_transfer(bank))
+            response, _ = self._send_msg(
+                bank, msg.msg_date_transfer(bank))
             seg = response.find_segment_first(HITAN6)
             if not seg:
                 MessageBoxTermination(info=MESSAGE_TEXT['HITAN6'], bank=bank)
                 return False  # thread checking
             bank.task_reference = seg.task_reference
-
-            self._get_tan(bank, msg, response)
-            self._end_dialog(bank)
+            response, _ = self._get_tan(bank, msg, response)
+            if response:
+                self._end_dialog(bank)
+            else:
+                return None  # input of Tan canceled
         else:
             return None
