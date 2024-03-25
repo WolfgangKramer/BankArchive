@@ -37,8 +37,8 @@ pip install -r requirements.txt
 2. Import Bankidentifier Data (Bankleitzahlendateien ungepackt)
 3. Import FINTS Server Data
 4. Create your Banks
-# Banks under Test
- * BMW Bank
- * Consors
+# Banks in testing phase
+ * BMW Bank (not tested securities account data)
+ * Consors 
  * Flatexdegiro Bank AG
- * VR Bank
+ * VR Bank (not tested securities account data)
