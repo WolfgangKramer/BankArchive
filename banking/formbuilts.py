@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2024-03-25"
+__updated__ = "2024-03-26"
 @author: Wolfgang Kramer
 """
 
@@ -10,7 +10,6 @@ import sys
 
 from collections import namedtuple
 from datetime import date
-from threading import current_thread, main_thread
 from tkinter import (
     Tk, TclError, ttk, messagebox, Toplevel, StringVar, IntVar, INSERT, Text,
     W, E, filedialog, BOTH, BOTTOM, TOP, HORIZONTAL,
@@ -39,7 +38,7 @@ from banking.declarations import (
     DB_closing_currency, DB_price, FN_COLUMNS_EURO, FN_COLUMNS_PERCENT
 )
 from banking.pandastable_extension import Table
-from banking.utils import Amount, shelve_get_key, shelve_put_key, Calculate, list_positioning
+from banking.utils import Amount, check_main_thread, shelve_get_key, shelve_put_key, Calculate, list_positioning
 
 
 ENTRY = 'Entry'
@@ -271,8 +270,7 @@ class MessageBoxInfo():
 
     def __init__(self, message=None, title=MESSAGE_TITLE, bank=None, information_storage=None, information=INFORMATION):
 
-        # check if its not the main thread, avoid Tk() or ..
-        if not (current_thread() is main_thread()) or information_storage:
+        if not check_main_thread() or information_storage:
             if information_storage == Informations.PRICES_INFORMATIONS:  # messages downloading prices threading
                 Informations.prices_informations = ' '.join(
                     [Informations.prices_informations, '\n' + information, message])
@@ -300,8 +298,7 @@ class MessageBoxInfo():
 class MessageBoxError():
 
     def __init__(self, message=None, title=MESSAGE_TITLE):
-        # check if its not the main thread avoid Tk()e
-        if not (current_thread() is main_thread()):
+        if not check_main_thread:
             # its a banking Dialogue
             Informations.bankdata_informations = ' '.join(
                 [Informations.bankdata_informations, '\n' + ERROR, message])
@@ -329,8 +326,7 @@ class MessageBoxTermination(MessageBoxInfo):
                 message + '\n' + filename + '\n' + 'LINE:   ' +
                 str(line) + '   METHOD: ' + method
             )
-        # check if its not the main thread avoid Tk()
-        if not (current_thread() is main_thread()):
+        if not check_main_thread():
             # its a banking Dialogue
             Informations.bankdata_informations = ' '.join(
                 [Informations.bankdata_informations, '\n' + ERROR, bank.bank_name, bank.iban, message])
@@ -596,7 +592,7 @@ class BuiltBox(object):
 
         Caller.caller = self.__class__.__name__
         self.button_state = None
-        if current_thread() is main_thread():
+        if check_main_thread():
             self._header = header
             self._columnspan = columnspan
             self._button1_text = button1_text
@@ -1262,61 +1258,65 @@ class BuiltText(object):
     def __init__(self, title=MESSAGE_TITLE, header='', text=''):
 
         Caller.caller = self.__class__.__name__
-        if header == Informations.PRICES_INFORMATIONS:
-            Informations.prices_informations = ''
-        elif header == Informations.BANKDATA_INFORMATIONS:
-            Informations.bankdata_informations = ''
-        elif header == Informations.HOLDING_T_INFORMATIONS:
-            Informations.holding_t_informations = ''
-        self._builttext_window = Toplevel()
-        self._builttext_window.title(title)
-        self._builttext_window.geometry(BUILTEXT_WINDOW_POSITION)
-        if self._destroy_widget(text):  # check: discard output
-            destroy_widget(self._builttext_window)
-            return
-        # --------------------------------------------------------------
-        if header is not None:
-            header = ''
-        if header:
-            width = len(header) + 5
-            if width > WIDTH_TEXT:
+        if check_main_thread():
+            if header == Informations.PRICES_INFORMATIONS:
+                Informations.prices_informations = ''
+            elif header == Informations.BANKDATA_INFORMATIONS:
+                Informations.bankdata_informations = ''
+            elif header == Informations.HOLDING_T_INFORMATIONS:
+                Informations.holding_t_informations = ''
+            self._builttext_window = Toplevel()
+            self._builttext_window.title(title)
+            self._builttext_window.geometry(BUILTEXT_WINDOW_POSITION)
+            if self._destroy_widget(text):  # check: discard output
+                destroy_widget(self._builttext_window)
+                return
+            # --------------------------------------------------------------
+            if header is not None:
+                header = ''
+            if header:
+                width = len(header) + 5
+                if width > WIDTH_TEXT:
+                    width = WIDTH_TEXT
+            else:
                 width = WIDTH_TEXT
+            height = len(list(enumerate(text.splitlines()))) + 5
+            if height > HEIGHT_TEXT:
+                height = HEIGHT_TEXT
+            self._header = header
+            self._header_text = StringVar()
+            header_widget = Label(self._builttext_window, width=width,
+                                  textvariable=self._header_text, style='HDR.TLabel')
+            self._header_text.set(self._header)
+            header_widget.grid(sticky=W)
+            self.text_widget = Text(self._builttext_window, height=height, width=width,
+                                    font=('Courier', 8), wrap='none')
+            self.text_widget.grid(sticky=W)
+            self._scroll_x = Scrollbar(self._builttext_window, orient="horizontal",
+                                       command=self.text_widget.xview)
+            self._scroll_x.grid(sticky="ew")
+
+            scroll_y = Scrollbar(self._builttext_window, orient="vertical",
+                                 command=self.text_widget.yview)
+            scroll_y.grid(row=1, column=1, sticky="ns")
+
+            self.text_widget.configure(yscrollcommand=scroll_y.set,
+                                       xscrollcommand=self._handle_scroll_x)
+            textlines = text.splitlines()
+            for line, textline in enumerate(textlines):
+                self.text_widget.insert(END, textline + '\n')
+                self._set_tags(textline, line)
+
+            # self.text_widget.config(state=DISABLED)
+            # --------------------------------------------------------------
+            self._builttext_window.protocol(
+                WM_DELETE_WINDOW, self._wm_deletion_window)
+            self._builttext_window.lift
+            self._builttext_window.mainloop()
+            destroy_widget(self._builttext_window)
         else:
-            width = WIDTH_TEXT
-        height = len(list(enumerate(text.splitlines()))) + 5
-        if height > HEIGHT_TEXT:
-            height = HEIGHT_TEXT
-        self._header = header
-        self._header_text = StringVar()
-        header_widget = Label(self._builttext_window, width=width,
-                              textvariable=self._header_text, style='HDR.TLabel')
-        self._header_text.set(self._header)
-        header_widget.grid(sticky=W)
-        self.text_widget = Text(self._builttext_window, height=height, width=width,
-                                font=('Courier', 8), wrap='none')
-        self.text_widget.grid(sticky=W)
-        self._scroll_x = Scrollbar(self._builttext_window, orient="horizontal",
-                                   command=self.text_widget.xview)
-        self._scroll_x.grid(sticky="ew")
-
-        scroll_y = Scrollbar(self._builttext_window, orient="vertical",
-                             command=self.text_widget.yview)
-        scroll_y.grid(row=1, column=1, sticky="ns")
-
-        self.text_widget.configure(yscrollcommand=scroll_y.set,
-                                   xscrollcommand=self._handle_scroll_x)
-        textlines = text.splitlines()
-        for line, textline in enumerate(textlines):
-            self.text_widget.insert(END, textline + '\n')
-            self._set_tags(textline, line)
-
-        # self.text_widget.config(state=DISABLED)
-        # --------------------------------------------------------------
-        self._builttext_window.protocol(
-            WM_DELETE_WINDOW, self._wm_deletion_window)
-        self._builttext_window.lift
-        self._builttext_window.mainloop()
-        destroy_widget(self._builttext_window)
+            MessageBoxInfo(title=title, message=MESSAGE_TEXT['THREAD'].format(Caller.caller
+                                                                              ))
 
     def _wm_deletion_window(self):
 

@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2024-03-25"
+__updated__ = "2024-03-26"
 @author: Wolfgang Kramer
 """
 
@@ -13,7 +13,6 @@ import requests
 
 from datetime import date, datetime
 from operator import itemgetter
-from threading import current_thread, main_thread
 from fints.message import FinTSInstituteMessage
 from fints.segments.accounts import HISPAS1
 from fints.segments.auth import (
@@ -53,6 +52,7 @@ from banking.forms import PrintMessageCode, InputPIN
 from banking.message import Messages
 from banking.utils import (
     Amount,
+    check_main_thread,
     Calculate,
     create_iban,
     exception_error,
@@ -327,7 +327,7 @@ class Dialogs:
                 MessageBoxInfo(message=MESSAGE_TEXT[CODE_0030].format(
                     bank.bank_name, bank.account_number, bank.account_product_name), bank=bank, information=WARNING)
                 return [], hirms_codes
-            if current_thread() is main_thread():
+            if check_main_thread():
                 bank.task_reference = seg.task_reference
                 response, hirms_codes = self._get_tan(bank, msg, response)
             else:
@@ -720,6 +720,7 @@ class Dialogs:
 
     def holdings(self, bank, msg=Messages()):
 
+        holdings = []
         if self._start_dialog(bank):
             bank.tan_process = 4
             response, hirms_codes = self._send_msg(
@@ -727,13 +728,13 @@ class Dialogs:
             response, hirms_codes = self._receive_msg(
                 bank, msg, response, hirms_codes)
             if not response:
-                return False
+                return holdings
             hiwpd = self._get_segment(bank, 'WPD')
             seg = response.find_segment_first(hiwpd)
             if not seg:
                 MessageBoxTermination(
                     info=MESSAGE_TEXT['HIWPD'].format(hiwpd.__name__), bank=bank)
-                return False  # thread checking
+                return holdings  # threading continues
             if type(seg.holdings) is bytes:
                 try:
                     holding_str = seg.holdings.decode('utf-8')
@@ -747,33 +748,34 @@ class Dialogs:
                 logger.debug('\n\n>>>>> START MT535 DATA PARSING ' +
                              30 * '>' + '\n')
             self._end_dialog(bank)
-            return self._mt535_listdict(holding_str)
-        else:
-            return None
+            holdings = self._mt535_listdict(holding_str)
+        return holdings
 
     def statements(self, bank, msg=Messages()):
 
+        statements = []
         if self._start_dialog(bank):
-            statements = []
             bank.tan_process = 4
             response, hirms_codes = self._send_msg(
                 bank, msg.msg_statements(bank))
             response, hirms_codes = self._receive_msg(
                 bank, msg, response, hirms_codes)
             if not response:
-                return []
+                return statements
             if CODE_3010 in hirms_codes:
                 return statements
             if CODE_0030 not in hirms_codes:
                 if CODE_3040 in hirms_codes:  # further turnovers exist
                     MessageBoxInfo(message=MESSAGE_TEXT[CODE_3040].format(
-                        bank.bank_name, bank.account_number, bank.account_product_name), bank=bank, information=WARNING)
+                        bank.bank_name, bank.account_number, bank.account_product_name),
+                        bank=bank, information=WARNING)
                 hikaz = self._get_segment(bank, 'KAZ')
                 seg = response.find_segment_first(hikaz)
                 if not seg:
                     MessageBoxInfo(message=MESSAGE_TEXT['HIKAZ'].format(
-                        bank.bank_name, bank.account_number, bank.account_product_name), bank=bank, information=ERROR)
-                    return False  # thread checking
+                        bank.bank_name, bank.account_number, bank.account_product_name),
+                        bank=bank, information=ERROR)
+                    return statements  # threading continues
                 try:
                     statement_booked_str = seg.statement_booked.decode('utf-8')
                 except UnicodeDecodeError:
@@ -788,9 +790,7 @@ class Dialogs:
                 statements = self._mt940_listdict(
                     statement_booked_str, bank.bank_code)
             self._end_dialog(bank)
-            return statements
-        else:
-            return None
+        return statements
 
     def transfer(self, bank, msg=Messages()):
 

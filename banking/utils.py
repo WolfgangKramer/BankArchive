@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2024-03-25"
+__updated__ = "2024-03-26"
 @author: Wolfgang Kramer
 """
 
@@ -32,13 +32,24 @@ from banking.declarations import (
 )
 
 
+def check_main_thread():
+    """
+    True if main thread is in main loop
+    """
+    # check if its the main thread, Tkinter can be used otherwise avoid T Tk()
+    if current_thread() is main_thread():
+        return True
+    else:
+        return False
+
+
 def error_in_thread(informations):
     """
     Used to avoid Tk() routines
 
     if its not the main thread and  a serious error occurs, True is returned
     """
-    if current_thread() is main_thread():
+    if check_main_thread():
         return False
     elif find_pattern(informations, ERROR):
         return True

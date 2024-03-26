@@ -1,6 +1,6 @@
 '''
 Created on 26.11.2019
-__updated__ = "2024-03-25"
+__updated__ = "2024-03-26"
 @author: Wolfgang Kramer
 '''
 
@@ -12,7 +12,6 @@ import sqlalchemy
 from datetime import date, timedelta, datetime
 from inspect import stack
 from json import dumps, loads
-from threading import current_thread, main_thread
 
 from banking.declarations import (
     CREDIT,
@@ -46,7 +45,7 @@ from banking.formbuilts import (
 )
 from banking.forms import Acquisition
 from banking.tools import transfer_holding_to_access, transfer_statement_to_access
-from banking.utils import Calculate
+from banking.utils import Calculate, check_main_thread
 
 
 dec2 = Calculate(places=2)
@@ -252,7 +251,7 @@ class MariaDB(object):
             acquisition_amount = data[0].acquisition_amount
         else:
             if data[-1].price_currency == PERCENT:
-                if current_thread() is main_thread():
+                if check_main_thread():
                     data[-1].acquisition_amount = data[-1].total_amount
                     acquisition_input_amount = Acquisition(
                         header=MESSAGE_TEXT['ACQUISITION_HEADER'].format(
