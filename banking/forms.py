@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2024-03-25"
+__updated__ = "2024-04-13"
 @author: Wolfgang Kramer
 """
 
@@ -2183,26 +2183,43 @@ class PandasBoxBalancesAllBanks(PandasBoxStatement):
 
         bank_names = dictbank_names()
         dataframe_all = concat(self.dataframe)
+        max_entry_date = dataframe_all[DB_entry_date].max()
+        # total sum all Banks
         self.dataframe_append_sum(
             dataframe_all, [DB_closing_balance, DB_opening_balance])
         dataframe_all[KEY_BANK_NAME] = FN_TOTAL
+        dataframe_all[DB_entry_date] = max_entry_date
+        # total sum of each bank
         dataframes = []
         for dataframe in self.dataframe:
             self.dataframe_append_sum(
                 dataframe, [DB_closing_balance, DB_opening_balance])
+            dataframe[DB_entry_date] = max_entry_date
             dataframe[KEY_BANK_NAME] = ''
             dataframe.at[len(
                 dataframe)-1, KEY_BANK_NAME] = bank_names[dataframe.at[0, KEY_BANK_CODE]]
             dataframes.append(dataframe)
+        # append total sum all Bank
         dataframes.append(dataframe_all.tail(1))
         self.dataframe = concat(dataframes, ignore_index=True)
+        PandasBoxStatement._dataframe(self)
         self.dataframe.reset_index()
+        # calculate percent changes
         self.dataframe[FN_DAILY_PERCENT] = (
-            (self.dataframe[DB_closing_balance] - self.dataframe[DB_opening_balance]) /
-            self.dataframe[DB_opening_balance]).apply(lambda x: dec2.convert(x))
+            ((self.dataframe[DB_closing_balance] - self.dataframe[DB_opening_balance])
+             / self.dataframe[DB_opening_balance]) * 100
+        ) .apply(lambda x: dec2.convert(x))
+        # if no changes set set percent = 0
+        self.dataframe[FN_DAILY_PERCENT] = self.dataframe.apply(
+            lambda row: 0 if max_entry_date > row[DB_entry_date] else row[FN_DAILY_PERCENT], axis=1)
+        # format display
         self.dataframe = self.dataframe[[KEY_ACC_BANK_CODE, KEY_ACC_ACCOUNT_NUMBER,
                                          KEY_ACC_PRODUCT_NAME, DB_entry_date, DB_closing_balance,
                                          FN_DAILY_PERCENT, KEY_BANK_NAME]]
+        bank_name = self.dataframe[KEY_BANK_NAME]
+        self.dataframe.drop(
+            [KEY_BANK_NAME, KEY_ACC_BANK_CODE, DB_entry_date], inplace=True, axis=1)
+        self.dataframe.insert(0, KEY_BANK_NAME, bank_name)
 
     def _set_column_format(self):
 

@@ -1,16 +1,16 @@
 """
 Created on 09.12.2019
-__updated__ = "2024-03-25"
+__updated__ = "2024-04-11"
 Author: Wolfang Kramer
 """
 
 import io
 import sys
-import time
 import requests
 import webbrowser
 
 from contextlib import redirect_stdout
+from time import sleep
 from datetime import datetime, date, timedelta
 from threading import Thread
 from tkinter import Tk, Menu, TclError, GROOVE, ttk, PhotoImage, Canvas, StringVar, font
@@ -283,25 +283,23 @@ class FinTS_MariaDB_Banking(object):
                         MessageBoxInfo(MESSAGE_TEXT['CREDENTIALS'].format(
                             self.bank_names[bank_code]))
             bank.opened_bank_code = None  # triggers bank opening messages
-            threads = []
+            self.progress.start()
             for bank_code in banks_download:
                 bank = self._bank_init(bank_code)
                 self._footer.set(
-                    MESSAGE_TEXT['DOWNLOAD_RUNNING'].format(FN_ALL_BANKS))
-                download_thread = Download(self.mariadb, bank)
-                threads.append(download_thread)
+                    MESSAGE_TEXT['DOWNLOAD_RUNNING'].format(bank.bank_name))
+                download_thread = Thread(
+                    name=bank.bank_name, target=self.mariadb.all_accounts, args=(bank,))
                 download_thread.start()
-            self.progress.start()
-            for thread in threads:
-                while thread.is_alive():
-                    time.sleep(1)
+                while download_thread.is_alive():
+                    sleep(1)
                     self.progress.update_progressbar()
+            self.progress.stop()
+            self._footer.set(
+                MESSAGE_TEXT['DOWNLOAD_DONE'].format(CANCELED, 10 * '!'))
         else:
             for bank_code in listbank_codes():
                 self._all_accounts(bank_code)
-        self.progress.stop()
-        self._footer.set(
-            MESSAGE_TEXT['DOWNLOAD_DONE'].format(CANCELED, 10 * '!'))
         self._show_informations()
 
     def _all_accounts(self, bank_code):
@@ -1337,7 +1335,7 @@ class FinTS_MariaDB_Banking(object):
                 state = select_isins.button_state
                 field_list = select_isins.field_list
                 if self.shelve_app[KEY_THREADING] == TRUE:
-                    download_prices = Thread(target=self._import_prices_run,
+                    download_prices = Thread(name=MENU_TEXT['Prices'], target=self._import_prices_run,
                                              args=(self.mariadb, title, field_list, state))
                     download_prices.start()
                 else:
@@ -2349,18 +2347,3 @@ class DataTransactionDetail(Data_ISIN_Period):
                 select_holding_last[0], 0, TRANSACTION_DELIVERY,  *select_holding_last[1:])
             select_isin_transaction.append(select_holding_last)
         return select_isin_transaction
-
-
-class Download(Thread):
-    """
-    Download all Accounts of Bank
-    """
-
-    def __init__(self, mariadb, bank):
-        super().__init__(name=bank.bank_name)
-        self.bank = bank
-        self.mariadb = mariadb
-
-    def run(self):
-
-        self.mariadb.all_accounts(self.bank)

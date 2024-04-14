@@ -1,6 +1,6 @@
 '''
 Created on 26.11.2019
-__updated__ = "2024-03-26"
+__updated__ = "2024-04-11"
 @author: Wolfgang Kramer
 '''
 
@@ -360,9 +360,11 @@ class MariaDB(object):
             bank.account_number = account[KEY_ACC_ACCOUNT_NUMBER]
             bank.account_product_name = account[KEY_ACC_PRODUCT_NAME]
             bank.iban = account[KEY_ACC_IBAN]
-            Informations.bankdata_informations = Informations.bankdata_informations + '\n' + INFORMATION + (
-                MESSAGE_TEXT['DOWNLOAD_ACCOUNT'].format(bank.bank_name, bank.account_number,
-                                                        bank.account_product_name, bank.iban))
+            information = MESSAGE_TEXT['DOWNLOAD_ACCOUNT'].format(
+                bank.bank_name, bank.account_number, bank.account_product_name, bank.iban)
+            print(information)
+            Informations.bankdata_informations = Informations.bankdata_informations + \
+                '\n' + INFORMATION + information
             if bank.scraper:
                 if 'HKKAZ' in account[KEY_ACC_ALLOWED_TRANSACTIONS]:
                     if self._statements(bank) is None:

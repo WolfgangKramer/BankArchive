@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2024-03-26"
+__updated__ = "2024-04-13"
 @author: Wolfgang Kramer
 """
 
@@ -16,9 +16,10 @@ import sys
 import traceback
 import requests
 
-from threading import current_thread, main_thread
+from threading import current_thread, main_thread, active_count, enumerate
 from tkinter import Tk, messagebox, TclError
 from inspect import stack
+from time import sleep
 from datetime import date, timedelta, datetime
 from decimal import Decimal, getcontext, ROUND_HALF_EVEN, DivisionByZero
 
@@ -38,20 +39,6 @@ def check_main_thread():
     """
     # check if its the main thread, Tkinter can be used otherwise avoid T Tk()
     if current_thread() is main_thread():
-        return True
-    else:
-        return False
-
-
-def error_in_thread(informations):
-    """
-    Used to avoid Tk() routines
-
-    if its not the main thread and  a serious error occurs, True is returned
-    """
-    if check_main_thread():
-        return False
-    elif find_pattern(informations, ERROR):
         return True
     else:
         return False
@@ -151,8 +138,12 @@ def exception_error(title=MESSAGE_TITLE, message=''):
 
     _type, _value, _traceback = sys.exc_info()
     _traceback = traceback.extract_tb(_traceback)
-    _message = (message + '\n\n' + MESSAGE_TEXT['UNEXCEPTED_ERROR'].format(
-        stack()[1][1], stack()[1][2], stack()[1][3], _type, _value.args[0],  _traceback))
+    try:
+        _message = (message + '\n\n' + MESSAGE_TEXT['UNEXCEPTED_ERROR'].format(
+            stack()[1][1], stack()[1][2], stack()[1][3], _type, _value.args[0],  _traceback))
+    except Exception:
+        print("_type, _value, _traceback = sys.exc_info()",
+              _type, _value, _traceback)
     # check if its not the main thread, avoid Tk() or ..
     if current_thread() is main_thread():
         Info(title=title, message=_message)

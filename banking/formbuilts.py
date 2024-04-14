@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2024-03-26"
+__updated__ = "2024-04-08"
 @author: Wolfgang Kramer
 """
 
@@ -38,7 +38,7 @@ from banking.declarations import (
     DB_closing_currency, DB_price, FN_COLUMNS_EURO, FN_COLUMNS_PERCENT
 )
 from banking.pandastable_extension import Table
-from banking.utils import Amount, check_main_thread, shelve_get_key, shelve_put_key, Calculate, list_positioning
+from banking.utils import Amount, check_main_thread, shelve_get_key, shelve_put_key, Calculate, list_positioning, exception_error
 
 
 ENTRY = 'Entry'
@@ -298,17 +298,21 @@ class MessageBoxInfo():
 class MessageBoxError():
 
     def __init__(self, message=None, title=MESSAGE_TITLE):
-        if not check_main_thread:
-            # its a banking Dialogue
-            Informations.bankdata_informations = ' '.join(
-                [Informations.bankdata_informations, '\n' + ERROR, message])
-        else:
-            window = Tk()
-            window.withdraw()
-            message = extend_message_len(title, message)
-            window.title(title)
-            messagebox.showerror(title=title, message=message)
-            MessageBoxTermination()
+        print(message)
+        try:
+            if not check_main_thread:
+                # its a banking Dialogue
+                Informations.bankdata_informations = ' '.join(
+                    [Informations.bankdata_informations, '\n' + ERROR, message])
+            else:
+                window = Tk()
+                window.withdraw()
+                message = extend_message_len(title, message)
+                window.title(title)
+                messagebox.showerror(title=title, message=message)
+                MessageBoxTermination()
+        except Exception:
+            exception_error(message=message)
 
 
 class MessageBoxTermination(MessageBoxInfo):

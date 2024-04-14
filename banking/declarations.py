@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2024-03-25"
+__updated__ = "2024-03-28"
 @author: Wolfgang Kramer
 """
 
@@ -436,8 +436,8 @@ FN_PROPORTIONAL = 'PROPORTIONAL'
 FN_ABSOLUTE = 'ABSOLUTE'
 FN_TOTAL = 'TOTAL'
 FN_TOTAL_PERCENT = '% Total'
-FN_PERIOD_PERCENT = '% Period'
-FN_DAILY_PERCENT = '% Daily'
+FN_PERIOD_PERCENT = 'Period'
+FN_DAILY_PERCENT = 'Day'
 FN_PROFIT = 'Profit'
 FN_PROFIT_LOSS = 'Profit&Loss'
 FN_PROFIT_CUM = 'Performance'
