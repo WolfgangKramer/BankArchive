@@ -1,6 +1,6 @@
 '''
 Created on 26.11.2019
-__updated__ = "2024-04-11"
+__updated__ = "2024-04-21"
 @author: Wolfgang Kramer
 '''
 
@@ -362,7 +362,6 @@ class MariaDB(object):
             bank.iban = account[KEY_ACC_IBAN]
             information = MESSAGE_TEXT['DOWNLOAD_ACCOUNT'].format(
                 bank.bank_name, bank.account_number, bank.account_product_name, bank.iban)
-            print(information)
             Informations.bankdata_informations = Informations.bankdata_informations + \
                 '\n' + INFORMATION + information
             if bank.scraper:
@@ -429,7 +428,6 @@ class MariaDB(object):
         Method executes SQL statement; no result set will be returned!
         rowcount = True   returns row_count of UPDATE, INSERT; DELETE
         '''
-        # print(sql_statement, "\n", vars_, "\n")
         if self.holding_switch == HOLDING_T:
             sql_statement = sql_statement.replace(HOLDING, HOLDING_T)
             sql_statement = sql_statement.replace(HOLDING_T + '_t', HOLDING_T)
