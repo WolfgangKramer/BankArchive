@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2024-04-08"
+__updated__ = "2024-05-13"
 @author: Wolfgang Kramer
 """
 
@@ -101,6 +101,8 @@ FIELDS_BANKIDENTIFIER = {}
 FIELDS_SERVER = {}
 FIELDS_ISIN = {}
 FIELDS_PRICES = {}
+FIELDS_LEDGER = {}
+FIELDS_LEDGER_COA = {}
 
 re_amount = re.compile(r"\d+\.\d+")
 re_amount_int = re.compile(r"\d+")
@@ -1354,7 +1356,7 @@ class BuiltPandasBox(Frame):
     https://readthedocs.org/projects/pandastable/downloads/pdf/latest/
 
 
-    TOP-LEVE
+    TOP-LEVEL
 
     L-WINDOW        Shows Dataframe
 
@@ -1397,7 +1399,7 @@ class BuiltPandasBox(Frame):
         self.column_format = {}
         self.fields = {**FIELDS_HOLDING, **FIELDS_STATEMENT, **FIELDS_TRANSACTION,
                        **FIELDS_BANKIDENTIFIER, **FIELDS_SERVER, **FIELDS_ISIN,
-                       **FIELDS_PRICES}
+                       **FIELDS_PRICES, **FIELDS_LEDGER, **FIELDS_LEDGER_COA}
         self._dataframe()
         self._dataframe_append_sum()
         self.name = name

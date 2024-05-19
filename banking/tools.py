@@ -1,6 +1,6 @@
 """
 Created on 01.02.2021
-__updated__ = "2024-03-25"
+__updated__ = "2024-05-12"
 @author: Wolfg
 """
 
@@ -12,17 +12,15 @@ from datetime import date, timedelta
 
 from banking.declarations import (
     DEBIT,
-    DB_name, DB_ISIN,
-    HOLDING, HOLDING_VIEW,
+    HOLDING,
     ISIN,
     BANK_MARIADB_INI,
-    MESSAGE_TEXT, MESSAGE_TITLE,
+    MESSAGE_TEXT,
     KEY_MS_ACCESS,
-    PERCENT,
     STATEMENT,
 )
 from banking.formbuilts import (
-    MessageBoxAsk, MessageBoxInfo, MessageBoxTermination
+    MessageBoxInfo, MessageBoxTermination
 )
 from banking.utils import (
     Calculate,
@@ -60,114 +58,6 @@ def _ms_access_execute(ms_access_cursor, strSQL, vars_):
     except pyodbc.Error as err:
         MessageBoxTermination(
             info=err.args[0] + '\n' + err.args[1] + '\n' + strSQL)
-
-
-def import_holding_from_access(mariadb, iban):
-    """
-    Import records in MariaDB table holding from MS Access DB
-    """
-    ms_access_cursor = _ms_access_connect()
-    if ms_access_cursor is None:
-        return
-    strSQL = ("SELECT ISIN, IdentificationOfSecurities, PricePerUnitAmount, " +
-              "PricePerUnitCurrencyCode, SecuritiesQuantity,ValueAmount, " +
-              "DateOfPrice from DEPOT" + iban[4:12])
-    _ms_access_execute(ms_access_cursor, strSQL, None)
-    origin = shelve_get_key(BANK_MARIADB_INI, KEY_MS_ACCESS)
-    msg = MessageBoxAsk(title=MESSAGE_TITLE,
-                        message=MESSAGE_TEXT['DELETE_ORIGINS'].format(HOLDING,
-                                                                      origin))
-    if msg.result:
-        return
-    sql_statement = ("DELETE FROM " + HOLDING +
-                     " WHERE iban=? AND ORIGIN=?")
-    vars_ = (iban, origin[0:50])
-    mariadb.execute(sql_statement, vars_=vars_)
-    fieldnames = ['ISIN', 'name', 'market_price', 'price_currency',
-                  'pieces', 'total_amount', 'price_date']
-    Bank = namedtuple('Bank', 'bank_name, iban')
-    bank = Bank(iban, iban)
-    for row in ms_access_cursor.fetchall():
-        holding = dict(zip(fieldnames, row))
-        sql_statement = "INSERT INTO " + HOLDING + " SET iban=?"
-        vars_ = (bank.iban,)
-        for key in holding:
-            if holding.get(key) is not None:
-                if holding[key] is not None:
-                    if isinstance(holding[key], date):
-                        vars_ = vars_ + (str(holding[key]),)
-                    else:
-                        vars_ = vars_ + (holding[key],)
-                    sql_statement = sql_statement + ", " + str(key) + "=?"
-        vars_ = vars_ + (origin[0:50],)
-        sql_statement = sql_statement + ", origin=?"
-        mariadb.execute(sql_statement, vars_=vars_)
-        sql_statement = "INSERT IGNORE " + ISIN + "(ISIN, name) VALUES(?, ?)"
-        vars_ = (holding['ISIN'], holding['name'])
-        mariadb.execute(sql_statement, vars_=vars_)
-    MessageBoxInfo(message=MESSAGE_TEXT['TASK_DONE'].format(
-        'insert_holding_from_access'))
-    """
-    Update Table holding total_amount_portfolio
-    """
-    update_holding_total_amount_portfolio(mariadb, iban)
-    """
-    Update Table holding acquisition fields of imports
-    """
-    price_dates = mariadb.select_holding_fields(iban=iban)
-    select_isins = mariadb.select_dict(
-        HOLDING_VIEW, DB_name, DB_ISIN, iban=iban)
-    isins = list(select_isins.values())
-    for isin in isins:
-        result = mariadb.select_holding_acquisition(iban, isin, origin=None)
-        data = []
-        for row in result:
-            if len(data) == 2:
-                data.pop(0)
-            data.append(row)
-            if (price_dates.index(data[-1].price_date) -
-                    price_dates.index(data[0].price_date)) > 1:
-                # time gap, therefore first position
-                data.pop(0)
-            if len(data) == 1:  # first position
-                acquisition_amount = data[0].total_amount
-                acquisition_price = data[0].market_price
-            else:  # no time gap
-                pieces = dec2.subtract(data[-1].pieces, data[0].pieces)
-                if pieces == 0:  # no change in position
-                    acquisition_amount = data[0].acquisition_amount
-                    acquisition_price = data[0].acquisition_price
-                elif pieces < 0:  # some pieces sold
-                    if data[-1].price_currency == PERCENT:
-                        acquisition_price = dec6.divide(data[-1].acquisition_amount,
-                                                        data[-1].pieces)
-                    else:
-                        acquisition_price = data[0].acquisition_price
-                    acquisition_amount = dec2.multiply(
-                        acquisition_price, data[-1].pieces)
-                    acquisition_price = data[0].acquisition_price
-                elif pieces > 0:  # additional pieces bought
-                    part = dec6.divide(pieces, data[-1].pieces)
-                    acquisition_amount = dec2.multiply(
-                        part, data[-1].total_amount)
-                    acquisition_amount = dec2.add(
-                        acquisition_amount, data[0].acquisition_amount)
-                    if data[-1].price_currency == PERCENT:
-                        if data[-1].total_amount == 0:
-                            acquisition_price = data[0].acquisition_price
-                        else:
-                            acquisition_price = dec6.divide(acquisition_amount,
-                                                            data[-1].total_amount)
-                            acquisition_price = dec6.multiply(acquisition_price,
-                                                              data[-1].market_price)
-                    else:
-                        acquisition_price = dec6.divide(
-                            acquisition_amount, data[-1].pieces)
-            data[-1].acquisition_price = acquisition_price
-            data[-1].acquisition_amount = acquisition_amount
-            mariadb.update_holding_acquisition(iban, isin, data[-1])
-    MessageBoxInfo(message=MESSAGE_TEXT['TASK_DONE'].format(
-        'update_holding_acquisition'))
 
 
 def update_holding_total_amount_portfolio(mariadb, iban):
@@ -262,7 +152,10 @@ def transfer_holding_to_access(mariadb, iban):
         row = Holding._make(row)
         sql_statement = "SELECT name FROM " + ISIN + " WHERE isin=?"
         name = mariadb.execute(sql_statement, vars_=(row.ISIN,))
-        name, = name[0]
+        if name:
+            name, = name[0]
+        else:
+            name = row.ISIN
         strSQL = "Delete * from DEPOT" + bank_code + " WHERE ISIN=? AND DateOfPrice=?"
         _ms_access_execute(ms_access_cursor, strSQL,
                            (row.ISIN, row.price_date))

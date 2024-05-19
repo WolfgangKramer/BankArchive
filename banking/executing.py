@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2024-04-11"
+__updated__ = "2024-05-19"
 Author: Wolfang Kramer
 """
 
@@ -25,8 +25,8 @@ from banking.declarations import (
     Balance, BANKIDENTIFIER, BANK_MARIADB_INI,
     BMW_BANK_CODE, BUNDESBANK_BLZ_MERKBLATT, BUNDEBANK_BLZ_DOWNLOAD,
     DB_acquisition_price,  DB_amount_currency,
-    DB_opening_balance, DB_opening_currency, DB_opening_status,
-    DB_closing_balance, DB_closing_currency, DB_closing_status,
+    DB_opening_balance, DB_opening_currency, DB_opening_status, DB_opening_entry_date,
+    DB_closing_balance, DB_closing_currency, DB_closing_status, DB_closing_entry_date,
     DB_counter,
     DB_code, DB_ISIN, DB_entry_date,
     DB_name, DB_pieces,
@@ -98,15 +98,16 @@ from banking.forms import (
 from banking.mariadb import MariaDB
 from banking.scraper import AlphaVantage, BmwBank
 from banking.sepa import SepaCreditTransfer
-from banking.tools import import_holding_from_access, update_holding_total_amount_portfolio
+from banking.tools import update_holding_total_amount_portfolio
 from banking.utils import (
     Calculate,
-    Datulate, dictaccount, dict_get_first_key,
+    date_before_date, Datulate, dictaccount, dict_get_first_key,
     exception_error,
     listbank_codes,
     shelve_exist, shelve_put_key, shelve_get_key,
     dictbank_names, delete_shelve_files,
 )
+from _datetime import timedelta
 
 
 PRINT_LENGTH = 140
@@ -127,7 +128,7 @@ class FinTS_MariaDB_Banking(object):
     Execution of Bank Dialogues
     """
 
-    def __init__(self):
+    def __init__(self, title=MESSAGE_TITLE):
 
         if shelve_exist(BANK_MARIADB_INI):
             self.shelve_app = shelve_get_key(
@@ -155,7 +156,7 @@ class FinTS_MariaDB_Banking(object):
             self.window = None
             self.window = Tk()
             self.progress = ProgressBar(self.window)
-            self.window.title(MESSAGE_TITLE)
+            self.window.title(title)
             self.window.geometry('600x400+1+1')
             self.window.resizable(0, 0)
             _canvas = Canvas(self.window)
@@ -165,7 +166,7 @@ class FinTS_MariaDB_Banking(object):
             _canvas.create_text(300, 200, fill="lightblue", font=('Arial', 20, 'bold'),
                                 text=MESSAGE_TEXT['DATABASE'].format(MariaDBname))
             self._def_styles()
-            self._create_menu(MariaDBname)
+            self.create_menu(MariaDBname)
             self._footer = StringVar()
             self.message_widget = Label(self.window,
                                         textvariable=self._footer, foreground='RED', justify='center')
@@ -361,7 +362,7 @@ class FinTS_MariaDB_Banking(object):
                 self._wm_deletion_window()
             self.shelve_app = shelve_get_key(BANK_MARIADB_INI, APP_SHELVE_KEYS)
 
-    def _create_menu(self, MariaDBname):
+    def create_menu(self, MariaDBname):
 
         menu_font = font.Font(family='Arial', size=11)
         menu = Menu(self.window)
@@ -584,10 +585,6 @@ class FinTS_MariaDB_Banking(object):
                                                   bg='Lightblue')
                                 account_menu.add_cascade(label=MENU_TEXT['Extras'],
                                                          menu=extra_menu, underline=0)
-                                extra_menu.add_command(
-                                    label=MENU_TEXT['Import MS_Access Data'],
-                                    command=(lambda x=self.mariadb,
-                                             y=acc[KEY_ACC_IBAN]: import_holding_from_access(x, y)))
                                 extra_menu.add_command(
                                     label=MENU_TEXT['Update Portfolio Total Amount'],
                                     command=(lambda x=self.mariadb,
@@ -1798,23 +1795,44 @@ class FinTS_MariaDB_Banking(object):
                     STATEMENT, field_name_date=DB_entry_date, iban=iban)
                 if max_entry_date:
                     fields = [DB_counter,
-                              DB_closing_status, DB_closing_balance, DB_closing_currency,
-                              DB_opening_status, DB_opening_balance, DB_opening_currency]
+                              DB_closing_status, DB_closing_balance, DB_closing_currency, DB_closing_entry_date,
+                              DB_opening_status, DB_opening_balance, DB_opening_currency, DB_opening_entry_date]
                     balance = self.mariadb.select_table(
                         STATEMENT, fields, result_dict=True, iban=iban, entry_date=max_entry_date, order=DB_counter)
                     if balance:
-                        # STATEMENT Account contains 1-n records per day
-                        balances.append(Balance(bank_code,
-                                                acc[KEY_ACC_ACCOUNT_NUMBER],
-                                                acc[KEY_ACC_PRODUCT_NAME],
-                                                max_entry_date,
-                                                balance[-1][DB_closing_status],
-                                                balance[-1][DB_closing_balance],
-                                                balance[-1][DB_closing_currency],
-                                                balance[0][DB_opening_status],
-                                                balance[0][DB_opening_balance],
-                                                balance[0][DB_opening_currency],
-                                                ))
+                        # STATEMENT Account
+                        current_date = date.today()
+                        # Monday is 0 and Sunday is 6
+                        if date.weekday(current_date) == 5:
+                            current_date = current_date - timedelta(1)
+                        # Monday is 0 and Sunday is 6
+                        elif date.weekday(current_date) == 6:
+                            current_date = current_date - timedelta(2)
+                        if balance[-1][DB_closing_entry_date] == current_date:
+                            balances.append(Balance(bank_code,
+                                                    acc[KEY_ACC_ACCOUNT_NUMBER],
+                                                    acc[KEY_ACC_PRODUCT_NAME],
+                                                    max_entry_date,
+                                                    balance[-1][DB_closing_status],
+                                                    balance[-1][DB_closing_balance],
+                                                    balance[-1][DB_closing_currency],
+                                                    balance[0][DB_opening_status],
+                                                    balance[0][DB_opening_balance],
+                                                    balance[0][DB_opening_currency],
+                                                    ))
+                        else:
+                            balances.append(Balance(bank_code,
+                                                    acc[KEY_ACC_ACCOUNT_NUMBER],
+                                                    acc[KEY_ACC_PRODUCT_NAME],
+                                                    max_entry_date,
+                                                    balance[-1][DB_closing_status],
+                                                    balance[-1][DB_closing_balance],
+                                                    balance[-1][DB_closing_currency],
+                                                    balance[-1][DB_closing_status],
+                                                    balance[-1][DB_closing_balance],
+                                                    balance[-1][DB_closing_currency],
+                                                    ))
+
                 else:
                     # HOLDING Account
                     max_price_date = self.mariadb.select_max_price_date(

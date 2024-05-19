@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2024-03-28"
+__updated__ = "2024-05-15"
 @author: Wolfgang Kramer
 """
 
@@ -54,16 +54,18 @@ FORMS_TEXT = {
     'Adjust Prices': 'Adjustments'
 }
 MENU_TEXT = {
+    'Ledger': 'Ledger',
+    'Accounting': 'Accounting',
+    'Chart of Accounts': 'Chart of Accounts',
+
     'Show': 'Show',
     'WebSites': 'WebSites',
-    'Alpha Vantage': 'Alpha Vantage Query',
-    'Alpha Vantage Symbol Search': 'Alpha Vantage Symbol Search',
-    'Frankfurter Boerse': 'Frankfurter Boerse',
-    'Onvista': 'Onvista',
-    'Boerse.de': 'Boerse.de',
-
+            'Alpha Vantage': 'Alpha Vantage Query',
+            'Alpha Vantage Symbol Search': 'Alpha Vantage Symbol Search',
+            'Frankfurter Boerse': 'Frankfurter Boerse',
+            'Onvista': 'Onvista',
+            'Boerse.de': 'Boerse.de',
     'Balances': 'Balances',
-
     'Statement': 'Statement',
     'Holding': 'Holding',
 
@@ -268,6 +270,8 @@ ISIN_NAME = 'isin_name'
 ISIN_WITH_TICKER = 'isin_with_ticker'
 PRICES = 'prices'
 PRICES_ISIN_VIEW = 'prices_isin_view'
+LEDGER = 'ledger'
+LEDGER_COA = 'ledger_coa'
 """
  ------------------Shelve_Files------------------------------------------------
 """

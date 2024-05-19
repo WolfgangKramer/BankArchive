@@ -1,6 +1,6 @@
 '''
 Created on 26.11.2019
-__updated__ = "2024-04-21"
+__updated__ = "2024-05-16"
 @author: Wolfgang Kramer
 '''
 
@@ -29,6 +29,7 @@ from banking.declarations import (
     HOLDING, HOLDING_VIEW, HOLDING_T,
     ISIN, PRICES,
     KEY_ACC_IBAN, KEY_ACC_ACCOUNT_NUMBER, KEY_ACC_ALLOWED_TRANSACTIONS, KEY_ACC_PRODUCT_NAME,
+    LEDGER, LEDGER_COA,
     MESSAGE_TEXT,
     ORIGIN,
     PERCENT,
@@ -41,6 +42,7 @@ from banking.formbuilts import (
     FIELDS_STATEMENT,
     FIELDS_TRANSACTION, FIELDS_BANKIDENTIFIER,
     FIELDS_SERVER, FIELDS_ISIN, FIELDS_PRICES,
+    FIELDS_LEDGER, FIELDS_LEDGER_COA,
     MessageBoxError, MessageBoxInfo, WM_DELETE_WINDOW
 )
 from banking.forms import Acquisition
@@ -184,6 +186,10 @@ class MariaDB(object):
                     FIELDS_STATEMENT[_tuple[0]] = compressed_tuple
                 if table == TRANSACTION:
                     FIELDS_TRANSACTION[_tuple[0]] = compressed_tuple
+                if table == LEDGER:
+                    FIELDS_LEDGER[_tuple[0]] = compressed_tuple
+                if table == LEDGER_COA:
+                    FIELDS_LEDGER_COA[_tuple[0]] = compressed_tuple
             self.table_fields[table] = list(map(lambda x: x[0], result))
 
     def _holdings(self, bank):
@@ -406,6 +412,28 @@ class MariaDB(object):
                     Informations.bankdata_informations = (Informations.bankdata_informations + '\n' + WARNING +
                                                           MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(bank.bank_name))
                     return
+
+    def all_statements(self, bank):
+        '''
+        Insert downloaded  Staement Bank Data in Database
+        '''
+        Informations.bankdata_informations = (Informations.bankdata_informations + '\n\n' + INFORMATION +
+                                              MESSAGE_TEXT['DOWNLOAD_BANK'].format(bank.bank_name) + '\n\n')
+        for account in bank.accounts:
+            bank.account_number = account[KEY_ACC_ACCOUNT_NUMBER]
+            bank.account_product_name = account[KEY_ACC_PRODUCT_NAME]
+            bank.iban = account[KEY_ACC_IBAN]
+            if 'HKKAZ' in account[KEY_ACC_ALLOWED_TRANSACTIONS]:
+                information = MESSAGE_TEXT['DOWNLOAD_ACCOUNT'].format(
+                    bank.bank_name, bank.account_number, bank.account_product_name, bank.iban)
+                Informations.bankdata_informations = Informations.bankdata_informations + \
+                    '\n' + INFORMATION + information
+                if self._statements(bank) is None:
+                    Informations.bankdata_informations = (Informations.bankdata_informations + '\n' + WARNING +
+                                                          MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(bank.bank_name))
+                    return
+        Informations.bankdata_informations = (Informations.bankdata_informations + '\n\n' + INFORMATION +
+                                              MESSAGE_TEXT['DOWNLOAD_DONE'].format(bank.bank_name) + '\n\n')
 
     def destroy_connection(self):
         '''
@@ -855,6 +883,8 @@ class MariaDB(object):
             where, vars_ = self._where_clause(**kwargs)
             if table == STATEMENT:
                 where = where.replace(DB_price_date, 'date')
+            elif table == LEDGER:
+                where = where.replace(DB_price_date, 'Datum')
             if isinstance(field_list, list):
                 field_list = ','.join(field_list)
             else:

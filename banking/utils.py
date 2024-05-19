@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2024-04-13"
+__updated__ = "2024-05-19"
 @author: Wolfgang Kramer
 """
 
@@ -16,16 +16,15 @@ import sys
 import traceback
 import requests
 
-from threading import current_thread, main_thread, active_count, enumerate
+from threading import current_thread, main_thread
 from tkinter import Tk, messagebox, TclError
 from inspect import stack
-from time import sleep
 from datetime import date, timedelta, datetime
 from decimal import Decimal, getcontext, ROUND_HALF_EVEN, DivisionByZero
 
 from banking.declarations import (
     BANK_MARIADB_INI,
-    EURO, ERROR,
+    EURO,
     KEY_ACCOUNTS, KEY_ACC_ACCOUNT_NUMBER, KEY_BANK_NAME, KEY_DIRECTORY,
     KEY_ACC_PRODUCT_NAME, KEY_ACC_IBAN,
     MESSAGE_TEXT, MESSAGE_TITLE,
@@ -39,6 +38,26 @@ def check_main_thread():
     """
     # check if its the main thread, Tkinter can be used otherwise avoid T Tk()
     if current_thread() is main_thread():
+        return True
+    else:
+        return False
+
+
+def date_before_date(date_before, date_current):
+    '''
+    returns True if date current is next weekday after date_before
+    and not a weekend day
+    '''
+    # Monday is 0 and Sunday is 6
+    if isinstance(date_before, str):
+        date_before = Datulate().convert(date_before)
+    weekday_before = date.weekday(date_before)
+    if isinstance(date_current, str):
+        date_current = Datulate().convert(date_current)
+    weekday_current = date.weekday(date_current)
+    if weekday_before in [4, 5, 6] and weekday_current == 0:
+        return True
+    elif weekday_before in [0, 1, 2, 3] and weekday_current - weekday_before == 1:
         return True
     else:
         return False
