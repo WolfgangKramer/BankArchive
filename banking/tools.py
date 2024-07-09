@@ -60,24 +60,6 @@ def _ms_access_execute(ms_access_cursor, strSQL, vars_):
             info=err.args[0] + '\n' + err.args[1] + '\n' + strSQL)
 
 
-def update_holding_total_amount_portfolio(mariadb, iban):
-    """
-    Update Table holding total_amount_portfolio
-    """
-    sql_statement = ("select iban, price_date, sum(total_amount) from " + HOLDING +
-                     " where iban=? group by price_date")
-    result = mariadb.execute(sql_statement, vars_=(iban,))
-    for row in result:
-        iban, price_date, total_amount_portfolio = row
-        sql_statement = ("UPDATE " + HOLDING + " SET total_amount_portfolio=? "
-                         "where iban=? and price_date=?")
-        vars_ = (total_amount_portfolio, iban, price_date)
-        mariadb.execute(sql_statement, vars_=vars_)
-    MessageBoxInfo(message=MESSAGE_TEXT['TASK_DONE'].format(
-        'update_holding_total_amount_portfolio'))
-
-
-
 
 def transfer_holding_to_access(mariadb, iban):
     """
