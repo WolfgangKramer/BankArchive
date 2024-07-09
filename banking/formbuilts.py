@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2024-05-13"
+__updated__ = "2024-07-07"
 @author: Wolfgang Kramer
 """
 
@@ -24,7 +24,7 @@ from tkcalendar import DateEntry
 from banking.declarations import (
     DB_currency, EURO,
     HEIGHT_TEXT,
-    Caller, Informations,
+    Caller, ToolbarSwitch, Informations,
     INFORMATION, ERROR,
     KEY_GEOMETRY, KEY_PIN,
     MESSAGE_TEXT, MESSAGE_TITLE,
@@ -45,6 +45,7 @@ ENTRY = 'Entry'
 COMBO = 'ComboBox'
 BUTTON_APPEND = 'APPEND'
 BUTTON_ALPHA_VANTAGE = 'ALPHA_VANTAGE'
+BUTTON_CATEGORY = 'CATEGORY'
 BUTTON_SAVE = 'SAVE'
 BUTTON_SAVE_STANDARD = 'SAVE as Standard'
 BUTTON_SELECT_ALL = 'SELECT All'
@@ -53,6 +54,7 @@ BUTTON_STANDARD = 'STANDARD'
 BUTTON_DELETE = 'DELETE'
 BUTTON_DELETE_ALL = 'DELETE ALL'
 BUTTON_CREATE = 'CREATE'
+BUTTON_TOOLBAR = 'TOOLBAR'
 BUTTON_FIELDLIST = 'FIELDLIST'
 BUTTON_PRINT = 'PRINT'
 BUTTON_PREVIOUS = 'PREVIOUS'
@@ -103,6 +105,7 @@ FIELDS_ISIN = {}
 FIELDS_PRICES = {}
 FIELDS_LEDGER = {}
 FIELDS_LEDGER_COA = {}
+FIELDS_SEPA = {}
 
 re_amount = re.compile(r"\d+\.\d+")
 re_amount_int = re.compile(r"\d+")
@@ -1361,7 +1364,7 @@ class BuiltPandasBox(Frame):
     L-WINDOW        Shows Dataframe
 
     PARAMETER:
-        dataframe           DataFrame object or Dataframe data
+        dataframe           DataFrame object or Dataframe data with dataframe method
         name                Name of Data Rows of PandasTable (e.g. Pandas.>column<)
         root                >root=self< Caller must define new_row(), cHange_row(), delete_row() methods
         dataframe_sum       total sum column_names
@@ -1389,7 +1392,8 @@ class BuiltPandasBox(Frame):
     def __init__(self, title='MESSAGE_TITLE',
                  dataframe=None, dataframe_sum=[],
                  message=None, name=PANDAS_NAME_SHOW,
-                 root=None, showtoolbar=True, editable=True, edit_rows=False,
+                 root=None, showtoolbar=True, editable=True, enable_menus=True, edit_rows=False,
+                 fillna='',
                  ):
 
         Caller.caller = self.__class__.__name__
@@ -1404,6 +1408,7 @@ class BuiltPandasBox(Frame):
         self._dataframe_append_sum()
         self.name = name
         self.showtoolbar = showtoolbar
+        self.fillna = fillna
         self.selected_row = None
         self.data_table = self.create_data_table()
         self.dataframe_window = Toplevel()
@@ -1428,7 +1433,7 @@ class BuiltPandasBox(Frame):
         self.frame_widget = Frame(self.dataframe_window)
         self.frame_widget.pack(side=BOTTOM, fill=BOTH, expand=True)
         self.pandas_table = Table(parent=self.frame_widget, dataframe=self.dataframe, showstatusbar=True,
-                                  showtoolbar=showtoolbar, editable=editable, title=title,
+                                  showtoolbar=showtoolbar, editable=editable, enable_menus=enable_menus, title=title,
                                   root=self, edit_rows=edit_rows)
         self.pandas_table.fontsize = FONTSIZE
         self.pandas_table.set_defaults()
@@ -1549,6 +1554,10 @@ class BuiltPandasBox(Frame):
         for column in columns:
             col_align, col_currency, col_places, col_color, typ = self.column_format[column]
             if typ in [COLUMN_FORMATS_TYP_DECIMAL]:
+                if not ToolbarSwitch.toolbar_switch and self.fillna == 0:
+                    # plotting  or aggregating fails if fillna=''
+                    self.dataframe[column] = self.dataframe[column].fillna(
+                        value=0)
                 if col_color:
                     self._color_negative(column, color=col_color)
                 self.format_decimal(column=column, currency=col_currency,
@@ -1589,20 +1598,27 @@ class BuiltPandasBox(Frame):
 
     def format_decimal(self, column=None, currency=None, places=None):
         '''
-        Creates columns of type object Amount > plotting fails
+        Creates columns of type object Amount
+        e.g. plotting  or aggregating fails if ToolbarSwitch.toolbar_switch = True
         '''
 
-        self.dataframe[column] = self.dataframe[column].apply(lambda x: str(x))
-        if currency in list(self.dataframe.columns):
-            self.dataframe[column] = self.dataframe[[column, currency]].apply(
-                lambda x: Amount(*x, places), axis=1)
-        elif len(currency) > 3:
-            self.dataframe[currency] = EURO
-            self.dataframe[column] = self.dataframe[[column, currency]].apply(
-                lambda x: Amount(*x, places), axis=1)
+        if ToolbarSwitch.toolbar_switch:
+
+            self.dataframe[column] = self.dataframe[column].apply(
+                lambda x: str(x))
+            if currency in list(self.dataframe.columns):
+                self.dataframe[column] = self.dataframe[[column, currency]].apply(
+                    lambda x: Amount(*x, places), axis=1)
+            elif len(currency) > 3:
+                self.dataframe[currency] = EURO
+                self.dataframe[column] = self.dataframe[[column, currency]].apply(
+                    lambda x: Amount(*x, places), axis=1)
+            else:
+                self.dataframe[column] = self.dataframe[column].apply(
+                    lambda x: Amount(x, currency, places))
         else:
             self.dataframe[column] = self.dataframe[column].apply(
-                lambda x: Amount(x, currency, places))
+                lambda x: x if isinstance(x, str) else round(x, 2))
 
     def _set_options(self, align=E):
         options = {'align': align,

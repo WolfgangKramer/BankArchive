@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2024-05-19"
+__updated__ = "2024-07-08"
 @author: Wolfgang Kramer
 """
 
@@ -163,6 +163,7 @@ def exception_error(title=MESSAGE_TITLE, message=''):
     except Exception:
         print("_type, _value, _traceback = sys.exc_info()",
               _type, _value, _traceback)
+        return
     # check if its not the main thread, avoid Tk() or ..
     if current_thread() is main_thread():
         Info(title=title, message=_message)
@@ -684,6 +685,11 @@ class Datulate(object):
     def today(self):
 
         return date.today()
+
+
+date_yymmdd = Datulate(date_format='%y%m%d')  # input string format yymmdd
+date_yyyymmdd = Datulate(date_format='%Y%m%d')  # input string format yyyymmdd
+date_db = Datulate(date_format='%Y-%m-%d')  # input string format yyyy-mm-dd
 
 
 class Info():

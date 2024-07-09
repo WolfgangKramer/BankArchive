@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2024-03-26"
+__updated__ = "2024-07-08"
 @author: Wolfgang Kramer
 """
 
@@ -11,7 +11,7 @@ import logging
 import re
 import requests
 
-from datetime import date, datetime
+from datetime import date
 from operator import itemgetter
 from fints.message import FinTSInstituteMessage
 from fints.segments.accounts import HISPAS1
@@ -55,6 +55,7 @@ from banking.utils import (
     check_main_thread,
     Calculate,
     create_iban,
+    date_yymmdd,
     exception_error,
     shelve_get_key, shelve_put_key)
 
@@ -598,8 +599,8 @@ class Dialogs:
             m = tags['60F'].re.match(clause[5:])  # opening balance data
             if clause[0:5] == ':60F:' and m:
                 _opening_status = m.group('status')
-                _entry_date = datetime.strptime(
-                    m.group('year') + m.group('month') + m.group('day'), '%y%m%d').date()
+                _entry_date = date_yymmdd.convert(
+                    m.group('year') + m.group('month') + m.group('day'))
                 _opening_entry_date = _entry_date
                 _opening_currency = m.group('currency')
                 _opening_balance = dec2.convert(abs(Amount(m.group('amount'),
@@ -612,8 +613,8 @@ class Dialogs:
             m = tags['60M'].re.match(clause[5:])  # opening balance data
             if clause[0:5] == ':60M:' and m:
                 _opening_status = m.group('status')
-                _entry_date = datetime.strptime(
-                    m.group('year') + m.group('month') + m.group('day'), '%y%m%d').date()
+                _entry_date = date_yymmdd.convert(
+                    m.group('year') + m.group('month') + m.group('day'))
                 _opening_entry_date = _entry_date
                 _opening_currency = m.group('currency')
                 _opening_balance = dec2.convert(abs(Amount(m.group('amount'),
@@ -629,8 +630,7 @@ class Dialogs:
                                                   m.group('status')).amount))
                 _status = m.group('status')
                 try:
-                    _entry_date = datetime.strptime(
-                        m.group('entry_date'), '%y%m%d').date()
+                    _entry_date = date_yymmdd.convert(m.group('entry_date'))
                 except IndexError:
                     pass
                 mt940[idx_mt940]['entry_date'] = _entry_date

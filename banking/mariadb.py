@@ -1,6 +1,6 @@
 '''
 Created on 26.11.2019
-__updated__ = "2024-05-16"
+__updated__ = "2024-07-09"
 @author: Wolfgang Kramer
 '''
 
@@ -9,7 +9,7 @@ import re
 import mariadb
 import sqlalchemy
 
-from datetime import date, timedelta, datetime
+from datetime import date, datetime
 from inspect import stack
 from json import dumps, loads
 
@@ -29,7 +29,7 @@ from banking.declarations import (
     HOLDING, HOLDING_VIEW, HOLDING_T,
     ISIN, PRICES,
     KEY_ACC_IBAN, KEY_ACC_ACCOUNT_NUMBER, KEY_ACC_ALLOWED_TRANSACTIONS, KEY_ACC_PRODUCT_NAME,
-    LEDGER, LEDGER_COA,
+    LEDGER, LEDGER_COA, SEPA,
     MESSAGE_TEXT,
     ORIGIN,
     PERCENT,
@@ -42,16 +42,17 @@ from banking.formbuilts import (
     FIELDS_STATEMENT,
     FIELDS_TRANSACTION, FIELDS_BANKIDENTIFIER,
     FIELDS_SERVER, FIELDS_ISIN, FIELDS_PRICES,
-    FIELDS_LEDGER, FIELDS_LEDGER_COA,
+    FIELDS_LEDGER, FIELDS_LEDGER_COA, FIELDS_SEPA,
     MessageBoxError, MessageBoxInfo, WM_DELETE_WINDOW
 )
 from banking.forms import Acquisition
-from banking.tools import transfer_holding_to_access, transfer_statement_to_access
-from banking.utils import Calculate, check_main_thread
+from banking.special import transfer_holding_to_access, transfer_statement_to_access
+from banking.utils import Calculate, date_yyyymmdd, date_db, check_main_thread
 
 
 dec2 = Calculate(places=2)
 dec6 = Calculate(places=6)
+
 # statement begins with SELECT or is a Selection via CTE and begins with WITH
 select_statement = re.compile(r'^SELECT|^WITH')
 rowcount_statement = re.compile(r'^UPDATE|^DELETE|^INSERT|^REPLACE')
@@ -154,7 +155,12 @@ class MariaDB(object):
 
     def _get_database_names(self):
         '''
-        Initialize Class Variables
+        Initialize Class Variables:
+             Dictionary: self.table_fields
+                         values are fieldnames
+             Dictionary: FIELD_>table_name<
+                         values are field_definition tuples
+                            (column_name, character_maximum_length, numeric_scale, numeric_precision, data_type)
         '''
         sql_statement = "SELECT table_name FROM information_schema.tables WHERE table_schema = database();"
         self.table_names = list(itertools.chain(*self.execute(sql_statement)))
@@ -190,7 +196,10 @@ class MariaDB(object):
                     FIELDS_LEDGER[_tuple[0]] = compressed_tuple
                 if table == LEDGER_COA:
                     FIELDS_LEDGER_COA[_tuple[0]] = compressed_tuple
-            self.table_fields[table] = list(map(lambda x: x[0], result))
+                if table == SEPA:
+                    FIELDS_SEPA[_tuple[0]] = compressed_tuple
+            self.table_fields[table] = list(
+                map(lambda x: x[0], result))  # dict with table fieldnames
 
     def _holdings(self, bank):
         '''
@@ -206,12 +215,13 @@ class MariaDB(object):
             for holding in holdings:  # find more frequent price_date
                 if not price_date_holding or price_date_holding < holding[DB_price_date]:
                     price_date_holding = holding[DB_price_date]
-            if datetime.strptime(price_date_holding, '%Y%m%d').weekday() == 5:  # Saturday
-                price_date_holding = datetime.strptime(
-                    price_date_holding, '%Y%m%d') - timedelta(1)
-            elif datetime.strptime(price_date_holding, '%Y%m%d').weekday() == 6:  # Sunday
-                price_date_holding = datetime.strptime(
-                    price_date_holding, '%Y%m%d') - timedelta(2)
+            weekday = date_yyyymmdd.convert(price_date_holding).weekday()
+            if weekday == 5:  # Saturday
+                price_date_holding = date_yyyymmdd.subtract(
+                    price_date_holding, 1)
+            elif weekday == 6:  # Sunday
+                price_date_holding = date_yyyymmdd.subtract(
+                    price_date_holding, 2)
             for holding in holdings:
                 if not self.row_exists(ISIN, name=holding[DB_name]):
                     field_dict = {
@@ -318,29 +328,40 @@ class MariaDB(object):
             transfer_statement_to_access(self, bank)
         return statements
 
-    def _where_clause(self, **kwargs):
+    def _order_clause(self, sql_statement, order=None):
+
+        if order is not None:
+            if isinstance(order, list):
+                order = ','.join(order)
+            sql_statement = sql_statement + " ORDER BY " + order
+        return sql_statement
+
+    def _where_clause(self, clause=None, date_name=None, **kwargs):
         '''
         Generates WHERE Clause of kwargs items
-        kwargs contain >database_fieldname<=>value< AND ....  >database_fieldname< IN >list<  ...
-               and optional key >clause< with additional >AND< >OR< condition parts
+
+        kwargs:      >database_fieldname<=>value< AND ....  >database_fieldname< IN >list<  ...
+        clause:      additional >AND< >OR< condition parts
+        date_name:   date field_name of period key
+
         result:  where    WHERE >database_fieldname<=? AND .... AND '
                  vars_    (>value<, ..>list<, .....)
         '''
         WHERE = ' WHERE '
         vars_ = ()
         where = WHERE
-        clause = None
+        if clause:
+            where = where + ' ' + clause + '   AND '
         for key, value in kwargs.items():
-            if key == 'clause':
-                clause = value
-                where = where + ' ' + clause + '   AND '
-            elif key == 'period':
+            if key == 'period':
                 from_date, to_date = value
                 if where != WHERE:
                     vars_ = vars_ + (from_date, to_date)
                 else:
                     vars_ = (from_date, to_date)
                 where = where + " price_date>=? AND price_date<=? AND "
+                if date_name:  # standard period field_name 'price_date' replaced by date_name
+                    where = where.replace(DB_price_date, date_name)
             else:
                 if isinstance(value, list):
                     where = where + ' ' + key + ' IN ('
@@ -356,9 +377,11 @@ class MariaDB(object):
         else:
             return ' ', vars_
 
-    def all_accounts(self, bank):
+    def all_accounts(self, bank, holdings):
         '''
         Insert downloaded  Bank Data in Database
+
+        holdings: ignores holdings if False
         '''
         Informations.bankdata_informations = (Informations.bankdata_informations + '\n\n' + INFORMATION +
                                               MESSAGE_TEXT['DOWNLOAD_BANK'].format(bank.bank_name) + '\n\n')
@@ -368,21 +391,25 @@ class MariaDB(object):
             bank.iban = account[KEY_ACC_IBAN]
             information = MESSAGE_TEXT['DOWNLOAD_ACCOUNT'].format(
                 bank.bank_name, bank.account_number, bank.account_product_name, bank.iban)
-            Informations.bankdata_informations = Informations.bankdata_informations + \
-                '\n' + INFORMATION + information
             if bank.scraper:
                 if 'HKKAZ' in account[KEY_ACC_ALLOWED_TRANSACTIONS]:
+                    Informations.bankdata_informations = Informations.bankdata_informations + \
+                        '\n' + INFORMATION + information
                     if self._statements(bank) is None:
                         Informations.bankdata_informations = (Informations.bankdata_informations + '\n' + WARNING +
                                                               MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(bank.bank_name))
                         return
             else:
-                if 'HKWPD' in account[KEY_ACC_ALLOWED_TRANSACTIONS]:
+                if 'HKWPD' in account[KEY_ACC_ALLOWED_TRANSACTIONS] and holdings:
+                    Informations.bankdata_informations = Informations.bankdata_informations + \
+                        '\n' + INFORMATION + information
                     if self._holdings(bank) is None:
                         Informations.bankdata_informations = (Informations.bankdata_informations + '\n' + WARNING +
                                                               MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(bank.bank_name))
                         return
                 if 'HKKAZ' in account[KEY_ACC_ALLOWED_TRANSACTIONS]:
+                    Informations.bankdata_informations = Informations.bankdata_informations + \
+                        '\n' + INFORMATION + information
                     if self._statements(bank) is None:
                         Informations.bankdata_informations = (Informations.bankdata_informations + '\n' + WARNING +
                                                               MESSAGE_TEXT['DOWNLOAD_NOT_DONE'].format(bank.bank_name))
@@ -678,14 +705,14 @@ class MariaDB(object):
         else:
             return True     # exist
 
-    def select_dict(self, table, key_name, value_name, **kwargs):
+    def select_dict(self, table, key_name, value_name, order=DB_name, **kwargs):
         '''
         result: dictionary
         '''
         where, vars_ = self._where_clause(**kwargs)
         sql_statement = "SELECT " + key_name + ', ' + \
             value_name + " FROM " + table + where
-        sql_statement = sql_statement + " ORDER BY name ASC;"
+        sql_statement = self._order_clause(sql_statement, order=order)
         result = self.execute(sql_statement, vars_=vars_)
         if result and len(result[0]) == 2:
             return dict(result)
@@ -722,10 +749,7 @@ class MariaDB(object):
             " FROM " + ISIN + " WHERE symbol != 'NA'"
         if vars_:
             sql_statement = ' '.join([sql_statement, 'AND', where])
-        if order is not None:
-            if isinstance(order, list):
-                order = ','.join(order)
-            sql_statement = sql_statement + " ORDER BY " + order
+        sql_statement = self._order_clause(sql_statement, order=order)
         return self.execute(sql_statement, vars_=vars_)
 
     def select_holding_all_total(self, **kwargs):
@@ -807,7 +831,7 @@ class MariaDB(object):
                     HOLDING, iban=iban, period=(to_date,  to_date))
                 if download_today is None:      # download not yet executed on  to_date
                     return None
-                pre_day = pre_day - timedelta(days=1)
+                pre_day = date_db.subtract(pre_day, 1)
                 pre_day = self.select_max_price_date(
                     HOLDING, iban=iban, isin=isin, period=(from_date, pre_day))
             if isinstance(field_list, list):
@@ -823,6 +847,8 @@ class MariaDB(object):
     def select_holding_fields(self, field_list='price_date', **kwargs):
 
         where, vars_ = self._where_clause(**kwargs)
+        if isinstance(field_list, list):
+            field_list = ','.join(field_list)
         sql_statement = "SELECT DISTINCT " + field_list + " FROM " + HOLDING + where
         result = []
         for item in self.execute(sql_statement, vars_=vars_):
@@ -877,56 +903,47 @@ class MariaDB(object):
             servers.append(server)
         return servers
 
-    def select_table(self, table, field_list, order=None, result_dict=False, **kwargs):
+    def select_table(self, table, field_list, order=None, result_dict=False, date_name=None, **kwargs):
 
         if field_list:
-            where, vars_ = self._where_clause(**kwargs)
-            if table == STATEMENT:
-                where = where.replace(DB_price_date, 'date')
-            elif table == LEDGER:
-                where = where.replace(DB_price_date, 'Datum')
+            where, vars_ = self._where_clause(date_name=date_name, **kwargs)
             if isinstance(field_list, list):
                 field_list = ','.join(field_list)
-            else:
-                field_list = '*'
             sql_statement = "SELECT " + field_list + " FROM " + table + where
-            if order is not None:
-                if isinstance(order, list):
-                    order = ','.join(order)
-                sql_statement = sql_statement + " ORDER BY " + order
+            sql_statement = self._order_clause(sql_statement, order=order)
             return self.execute(sql_statement, vars_=vars_, result_dict=result_dict)
         else:
             return []
 
-    def select_table_distinct(self, table, field_list, order=None, **kwargs):
+    def select_table_sum(self, table, sum_field, date_name=None, **kwargs):
+
+        where, vars_ = self._where_clause(date_name=date_name, **kwargs)
+        sql_statement = "SELECT SUM(" + sum_field + ") FROM " + table + where
+        result = self.execute(sql_statement, vars_=vars_)
+        return result[0][0]
+
+    def select_table_distinct(self, table, field_list, order=None, result_dict=False, date_name=None, **kwargs):
 
         if field_list:
-            where, vars_ = self._where_clause(**kwargs)
-            if table == STATEMENT:
-                where = where.replace(DB_price_date, 'date')
+            where, vars_ = self._where_clause(date_name=date_name, **kwargs)
             if isinstance(field_list, list):
                 field_list = ','.join(field_list)
             sql_statement = "SELECT DISTINCT " + field_list + " FROM " + table + where
-            if order is not None:
-                if isinstance(order, list):
-                    order = ','.join(order)
-                sql_statement = sql_statement + " ORDER BY " + order
-            return self.execute(sql_statement, vars_=vars_)
+            sql_statement = self._order_clause(sql_statement, order=order)
+            return self.execute(sql_statement, vars_=vars_, result_dict=result_dict)
         else:
             return []
 
-    def select_table_next(self, table, field_list, key_name, sign, key_value, **kwargs):
+    def select_table_next(self, table, field_list, key_name, sign, key_value, date_name=None, **kwargs):
 
         assert sign in [
             '>', '>=', '<', '<='], 'Comparison Operators {} not allowed'.format(sign)
         if field_list:
-            where, vars_ = self._where_clause(**kwargs)
+            where, vars_ = self._where_clause(date_name=date_name, **kwargs)
             if vars_:
                 where = where + ' AND '
             else:
                 where = ' WHERE '
-            if table == STATEMENT:
-                where = where.replace(DB_price_date, 'date')
             if isinstance(field_list, list):
                 field_list = ','.join(field_list)
             sql_statement = "SELECT " + field_list + " FROM " + table + \
@@ -945,8 +962,7 @@ class MariaDB(object):
         where, vars_ = self._where_clause(**kwargs)
         where = where.replace(DB_price_date, 'date')
         from_date, to_date = vars_
-        vars_ = (str(datetime.strptime(
-            from_date, "%Y-%m-%d").date() + timedelta(days=1)), to_date)
+        vars_ = (str(date_db.add(from_date, 1)), to_date)
         # search first row if no statements/holding in period., use it for as
         # from_date data
         sql_statement = ("WITH max_date_rows AS (SELECT iban AS max_iban, MAX(entry_date) AS max_date FROM " + STATEMENT + " WHERE entry_date <= '" + from_date + "' GROUP BY iban) "
@@ -1017,6 +1033,8 @@ class MariaDB(object):
             **kwargs):
         ''' returns a list of tuples '''
         where, vars_ = self._where_clause(**kwargs)
+        if isinstance(field_list, list):
+            field_list = ','.join(field_list)
         sql_statement = ("SELECT  " + field_list +
                          " FROM " + TRANSACTION + where)
         sql_statement = sql_statement + " ORDER BY price_date ASC, counter ASC;"
@@ -1141,8 +1159,7 @@ class MariaDB(object):
                             price_date=transaction[DB_price_date], counter=transaction[DB_counter])):
             filtered_data_table = []
             if isinstance(transaction[DB_price_date], str):
-                price_date = datetime.strptime(
-                    transaction[DB_price_date], '%Y-%m-%d').date()
+                price_date = date_db.convert(transaction[DB_price_date])
             else:
                 price_date = transaction[DB_price_date]
             for item in filter(lambda item: item[0] == price_date, data_table):

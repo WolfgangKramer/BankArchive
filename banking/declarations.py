@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2024-05-15"
+__updated__ = "2024-07-07"
 @author: Wolfgang Kramer
 """
 
@@ -54,10 +54,6 @@ FORMS_TEXT = {
     'Adjust Prices': 'Adjustments'
 }
 MENU_TEXT = {
-    'Ledger': 'Ledger',
-    'Accounting': 'Accounting',
-    'Chart of Accounts': 'Chart of Accounts',
-
     'Show': 'Show',
     'WebSites': 'WebSites',
             'Alpha Vantage': 'Alpha Vantage Query',
@@ -225,6 +221,8 @@ MESSAGE_TEXT = {
     'TERMINATION': 'FinTS MariaDB Banking Termination',
     'THREAD': 'Task {} aborted. No Dialogue. Its no mainthread',
     'THREAD_RUNNING': 'Background Job still running',
+    'TOOLBAR_OFF': 'Toolbar hidden!\n Amount columns shown with currency symbol',
+    'TOOLBAR_ON': 'Toolbar shown! \n Plotting, aggregating, etc. allowed',
     'TRANSACTION_CHECK': '{} Difference Pieces of Transactions / Pieces of Portfolio',
     'TRANSACTION_CLOSED_EMPTY': ' No Closed Transactions in Period {} - {}',
     'TRANSACTION_HEADER_CHG': 'CHANGE TRANSACTIONS',
@@ -272,6 +270,8 @@ PRICES = 'prices'
 PRICES_ISIN_VIEW = 'prices_isin_view'
 LEDGER = 'ledger'
 LEDGER_COA = 'ledger_coa'
+LEDGER_VIEW = 'ledger_view'
+SEPA = 'sepa'
 """
  ------------------Shelve_Files------------------------------------------------
 """
@@ -448,8 +448,12 @@ FN_PROFIT_CUM = 'Performance'
 FN_PIECES_CUM = 'cumPieces'
 FN_SOLD_PIECES = 'sold_pieces'
 FN_ALL_BANKS = 'ALL BANKS '
+FN_CREDIT = 'Credit'
+FN_DEBIT = 'Debit'
+FN_BALANCE = 'Balance'
 FN_COLUMNS_EURO = [FN_TOTAL, FN_PROFIT,
-                   FN_PROFIT_LOSS, FN_PROFIT_CUM]
+                   FN_PROFIT_LOSS, FN_PROFIT_CUM,
+                   FN_BALANCE, FN_CREDIT, FN_DEBIT]
 FN_COLUMNS_PERCENT = [FN_TOTAL_PERCENT,
                       FN_PERIOD_PERCENT, FN_DAILY_PERCENT]
 Y_AXE_PROFIT = 'profit'
@@ -481,7 +485,7 @@ OPERATORS = [EQUAL, CONTAINS, START_WITH, END_WITH, GREATER, LESS]
 -------------------------------- MariaDB Tables --------------------------------------------------------
 """
 # CREATE_...   copied from HEIDI SQL Create-Tab and IF NOT EXISTS added
-# additionally with VIEWs: ALTER ALGORITHM changed to CREATE ALGORITHM
+# additionally with VIEWs: ALTER ALGORITHM changed to CREATE ALGORITHM and IF NOT EXISTS added
 CREATE_BANKIDENTIFIER = "CREATE TABLE IF NOT EXISTS `bankidentifier` (\
     `code` CHAR(8) NOT NULL COMMENT 'Bank_Code (BLZ)' COLLATE 'latin1_swedish_ci',\
     `payment_provider` CHAR(1) NOT NULL COMMENT 'Merkmal, ob bankleitzahlführender Zahlungsdienstleister >1< oder nicht >2<. Maßgeblich sind nur Datensätze mit dem Merkmal >1<' COLLATE 'latin1_swedish_ci',\
@@ -503,6 +507,7 @@ COMMENT='Contains German Banks\r\n\r\nSource: https://www.bundesbank.de/resource
 COLLATE='latin1_swedish_ci'\
 ENGINE=InnoDB\
 ;"
+
 CREATE_HOLDING = "CREATE TABLE IF NOT EXISTS `holding` (\
     `iban` CHAR(22) NOT NULL COMMENT ':97A:: DepotKonto' COLLATE 'latin1_swedish_ci',\
     `price_date` DATE NOT NULL DEFAULT '2019-01-01' COMMENT ':98A:: M Datum (und Uhrzeit), auf dem/der die Aufstellung basiert',\
@@ -526,6 +531,7 @@ COMMENT='MT 535\r\nVersion: SRG 1998\r\nStatement of Holdings; basiert auf S.W.I
 COLLATE='latin1_swedish_ci'\
 ENGINE=InnoDB\
 ;"
+
 CREATE_HOLDING_T = "CREATE TABLE IF NOT EXISTS `holding_t` (\
     `iban` CHAR(22) NOT NULL COMMENT ':97A:: DepotKonto' COLLATE 'latin1_swedish_ci',\
     `price_date` DATE NOT NULL DEFAULT '2019-01-01' COMMENT ':98A:: M Datum (und Uhrzeit), auf dem/der die Aufstellung basiert',\
@@ -549,8 +555,11 @@ COMMENT='Holdings generated using Transactions'\
 COLLATE='latin1_swedish_ci'\
 ENGINE=InnoDB\
 ;"
-CREATE_HOLDING__T_VIEW = "CREATE ALGORITHM = UNDEFINED SQL SECURITY DEFINER VIEW IF NOT EXISTS `holding_t_view` AS SELECT * FROM  holding_t INNER JOIN isin_name USING(isin)  ;"
-CREATE_HOLDING_VIEW = "CREATE ALGORITHM = UNDEFINED SQL SECURITY DEFINER VIEW IF NOT EXISTS  `holding_view` AS SELECT * FROM holding INNER JOIN isin_name USING(isin)  ;"
+
+CREATE_HOLDING__T_VIEW = "CREATE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW IF NOT EXISTS `holding_t_view` AS SELECT * FROM  holding_t INNER JOIN isin_name USING(isin)  ;"
+
+CREATE_HOLDING_VIEW = "CREATE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW IF NOT EXISTS `holding_view` AS SELECT * FROM holding INNER JOIN isin_name USING(isin)  ;"
+
 CREATE_ISIN = "CREATE TABLE  IF NOT EXISTS   `isin` (\
     `name` VARCHAR(35) NOT NULL DEFAULT 'NA' COMMENT ':35B:: Wertpapierbezeichnung' COLLATE 'latin1_swedish_ci',\
     `ISIN` CHAR(12) NOT NULL DEFAULT '0' COMMENT ':35B:: ISIN-Kennung' COLLATE 'latin1_swedish_ci',\
@@ -559,7 +568,7 @@ CREATE_ISIN = "CREATE TABLE  IF NOT EXISTS   `isin` (\
     `wkn` CHAR(6) NOT NULL DEFAULT 'NA' COMMENT 'Die Wertpapierkennnummer (WKN, vereinzelt auch WPKN oder WPK abgekürzt) ist eine in Deutschland verwendete sechsstellige Ziffern- und Buchstabenkombination zur Identifizierung von Wertpapieren (Finanzinstrumenten). Setzt man drei Nullen vor die WKN, so erhält man die neunstellige deutsche National Securities Identifying Number (NSIN) des jeweiligen Wertpapiers.' COLLATE 'latin1_swedish_ci',\
     `symbol` VARCHAR(50) NOT NULL DEFAULT 'NA' COMMENT 'ticker symbol' COLLATE 'latin1_swedish_ci',\
     `origin_symbol` VARCHAR(50) NOT NULL DEFAULT 'NA' COMMENT 'origin of symbol: Yahoo or AlphaVantage' COLLATE 'latin1_swedish_ci',\
-    `adjustments` VARCHAR(500) NOT NULL DEFAULT '{}' COMMENT 'Json String (contains adjustment factors e.g. splits, special dividends, ...) in  json format{symbol: {date_to: (r-factor,used) ...., }}' COLLATE 'latin1_swedish_ci',\
+    `adjustments` VARCHAR(500) NULL DEFAULT NULL COMMENT 'Json String (contains adjustment factors e.g. splits, special dividends, ...) in  json format{symbol: {date_to: (r-factor,used) ...., }}' COLLATE 'latin1_swedish_ci',\
     `currency` CHAR(3) NOT NULL DEFAULT 'EUR' COMMENT 'Currency Code' COLLATE 'latin1_swedish_ci',\
     `comment` TEXT NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',\
     PRIMARY KEY (`name`) USING BTREE,\
@@ -569,7 +578,9 @@ COMMENT='ISIN informations'\
 COLLATE='latin1_swedish_ci'\
 ENGINE=InnoDB\
 ;"
-CREATE_ISIN_NAME = "CREATE ALGORITHM  = UNDEFINED SQL SECURITY DEFINER VIEW IF NOT EXISTS  `isin_name` AS SELECT isin, name FROM  isin WHERE validity = (SELECT MAX(validity) FROM isin)  ;"
+
+CREATE_ISIN_NAME = "CREATE ALGORITHM  = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW IF NOT EXISTS  `isin_name` AS SELECT isin, name FROM  isin WHERE validity = (SELECT MAX(validity) FROM isin)  ;"
+
 CREATE_PRICES = "CREATE TABLE IF NOT EXISTS `prices` (\
     `symbol` VARCHAR(50) NOT NULL DEFAULT 'NA' COLLATE 'latin1_swedish_ci',\
     `price_date` DATE NOT NULL DEFAULT '2000-01-01',\
@@ -588,7 +599,9 @@ CREATE_PRICES = "CREATE TABLE IF NOT EXISTS `prices` (\
 COLLATE='latin1_swedish_ci'\
 ENGINE=InnoDB\
 ;"
-CREATE_PRICES_ISIN_VIEW = "CREATE ALGORITHM  = UNDEFINED SQL SECURITY DEFINER VIEW IF NOT EXISTS  `prices_isin_view` AS SELECT * FROM prices INNER JOIN isin USING (symbol);"
+
+CREATE_PRICES_ISIN_VIEW = "CREATE ALGORITHM  = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW IF NOT EXISTS  `prices_isin_view` AS SELECT * FROM prices INNER JOIN isin USING (symbol)  ;"
+
 CREATE_SERVER = "CREATE TABLE IF NOT EXISTS `server` (\
     `code` CHAR(8) NOT NULL COMMENT 'Bankleitzahl' COLLATE 'latin1_swedish_ci',\
     `server` VARCHAR(100) NULL DEFAULT NULL COMMENT 'PIN/TAN-Access URL' COLLATE 'latin1_swedish_ci',\
@@ -598,10 +611,11 @@ COMMENT='German Bank PIN/TAN-Access URL'\
 COLLATE='latin1_swedish_ci'\
 ENGINE=InnoDB\
 ;"
+
 CREATE_STATEMENT = "CREATE TABLE IF NOT EXISTS `statement` (\
     `iban` CHAR(22) NOT NULL COMMENT 'IBAN' COLLATE 'latin1_swedish_ci',\
     `entry_date` DATE NOT NULL COMMENT ':61: Buchungsdatum MMTT',\
-    `counter` SMALLINT(5) NOT NULL DEFAULT '0',\
+    `counter` SMALLINT(5) UNSIGNED NOT NULL,\
     `date` DATE NOT NULL COMMENT ':61: UMSATZ Valuta Datum',\
     `guessed_entry_date` DATE NULL DEFAULT NULL COMMENT ':61: Buchungsdatum MMTT',\
     `status` CHAR(2) NOT NULL COMMENT ':61:Soll/Habenkennung C,D,RC,RD' COLLATE 'latin1_swedish_ci',\
@@ -662,6 +676,7 @@ COMMENT='Konto'\
 COLLATE='latin1_swedish_ci'\
 ENGINE=InnoDB\
 ;"
+
 CREATE_TRANSACTION = "CREATE TABLE IF NOT EXISTS `transaction` (\
     `iban` CHAR(22) NOT NULL COMMENT ':97A:: DepotKonto' COLLATE 'latin1_swedish_ci',\
     `ISIN` CHAR(12) NOT NULL DEFAULT '0' COMMENT ':35B:: ISIN Kennung' COLLATE 'latin1_swedish_ci',\
@@ -681,19 +696,130 @@ COMMENT='Statement of Transactions based on S.W.I.F.T Standard Release Guide 199
 COLLATE='latin1_swedish_ci'\
 ENGINE=InnoDB\
 ;"
-CREATE_TRANSACTION_VIEW = "CREATE ALGORITHM = UNDEFINED SQL SECURITY DEFINER VIEW IF NOT EXISTS  `transaction_view` AS SELECT * FROM transaction INNER JOIN isin_name USING(ISIN)  ;"
+
+CREATE_TRANSACTION_VIEW = "CREATE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW IF NOT EXISTS `transaction_view` AS SELECT * FROM transaction INNER JOIN isin_name USING(ISIN)  ;"
+
+#  Ledger Tables ------------------------------------------------------------------------------------------
+
+CREATE_LEDGER = "CREATE TABLE IF NOT EXISTS `ledger` (\
+    `id_no` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,\
+    `c_iban` CHAR(22) NULL DEFAULT 'NA' COMMENT 'Creditor: primary key in table statement;  NA  if no bank account statement' COLLATE 'latin1_swedish_ci',\
+    `c_entry_date` DATE NULL DEFAULT NULL COMMENT 'Creditor:  primary key in table statement',\
+    `c_counter` SMALLINT(6) NULL DEFAULT NULL COMMENT 'Creditor: primary key in table statement',\
+    `d_iban` CHAR(22) NULL DEFAULT 'NA' COMMENT 'Debitor: primary key in table statement;   NA  if no bank account statement' COLLATE 'latin1_swedish_ci',\
+    `d_entry_date` DATE NULL DEFAULT NULL COMMENT 'Debitor: primary key in table statement',\
+    `d_counter` SMALLINT(6) NULL DEFAULT NULL COMMENT 'Debitor: primary key in table statement',\
+    `entry_date` DATE NOT NULL COMMENT ':61: Buchungsdatum MMTT / ',\
+    `date` DATE NULL DEFAULT NULL COMMENT ':61: UMSATZ Valuta Datum',\
+    `posting_text` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 00 Buchungstext' COLLATE 'latin1_swedish_ci',\
+    `purpose_wo_identifier` VARCHAR(390) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck' COLLATE 'latin1_swedish_ci',\
+    `purpose` VARCHAR(390) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck ohne Identifier' COLLATE 'latin1_swedish_ci',\
+    `applicant_name` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 32-33 Name des Ueberweisenden / Zahlungsempfaengers (oder Feld :86:20-29 ANAM(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `amount` DECIMAL(14,2) UNSIGNED NULL DEFAULT '0.00',\
+    `currency` CHAR(3) NOT NULL DEFAULT 'EUR' COMMENT 'currency' COLLATE 'latin1_swedish_ci',\
+    `category` VARCHAR(65) NULL DEFAULT NULL COMMENT 'category' COLLATE 'latin1_swedish_ci',\
+    `credit_account` CHAR(4) NOT NULL DEFAULT 'NA' COMMENT 'credit financial account number ' COLLATE 'latin1_swedish_ci',\
+    `debit_account` CHAR(4) NOT NULL DEFAULT 'NA' COMMENT 'debit finacial account number' COLLATE 'latin1_swedish_ci',\
+    `vat_amount` DECIMAL(14,2) NOT NULL DEFAULT '0.00' COMMENT 'amount of value added tax',\
+    `vat_rate` DECIMAL(14,2) NOT NULL DEFAULT '0.00' COMMENT 'rate of value added tax',\
+    `doc_no` SMALLINT(5) UNSIGNED NOT NULL DEFAULT '0' COMMENT 'Accounting Posting Document number of finacial year  of MS_ACCESS database 1993-2024. NA since 2025',\
+    `to_check` CHAR(1) NOT NULL DEFAULT '0' COMMENT 'bool:  checking of financial accounts' COLLATE 'latin1_swedish_ci',\
+    `doc_exist` CHAR(1) NOT NULL DEFAULT '0' COMMENT 'bool: Accounting Posting Document exist' COLLATE 'latin1_swedish_ci',\
+    `origin` VARCHAR(50) NOT NULL DEFAULT 'STATEMENT' COMMENT 'STATEMENT from table statement or ACCESS from Microsoft ACCESS DB' COLLATE 'latin1_swedish_ci',\
+    PRIMARY KEY (`id_no`) USING BTREE,\
+    INDEX `CREDIT_STATEMENT` (`c_iban`, `c_entry_date`, `c_counter`) USING BTREE,\
+    INDEX `DEBIT_STATEMENT` (`d_iban`, `d_entry_date`, `d_counter`) USING BTREE\
+)\
+COMMENT='Preparation of bank data for the income tax return by means of categorisation for rows referring to table STATEMENT (creditor or debitor). \r\nField Origin : STATEMENT or  ACCESS for a deprecated source (Microsoft ACCES Database)\r\nContains also additional rows entered manually if  iban =NA\r\n'\
+ COLLATE='latin1_swedish_ci'\
+ ENGINE=InnoDB\
+ ROW_FORMAT=DYNAMIC\
+;"
+
+CREATE_LEDGER_COA = "CREATE TABLE IF NOT EXISTS  `ledger_coa` (\
+    `account` CHAR(4) NOT NULL COMMENT 'accounting number (4 digits)' COLLATE 'latin1_swedish_ci',\
+    `name` VARCHAR(50) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',\
+    `iban` VARCHAR(50) NULL DEFAULT NULL COMMENT 'iban if  financial account represents a bank_account' COLLATE 'latin1_swedish_ci',\
+    `eur_accounting` CHAR(1) NULL DEFAULT NULL COMMENT 'BOOL: Einnahme Ueberschussrechnungs)' COLLATE 'latin1_swedish_ci',\
+    `tax_on_input` CHAR(1) NULL DEFAULT NULL COMMENT 'BOOL:  Zusatzfunktion ?Vorsteuer?' COLLATE 'latin1_swedish_ci',\
+    `value_added_tax` CHAR(1) NULL DEFAULT NULL COMMENT 'BOOL:  Zusatzfunktion ?Umsatzsteuer?' COLLATE 'latin1_swedish_ci',\
+    `earnings` CHAR(1) NULL DEFAULT NULL COMMENT 'BOOL:  Zusatzfunktion EinnahmenKonto' COLLATE 'latin1_swedish_ci',\
+    `spendings` CHAR(1) NULL DEFAULT NULL COMMENT 'BOOL:  Zusatzfunktion AusgabenKonto' COLLATE 'latin1_swedish_ci',\
+    `transfer_account` CHAR(4) NULL DEFAULT NULL COMMENT 'accounting number for transfer; duplicate accounting entry to transfer_account' COLLATE 'latin1_swedish_ci',\
+    `transfer_rate` DECIMAL(20,6) NULL DEFAULT NULL COMMENT 'amount rate of duplicate in transfer_account',\
+    `contra_account` VARCHAR(50) NULL DEFAULT NULL COMMENT 'recommendation as contra accounting number' COLLATE 'latin1_swedish_ci',\
+    `asset_accounting` CHAR(1) NULL DEFAULT NULL COMMENT 'BOOL: acoount represents assets' COLLATE 'latin1_swedish_ci',\
+    `obsolet` CHAR(1) NULL DEFAULT NULL COMMENT 'BOOL:  accounting number not used, may be used in the past' COLLATE 'latin1_swedish_ci',\
+    PRIMARY KEY (`account`) USING BTREE,\
+    UNIQUE INDEX `NAME` (`name`) USING BTREE\
+)\
+COMMENT='The chart of accounts (COA) is a comprehensive listing, categorized by account type, of every account used in an accounting system.\r\nUnlike a trial balance that only includes active or balanced accounts at the end of a period,\r\nthe COA encompasses all accounts in the system, providing a simple list of account numbers and names'\
+COLLATE='latin1_swedish_ci'\
+ENGINE=InnoDB\
+;"
+
+CREATE_LEDGER_VIEW = "CREATE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW IF NOT EXISTS `ledger_view` AS SELECT t1.*, t2.name AS debit_name  FROM (SELECT t1.*, t2.name as credit_name FROM ledger as t1 LEFT JOIN (ledger_coa as t2)    ON (t1.credit_account=t2.account) ) as t1 LEFT JOIN (ledger_coa as t2)    ON (t1.debit_account=t2.account)  ;"
+
+CREATE_SEPA = "CREATE TABLE IF NOT EXISTS `sepa` (\
+    `iban` CHAR(22) NOT NULL COMMENT 'IBAN' COLLATE 'latin1_swedish_ci',\
+    `entry_date` DATE NOT NULL COMMENT ':61: Buchungsdatum MMTT',\
+    `counter` SMALLINT(5) NOT NULL COMMENT 'Field BelegNr from ACCESS_table Belege if Origin: ACCESS ',\
+    `customer_reference` VARCHAR(65) NOT NULL DEFAULT 'NONREF' COMMENT ':61:Kundenreferenz (oder Feld :86:20-29 KREF oder CREF (Bezeichner Subfeld) Kundenreferenz Customer Reference' COLLATE 'latin1_swedish_ci',\
+    `bank_reference` VARCHAR(16) NULL DEFAULT NULL COMMENT ':61:Bankreferenz (oder Feld :86:20-29 BREF (Bezeichner Subfeld) Bankreferenz, Instruction ID' COLLATE 'latin1_swedish_ci',\
+    `applicant_bic` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 30 BLZ Auftraggeber oder BIC (oder Feld :86:20-29 BIC(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `applicant_iban` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 31 KontoNr des Ueberweisenden/Zahlungsempfaengers (oder Feld :86:20-29 IBAN(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `applicant_name` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 32-33 Name des Ueberweisenden / Zahlungsempfaengers (oder Feld :86:20-29 ANAM(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `return_debit_notes` INT(3) NULL DEFAULT '0' COMMENT ':86: 34 SEPA-Rueckgabe Codes',\
+    `end_to_end_reference` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck EREF (Bezeichner Subfeld) SEPA End to End-Referenz' COLLATE 'latin1_swedish_ci',\
+    `mandate_id` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck MREF(Bezeichner Subfeld) SEPA Mandatsreferenz' COLLATE 'latin1_swedish_ci',\
+    `payment_reference` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck PREF(Bezeichner Subfeld) Retourenreferenz' COLLATE 'latin1_swedish_ci',\
+    `creditor_id` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck CRED(Bezeichner Subfeld) SEPA Creditor Identifier' COLLATE 'latin1_swedish_ci',\
+    `debtor_id` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck DEBT(Bezeichner Subfeld) Originator Identifier' COLLATE 'latin1_swedish_ci',\
+    `ordering_party` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck ORDP(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `beneficiary` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck BENM(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `ultimate_creditor` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck ULTC(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `ultimate_debtor` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck ULTD(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `remittance_information` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck REMI(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `purpose_code` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck PURP(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `return_reason` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck RTRN(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `return_reference` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck RREF(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `counterparty_account` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck ACCW(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `intermediary_bank` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck IBK(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `exchange_rate` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck EXCH(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `original_amount` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck OCMT oder OAMT (Bezeichner Subfeld) Ursprünglicher Umsatzbetrag' COLLATE 'latin1_swedish_ci',\
+    `compensation_amount` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck COAM(Bezeichner Subfeld) Zinskompensationsbetrag' COLLATE 'latin1_swedish_ci',\
+    `charges` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck CHGS(Bezeichner Subfeld)' COLLATE 'latin1_swedish_ci',\
+    `different_client` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck ABWA(Bezeichner Subfeld) Abweichender SEPA Auftraggeber' COLLATE 'latin1_swedish_ci',\
+    `different_receiver` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck ABWE(Bezeichner Subfeld) Abweichender SEPA Empfänger' COLLATE 'latin1_swedish_ci',\
+    `sepa_purpose` VARCHAR(65) NULL DEFAULT NULL COMMENT ':86: 20-29 Verwendungszweck SVWZ(Bezeichner Subfeld) Abweichender SEPA Verwendungszweck' COLLATE 'latin1_swedish_ci',\
+    `additional_purpose` VARCHAR(108) NULL DEFAULT NULL COMMENT ':86: 60-63 Verwendungszweck Fortführung aus :86:20-29' COLLATE 'latin1_swedish_ci',\
+    `origin` VARCHAR(50) NOT NULL DEFAULT 'STATEMENT' COMMENT 'STATEMENT from table statement or ACCESS from Microsoft ACCESS DB' COLLATE 'latin1_swedish_ci',\
+    PRIMARY KEY (`iban`, `entry_date`, `counter`) USING BTREE\
+)\
+ COMMENT='Table LEDGER, LEDGER_KEY: SEPA Identifiers extracted from deprecated Ledger Databases\r\ne.g.  Source from deprecated Microsoft ACCESS Database\r\n\r\nIf all rows in table LEDGER have  origin STATEMENT, this table is empty!\r\n\r\n\r\nMT940 Field 86 identifiers in element PURPOSE (>identifier sub-field< :  >MARIADB column name<)\r\n'\
+ COLLATE='latin1_swedish_ci'\
+ ENGINE=InnoDB\
+ ROW_FORMAT=DYNAMIC\
+;"
+
 CREATE_TABLES = [CREATE_BANKIDENTIFIER,
                  CREATE_ISIN,
                  CREATE_ISIN_NAME,
                  CREATE_HOLDING,
                  CREATE_HOLDING_T,
+                 CREATE_HOLDING__T_VIEW,
                  CREATE_HOLDING_VIEW,
                  CREATE_PRICES,
                  CREATE_PRICES_ISIN_VIEW,
                  CREATE_SERVER,
                  CREATE_STATEMENT,
                  CREATE_TRANSACTION,
-                 CREATE_TRANSACTION_VIEW
+                 CREATE_TRANSACTION_VIEW,
+
+                 CREATE_LEDGER,
+                 CREATE_LEDGER_COA,
+                 CREATE_LEDGER_VIEW,
+                 CREATE_SEPA
                  ]
 """
 -------------------------------- MariaDB Table Fields --------------------------------------------------------
@@ -884,6 +1010,20 @@ class Caller:
     Contains class name of calling Class)
     """
     caller: str
+
+
+@dataclass
+class ToolbarSwitch:
+    """
+    Switch Toolbar on/off
+
+    ON (True): Show Toolbar
+        Used to suppress formatting amounts with currency sign
+        (see formbuilt.py  Class BuiltPandasBox)
+
+    OFF(False): Hidden Toolbar 
+    """
+    toolbar_switch = True
 
 
 @dataclass

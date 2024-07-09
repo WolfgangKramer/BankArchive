@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2024-04-13"
+__updated__ = "2024-07-08"
 @author: Wolfgang Kramer
 """
 
@@ -92,6 +92,7 @@ from banking.formbuilts import (
 from banking.utils import (
     check_iban,
     Calculate,
+    date_db,
     dict_get_first_key, dictbank_names, dictaccount,
     listbank_codes,
     shelve_exist, shelve_get_key, shelve_put_key,
@@ -488,9 +489,8 @@ class InputDateHoldingPerc(InputDate):
             getattr(self._field_defs, FN_TO_DATE).textvar.set(
                 _date)  # adjusted date returned
         if from_date == to_date:
-            from_date = datetime.strptime(
-                from_date, "%Y-%m-%d").date() - timedelta(days=1)
-            from_date = from_date.strftime("%Y-%m-%d")
+            from_date = date_db.subtract(from_date, 1)
+            from_date = date_db.convert(from_date)
             getattr(self._field_defs, FN_FROM_DATE).textvar.set(
                 from_date)  # adjusted date returned
             self._footer.set(MESSAGE_TEXT['DATE_ADJUSTED'])
@@ -1119,6 +1119,8 @@ class Isin(BuiltEnterBox):
     def _button_1_button1(self, event):
 
         self.button_state = self._button1_text
+        if getattr(self._field_defs, DB_symbol).widget.get() == '':
+            getattr(self._field_defs, DB_symbol).textvar.set(NOT_ASSIGNED)
         self._validation()
         if self._footer.get() == '':
             if self.field_dict[DB_symbol] != self.symbol and self.symbol != NOT_ASSIGNED:
@@ -1411,8 +1413,8 @@ class TransactionNew(Transaction):
         self.transactions = transactions
         if not self.transactions:
             self.transactions.append(TransactionNamedTuple(
-                (datetime.today().now()).strftime(
-                    "%Y-%m-%d"), 0, TRANSACTION_RECEIPT, EURO, '0',
+                date_db.convert(datetime.today().now()
+                                ), 0, TRANSACTION_RECEIPT, EURO, '0',
                 '0', EURO, '0', '0', '0', ''))
         header = MESSAGE_TEXT['TRANSACTION_HEADER_NEW']
         super().__init__(title, header, iban, isin, name,
@@ -1968,10 +1970,6 @@ class PandasBoxHoldingPortfolios(PandasBoxHolding):
             * 100 - 100)
         self.dataframe = self.dataframe.round(2)
 
-    def format_decimal(self, **kwargs):
-
-        pass  # otherwise creates columns of type object Amount > plotting fails
-
 
 class PandasBoxHoldingTransaction(PandasBoxHolding):
     """
@@ -2027,10 +2025,6 @@ class PandasBoxPrices(BuiltPandasBox):
                         self.dataframe[dataframe_column] = (
                             self.dataframe[dataframe_column] / base_value - 1) * 100
                         break
-
-    def format_decimal(self, **kwargs):
-
-        pass  # otherwise creates columns of type object Amount > plotting fails
 
     def _set_column_format(self):
 
@@ -2090,10 +2084,6 @@ class PandasBoxIsins(BuiltPandasBox):
             self.column_format[column] = (
                 E, '%', 2, COLOR_NEGATIVE, COLUMN_FORMATS_TYP_DECIMAL)
         BuiltPandasBox._set_column_format(self)
-
-    def format_decimal(self, **kwargs):
-
-        pass  # otherwise creates columns of type object Amount > plotting fails
 
 
 class PandasBoxStatement(BuiltPandasBox):
@@ -2287,10 +2277,6 @@ class PandasBoxTotals(BuiltPandasBox):
         self.dataframe[FN_TOTAL] = self.dataframe.sum(
             axis=1).apply(lambda x: dec2.convert(x))
 
-    def format_decimal(self, **kwargs):
-
-        pass  # otherwise creates columns of type object Amount > plotting fails
-
 
 class PandasBoxTransactionProfit(BuiltPandasBox):
     """
@@ -2377,7 +2363,7 @@ class PandasBoxAcquisitionTable(BuiltPandasBox):
         self.mariadb = mariadb
         self.period = period
         super().__init__(title=title, dataframe=self.acquisition_data, name='Acquisition',
-                         message=header,  editable=False)
+                         message=header,  enable_menus=False, editable=False, showtoolbar=False)
 
     def _dataframe(self):
 
@@ -2448,7 +2434,7 @@ class PandasBoxTransactionTable(BuiltPandasBox):
         self.transactions_data = transactions_data
         self.mariadb = mariadb
         super().__init__(title=title, dataframe=self.transactions_data, name='Transaction',
-                         message=header, root=self, editable=False, edit_rows=True)
+                         message=header, root=self, editable=False, enable_menus=False, edit_rows=True)
 
     def _dataframe(self):
 
