@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2024-07-09"
+__updated__ = "2024-07-12"
 Author: Wolfang Kramer
 """
 
@@ -1700,7 +1700,8 @@ class FinTS_MariaDB_Banking(object):
                         break
             if isinstance(dataframe, DataFrame):
                 title_function = ' '.join([title_function, url])
-                BuiltPandasBox(title=title_function, dataframe=dataframe)
+                BuiltPandasBox(title=title_function,
+                               dataframe=dataframe, showtoolbar=False)
 
     def _show_alpha_vantage_search_symbol(self):
 
@@ -1924,7 +1925,7 @@ class FinTS_MariaDB_Banking(object):
             from_date = date_field_list.field_dict[FN_FROM_DATE]
             to_date = date_field_list.field_dict[FN_TO_DATE]
             data_list = self.mariadb.select_table(
-                TRANSACTION_VIEW, date_field_list.field_list, result_dict=True, date_name=DB_date,
+                TRANSACTION_VIEW, date_field_list.field_list, result_dict=True, date_name=DB_price_date,
                 iban=iban, period=(from_date, to_date))
 
             title = ' '.join(
