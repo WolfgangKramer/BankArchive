@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 27.06.2021
-__updated__ = "2024-03-25"
+__updated__ = "2024-07-10"
 @author: Wolfg
 
   Attention! new Scraper Class, see     Module: mariadb.py
@@ -67,6 +67,8 @@ def setup_driver(title):
 
     options = webdriver.EdgeOptions()
     options.add_argument("--start-minimized")
+    # suppressing of DevTools warnings
+    options.add_experimental_option('excludeSwitches', ['enable-logging'])
     try:
         driver = webdriver.Edge(service=Service(), options=options)
     except Exception:

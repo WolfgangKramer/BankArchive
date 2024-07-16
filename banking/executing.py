@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2024-07-12"
+__updated__ = "2024-07-14"
 Author: Wolfang Kramer
 """
 
@@ -886,7 +886,7 @@ class FinTS_MariaDB_Banking(object):
         bank_name = self._bank_name(bank_code)
         title = ' '.join([bank_name, MENU_TEXT['Customize'],
                           MENU_TEXT['Show Data']])
-        PrintList(title=title, text=shelve_text)
+        PrintList(title=title, text=shelve_text, fullscreen=True)
 
     def _bank_sync(self, bank_code):
 

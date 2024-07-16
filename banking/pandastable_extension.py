@@ -1,6 +1,6 @@
 """
 Created on 12.04.2021
-__updated__ = "2024-07-06"
+__updated__ = "2024-07-10"
 @author: Wolfg
 
     Farrell, D 2016 DataExplore: An Application for General Data Analysis in Research and Education. Journal of Open
@@ -140,15 +140,16 @@ class Table(Table):
                          width=width, height=height,
                          rows=rows, cols=cols, showtoolbar=showtoolbar, showstatusbar=showstatusbar,
                          editable=editable, enable_menus=enable_menus)
-        if edit_rows:
-            self.toolbar = ToolBarRows(
-                parent, root)  # Special Toolbar
-            self.toolbar.grid(row=0, column=3, rowspan=2, sticky='news')
-            self.showtoolbar = False  # deactivate standard toolbar of Table
-        else:
-            self.toolbar = ToolBarBanking(parent, self)
-            self.toolbar.grid(row=0, column=3, rowspan=2, sticky='news')
-            self.showtoolbar = False  # deactivate standard toolbar of Table
+        if showtoolbar:
+            if edit_rows:
+                self.toolbar = ToolBarRows(
+                    parent, root)  # Special Toolbar
+                self.toolbar.grid(row=0, column=3, rowspan=2, sticky='news')
+                self.showtoolbar = False  # deactivate standard toolbar of Table
+            else:
+                self.toolbar = ToolBarBanking(parent, self)
+                self.toolbar.grid(row=0, column=3, rowspan=2, sticky='news')
+                self.showtoolbar = False  # deactivate standard toolbar of Table
 
         if hasattr(self, 'pf'):
             self.pf.updateData()

@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2024-07-07"
+__updated__ = "2024-07-15"
 @author: Wolfgang Kramer
 """
 
@@ -86,7 +86,7 @@ TYP_DECIMAL = 'D'
 TYP_DATE = 'DAT'
 ROOT_WINDOW_POSITION = '+100+100'
 BUILBOXT_WINDOW_POSITION = '+200+200'
-BUILTEXT_WINDOW_POSITION = '+400+400'
+BUILTEXT_WINDOW_POSITION = '+400+0'
 WIDTH_WIDGET = 70
 PANDAS_NAME_SHOW = 'SHOW'
 PANDAS_NAME_ROW = 'ROW'
@@ -1264,7 +1264,7 @@ class BuiltText(object):
         text                String of Text Lines
     """
 
-    def __init__(self, title=MESSAGE_TITLE, header='', text=''):
+    def __init__(self, title=MESSAGE_TITLE, header='', text='', fullscreen=False):
 
         Caller.caller = self.__class__.__name__
         if check_main_thread():
@@ -1274,6 +1274,7 @@ class BuiltText(object):
                 Informations.bankdata_informations = ''
             elif header == Informations.HOLDING_T_INFORMATIONS:
                 Informations.holding_t_informations = ''
+            header = ''
             self._builttext_window = Toplevel()
             self._builttext_window.title(title)
             self._builttext_window.geometry(BUILTEXT_WINDOW_POSITION)
@@ -1281,41 +1282,31 @@ class BuiltText(object):
                 destroy_widget(self._builttext_window)
                 return
             # --------------------------------------------------------------
-            if header is not None:
-                header = ''
-            if header:
-                width = len(header) + 5
-                if width > WIDTH_TEXT:
-                    width = WIDTH_TEXT
-            else:
-                width = WIDTH_TEXT
             height = len(list(enumerate(text.splitlines()))) + 5
             if height > HEIGHT_TEXT:
                 height = HEIGHT_TEXT
-            self._header = header
-            self._header_text = StringVar()
-            header_widget = Label(self._builttext_window, width=width,
-                                  textvariable=self._header_text, style='HDR.TLabel')
-            self._header_text.set(self._header)
-            header_widget.grid(sticky=W)
-            self.text_widget = Text(self._builttext_window, height=height, width=width,
-                                    font=('Courier', 8), wrap='none')
+            self.text_widget = Text(
+                self._builttext_window, font=('Courier', 8), wrap='none')
             self.text_widget.grid(sticky=W)
-            self._scroll_x = Scrollbar(self._builttext_window, orient="horizontal",
-                                       command=self.text_widget.xview)
-            self._scroll_x.grid(sticky="ew")
+            scroll_x = Scrollbar(self._builttext_window, orient="horizontal",
+                                 command=self.text_widget.xview)
+            scroll_x.grid(sticky="ew")
 
             scroll_y = Scrollbar(self._builttext_window, orient="vertical",
                                  command=self.text_widget.yview)
             scroll_y.grid(row=1, column=1, sticky="ns")
 
             self.text_widget.configure(yscrollcommand=scroll_y.set,
-                                       xscrollcommand=self._handle_scroll_x)
+                                       xscrollcommand=scroll_x.set)
             textlines = text.splitlines()
+            line_length = 1
             for line, textline in enumerate(textlines):
+                if line_length < len(textline):
+                    line_length = len(textline)
                 self.text_widget.insert(END, textline + '\n')
                 self._set_tags(textline, line)
-
+            self.text_widget.configure(
+                height=HEIGHT_TEXT, width=line_length+10)
             # self.text_widget.config(state=DISABLED)
             # --------------------------------------------------------------
             self._builttext_window.protocol(
@@ -1343,12 +1334,6 @@ class BuiltText(object):
         # insert text checking code
         return False
 
-    def _handle_scroll_x(self, x0, x1):
-        self._scroll_x.set(x0, x1)
-        start, _ = self._scroll_x.get()
-        header_start = int(len(self._header) * start)
-        self._header_text.set(self._header[header_start:])
-
 
 class BuiltPandasBox(Frame):
     """
@@ -1365,10 +1350,14 @@ class BuiltPandasBox(Frame):
 
     PARAMETER:
         dataframe           DataFrame object or Dataframe data with dataframe method
+        dataframe_sum       total sum column_names
         name                Name of Data Rows of PandasTable (e.g. Pandas.>column<)
         root                >root=self< Caller must define new_row(), cHange_row(), delete_row() methods
-        dataframe_sum       total sum column_names
-        plot                True: convert columns to_numeric
+        showtoolbar         show the toolbar
+        editable            editable cells
+        enable_menus        enable right click menus
+        edit_rows           Special ToolBarRows if edit_rows True 
+
     INSTANCE ATTRIBUTES:
         selected_row        list index of selected row
         data_table          list of dataframed rows (named tuples 'PANDAS_NAME_SHOW'
@@ -1392,8 +1381,7 @@ class BuiltPandasBox(Frame):
     def __init__(self, title='MESSAGE_TITLE',
                  dataframe=None, dataframe_sum=[],
                  message=None, name=PANDAS_NAME_SHOW,
-                 root=None, showtoolbar=True, editable=True, enable_menus=True, edit_rows=False,
-                 fillna='',
+                 root=None, showtoolbar=True, editable=True, enable_menus=True, edit_rows=False
                  ):
 
         Caller.caller = self.__class__.__name__
@@ -1408,7 +1396,6 @@ class BuiltPandasBox(Frame):
         self._dataframe_append_sum()
         self.name = name
         self.showtoolbar = showtoolbar
-        self.fillna = fillna
         self.selected_row = None
         self.data_table = self.create_data_table()
         self.dataframe_window = Toplevel()
@@ -1554,7 +1541,7 @@ class BuiltPandasBox(Frame):
         for column in columns:
             col_align, col_currency, col_places, col_color, typ = self.column_format[column]
             if typ in [COLUMN_FORMATS_TYP_DECIMAL]:
-                if not ToolbarSwitch.toolbar_switch and self.fillna == 0:
+                if not ToolbarSwitch.toolbar_switch:
                     # plotting  or aggregating fails if fillna=''
                     self.dataframe[column] = self.dataframe[column].fillna(
                         value=0)
