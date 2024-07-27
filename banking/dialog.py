@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2024-07-08"
+__updated__ = "2024-07-17"
 @author: Wolfgang Kramer
 """
 
@@ -81,7 +81,7 @@ logger = logging.getLogger(__name__)
 log_target = logger.info
 
 
-class Dialogs:
+class Dialogs(object):
     """
     Dialogues: Customer - Bank
     """

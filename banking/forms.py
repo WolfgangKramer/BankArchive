@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2024-07-08"
+__updated__ = "2024-07-18"
 @author: Wolfgang Kramer
 """
 
@@ -193,13 +193,6 @@ class Acquisition(BuiltColumnBox):
                          array_def=array_def)
         self._footer.set(MESSAGE_TEXT['SCROLL'])
 
-    def _button2_command(self, event):
-
-        self.button_state = self._button2_text
-        self._validation()
-        if self._footer.get() == '':
-            self.quit_widget()
-
 
 class Adjustments(BuiltColumnBox):
     """
@@ -309,19 +302,19 @@ class AlphaVantageParameter(BuiltEnterBox):
                          button3_text=MENU_TEXT['ISIN Table'],
                          field_defs=self._field_defs)
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
         self.button_state = self._button1_text
-        self._validation()
+        self.validation()
         if self._footer.get() == '':
             self.quit_widget()
 
-    def _button_1_button2(self, event):
+    def button_1_button2(self, event):
 
         self.button_state = self._button2_text
         self.quit_widget()
 
-    def _button_1_button3(self, event):
+    def button_1_button3(self, event):
 
         self.button_state = MENU_TEXT['ISIN Table']
         self.quit_widget()
@@ -391,7 +384,7 @@ class AppCustomizing(BuiltEnterBox):
                                           '', TIME_SERIES_DAILY, HOLDING))
         super().__init__(header=header, grab=False, field_defs=field_defs)
 
-    def _focus_in_action(self, event):
+    def focus_in_action(self, event):
 
         if event.widget.myId == KEY_DIRECTORY:
             directory = filedialog.askdirectory()
@@ -412,7 +405,7 @@ class AppCustomizing(BuiltEnterBox):
         if event.widget.myId == KEY_MARIADB_NAME:
             getattr(self._field_defs, KEY_MS_ACCESS).textvar.set('')
 
-    def _focus_out_action(self, event):
+    def focus_out_action(self, event):
 
         if event.widget.myId == KEY_MARIADB_NAME:
             mariadb_name = getattr(
@@ -449,7 +442,7 @@ class InputDate(BuiltEnterBox):
                                 default_value=to_date))
         )
 
-    def _validation_all_addon(self, field_defs):
+    def validation_all_addon(self, field_defs):
 
         if (getattr(field_defs, FN_FROM_DATE).widget.get() >
                 getattr(field_defs, FN_TO_DATE).widget.get()):
@@ -477,7 +470,7 @@ class InputDateHoldingPerc(InputDate):
         self.iban = iban
         super().__init__(title=title, from_date=from_date, to_date=to_date)
 
-    def _validation_all_addon(self, field_defs):
+    def validation_all_addon(self, field_defs):
         from_date = getattr(field_defs, FN_FROM_DATE).widget.get()
         _date = self._validate_date(from_date)
         if _date:
@@ -576,7 +569,7 @@ class InputDateFieldlist(BuiltEnterBox):
         if self.no_selection and standard_texts:
             self.field_list = standard_texts
 
-    def _validation_all_addon(self, field_defs):
+    def validation_all_addon(self, field_defs):
 
         if self.period:
             if (getattr(field_defs, FN_FROM_DATE).widget.get() > '{:%Y-%m-%d}'.format(date.today())):
@@ -590,7 +583,7 @@ class InputDateFieldlist(BuiltEnterBox):
             if (getattr(field_defs, FN_DATE).widget.get() > '{:%Y-%m-%d}'.format(date.today())):
                 getattr(self._field_defs, FN_DATE).textvar.set(date.today())
 
-    def _button_1_button2(self, event):
+    def button_1_button2(self, event):
         if not self.field_list:
             return
         self.no_selection = False
@@ -607,7 +600,7 @@ class InputDateFieldlistPrices(InputDateFieldlist):
         Select Prices
     """
 
-    def _button_1_button2(self, event):
+    def button_1_button2(self, event):
         if not self.field_list:
             return
         self.no_selection = False
@@ -640,7 +633,7 @@ class InputDateFieldlistHolding(InputDateFieldlist):
                          field_list=field_list, from_date=date, default_texts=default_texts,
                          standard=MENU_TEXT['Show'] + MENU_TEXT['Holding'], period=False)
 
-    def _validation_all_addon(self, field_defs):
+    def validation_all_addon(self, field_defs):
         _date = self._validate_date(field_defs)
         if _date:
             getattr(self._field_defs, FN_DATE).textvar.set(_date)
@@ -691,7 +684,7 @@ class InputDay(BuiltEnterBox):
                                 default_value=date))
         )
 
-    def _validation_all_addon(self, field_defs):
+    def validation_all_addon(self, field_defs):
 
         if (getattr(field_defs, FN_DATE).widget.get() > '{:%Y-%m-%d}'.format(date.today())):
             getattr(self._field_defs, FN_DATE).textvar.set(date.today())
@@ -743,7 +736,7 @@ class InputISIN(BuiltEnterBox):
             field_defs=field_defs
         )
 
-    def _validation_all_addon(self, field_defs):
+    def validation_all_addon(self, field_defs):
 
         if self.period:
             if (getattr(field_defs, FN_FROM_DATE).widget.get() >
@@ -751,7 +744,7 @@ class InputISIN(BuiltEnterBox):
                 self._footer.set(MESSAGE_TEXT['DATE'].format(
                     getattr(field_defs, FN_FROM_DATE).name))
 
-    def _comboboxselected_action(self, event):
+    def comboboxselected_action(self, event):
 
         if getattr(self._field_defs, DB_name).name == DB_name:
             getattr(self._field_defs, DB_ISIN).textvar.set(
@@ -854,7 +847,7 @@ class InputName(BuiltEnterBox):
         )
         self.name = self.field_dict[DB_name]
 
-    def _validation_addon(self, field_def):
+    def validation_addon(self, field_def):
         """
         Allowed characters: A-Z a-z 0-9 _  (MariaDB Naming Conventions)
         """
@@ -896,7 +889,7 @@ class BankDataNew(BuiltEnterBox):
         )
         super().__init__(title=title, button2_text=None, field_defs=field_defs)
 
-    def _validation_addon(self, field_def):
+    def validation_addon(self, field_def):
 
         if field_def.name == KEY_BANK_CODE:
             if field_def.widget.get() in listbank_codes():
@@ -914,7 +907,7 @@ class BankDataNew(BuiltEnterBox):
                 self._footer.set(MESSAGE_TEXT['HTTP_INPUT'].
                                  format(http_code, field_def.widget.get()))
 
-    def _comboboxselected_action(self, event):
+    def comboboxselected_action(self, event):
 
         bank_code = getattr(self._field_defs, KEY_BANK_CODE).widget.get()
         field_dict = self.mariadb.select_table(
@@ -969,7 +962,7 @@ class BankDataChange(BuiltEnterBox):
                                    login_data[KEY_IDENTIFIER_DELIMITER]))
         super().__init__(title=title, field_defs=field_defs)
 
-    def _validation_addon(self, field_def):
+    def validation_addon(self, field_def):
 
         if field_def.name == KEY_SERVER:
             http_code = http_error_code(field_def.widget.get())
@@ -1002,7 +995,7 @@ class BankDelete(BuiltEnterBox):
             )
         )
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
         self.button_state = self._button1_text
         self.field_dict = {}
@@ -1012,7 +1005,7 @@ class BankDelete(BuiltEnterBox):
             self._field_defs, KEY_BANK_NAME).widget.get()
         self.quit_widget()
 
-    def _comboboxselected_action(self, event):
+    def comboboxselected_action(self, event):
 
         getattr(self._field_defs, KEY_BANK_NAME).textvar.set(shelve_get_key(
             getattr(self._field_defs, KEY_BANK_CODE).widget.get(), KEY_BANK_NAME))
@@ -1116,12 +1109,12 @@ class Isin(BuiltEnterBox):
         self.isins = sorted(list(self.get_name_isin.values()))
         self.names = sorted(list(self.get_name_isin.keys()))
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
         self.button_state = self._button1_text
         if getattr(self._field_defs, DB_symbol).widget.get() == '':
             getattr(self._field_defs, DB_symbol).textvar.set(NOT_ASSIGNED)
-        self._validation()
+        self.validation()
         if self._footer.get() == '':
             if self.field_dict[DB_symbol] != self.symbol and self.symbol != NOT_ASSIGNED:
                 self.mariadb.execute_delete(
@@ -1130,7 +1123,7 @@ class Isin(BuiltEnterBox):
             self.mariadb.execute_replace(ISIN, self.field_dict)
             self.quit_widget()
 
-    def _button_1_button3(self, event):
+    def button_1_button3(self, event):
 
         self.button_state = self._button3_text
         isin = getattr(self._field_defs, DB_ISIN).widget.get()
@@ -1142,7 +1135,7 @@ class Isin(BuiltEnterBox):
                 PRICES, symbol=symbol)
         self.quit_widget()
 
-    def _button_1_button4(self, event):
+    def button_1_button4(self, event):
 
         self.button_state = self._button4_text
         getattr(self._field_defs, DB_ISIN).textvar.set('')
@@ -1157,21 +1150,21 @@ class Isin(BuiltEnterBox):
         getattr(self._field_defs, DB_ISIN).combo_positioning = False
         getattr(self._field_defs, DB_name).combo_positioning = False
 
-    def _button_1_button5(self, event):
+    def button_1_button5(self, event):
 
-        self._validation()
-        BuiltEnterBox._button_1_button5(self, event)
+        self.validation()
+        BuiltEnterBox.button_1_button5(self, event)
 
-    def _button_1_button6(self, event):
+    def button_1_button6(self, event):
 
-        self._validation()
-        BuiltEnterBox._button_1_button6(self, event)
+        self.validation()
+        BuiltEnterBox.button_1_button6(self, event)
 
-    def _handle_ctrl_left(self):
+    def handle_ctrl_left(self):
 
         self._get_next_row('<')
 
-    def _handle_ctrl_right(self):
+    def handle_ctrl_right(self):
 
         self._get_next_row('>')
 
@@ -1191,7 +1184,7 @@ class Isin(BuiltEnterBox):
         except Exception:
             pass
 
-    def _focus_out_action(self, event):
+    def focus_out_action(self, event):
 
         if event.widget.myId == DB_ISIN:
             isin = getattr(self._field_defs, DB_ISIN).widget.get()
@@ -1245,11 +1238,11 @@ class Isin(BuiltEnterBox):
             elif YAHOO == getattr(self._field_defs, DB_origin_symbol).widget.get():
                 webbrowser.open(WWW_YAHOO)
 
-    def _comboboxselected_action(self, event):
+    def comboboxselected_action(self, event):
 
-        self._focus_out_action(event)
+        self.focus_out_action(event)
 
-    def _validation_addon(self, field_def):
+    def validation_addon(self, field_def):
         """
         more field validations
         """
@@ -1321,15 +1314,15 @@ class Transaction(BuiltEnterBox):
                 FieldDefinition(name=DB_comments, length=200, mandatory=False,
                                 default_value=transaction.comments),
             )
-            self._change_field_defs()
+            self.change_field_defs()
             super().__init__(title=title, header=header, field_defs=self.transaction_field_defs,
                              button1_text=BUTTON_SAVE, button2_text=None)
 
-    def _change_field_defs(self):
+    def change_field_defs(self):
 
         pass
 
-    def _focus_in_action(self, event):
+    def focus_in_action(self, event):
 
         if event.widget.myId == DB_posted_amount:
             footer = field_validation(DB_price, getattr(
@@ -1373,16 +1366,16 @@ class TransactionChange(Transaction):
         super().__init__(title, header, iban, isin, name,
                          selected, transactions, mariadb)
 
-    def _change_field_defs(self):
+    def change_field_defs(self):
 
         getattr(self.transaction_field_defs, DB_name).protected = True
         getattr(self.transaction_field_defs, DB_ISIN).protected = True
         getattr(self.transaction_field_defs, DB_price_date).protected = True
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
         self.button_state = self._button1_text
-        self._validation()
+        self.validation()
         if self._footer.get() == '':
             if self.field_dict[DB_transaction_type] == TRANSACTION_RECEIPT:
                 self.field_dict[DB_acquisition_amount] = 0
@@ -1420,10 +1413,10 @@ class TransactionNew(Transaction):
         super().__init__(title, header, iban, isin, name,
                          selected, self.transactions, mariadb)
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
         self.button_state = self._button1_text
-        self._validation()
+        self.validation()
         if self._footer.get() == '':
             if self.field_dict[DB_transaction_type] == TRANSACTION_RECEIPT:
                 self.field_dict[DB_acquisition_amount] = 0
@@ -1431,7 +1424,7 @@ class TransactionNew(Transaction):
                 self.iban, self.field_dict, self.transactions)
             destroy_widget(self._box_window)
 
-    def _validation_addon(self, field_def):
+    def validation_addon(self, field_def):
 
         global message_transaction_new
         if field_def.name == DB_price_date:
@@ -1532,7 +1525,7 @@ class SepaCreditBox(BuiltEnterBox):
             button1_text=BUTTON_OK, button2_text=BUTTON_DELETE_ALL, button3_text=BUTTON_NEW,
             field_defs=field_defs)
 
-    def _validation_addon(self, field_def):
+    def validation_addon(self, field_def):
 
         if field_def.name == SEPA_CREDITOR_IBAN and not check_iban(field_def.widget.get()):
             return self._footer.set(MESSAGE_TEXT['IBAN'])
@@ -1549,12 +1542,12 @@ class SepaCreditBox(BuiltEnterBox):
             if days.days < 0:
                 return self._footer.set(MESSAGE_TEXT['DATE_TODAY'])
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
-        BuiltEnterBox._button_1_button1(self, event)
+        BuiltEnterBox.button_1_button1(self, event)
         getattr(self._field_defs, SEPA_CREDITOR_NAME).combo_positioning = True
 
-    def _button_1_button2(self, event):
+    def button_1_button2(self, event):
 
         self.button_state = self._button2_text
         getattr(self._field_defs, SEPA_CREDITOR_BANK_NAME).default_value = ''
@@ -1565,7 +1558,7 @@ class SepaCreditBox(BuiltEnterBox):
                 field_def.widget.insert(0, field_def.default_value)
         getattr(self._field_defs, SEPA_CREDITOR_NAME).combo_positioning = True
 
-    def _button_1_button3(self, event):
+    def button_1_button3(self, event):
 
         self.button_state = self._button3_text
         getattr(self._field_defs, SEPA_CREDITOR_NAME).textvar.set('')
@@ -1579,7 +1572,7 @@ class SepaCreditBox(BuiltEnterBox):
         getattr(self._field_defs, SEPA_REFERENCE).textvar.set('')
         getattr(self._field_defs, SEPA_CREDITOR_NAME).combo_positioning = False
 
-    def _comboboxselected_action(self, event):
+    def comboboxselected_action(self, event):
 
         applicant_iban, applicant_bic, purpose = (
             self.mariadb.select_sepa_transfer_creditor_data(
@@ -1595,7 +1588,7 @@ class SepaCreditBox(BuiltEnterBox):
             getattr(self._field_defs, SEPA_PURPOSE_1).textvar.set(purpose[:70])
             getattr(self._field_defs, SEPA_PURPOSE_2).textvar.set(purpose[70:])
 
-    def _focus_out_action(self, event):
+    def focus_out_action(self, event):
 
         if event.widget.myId == SEPA_CREDITOR_NAME:
             applicant_iban, applicant_bic, purpose = (
@@ -1662,7 +1655,7 @@ class SelectCreateHolding_t(BuiltCheckButton):
             checkbutton_texts=checkbutton_texts
         )
 
-    def _button_1_button2(self, event):
+    def button_1_button2(self, event):
 
         self.button_state = self._button2_text
         self.field_list = []
@@ -1705,7 +1698,7 @@ class SelectFields(BuiltCheckButton):
             checkbutton_texts=checkbutton_texts
         )
 
-    def _button_1_button2(self, event):
+    def button_1_button2(self, event):
 
         self.button_state = self._button2_text
         standard = shelve_get_key(BANK_MARIADB_INI, self.standard)
@@ -1716,17 +1709,17 @@ class SelectFields(BuiltCheckButton):
                 else:
                     self._check_vars[idx].set(0)
 
-    def _button_1_button3(self, event):
+    def button_1_button3(self, event):
 
         self.button_state = self._button3_text
         self.field_list = []
         for idx, check_var in enumerate(self._check_vars):
             if check_var.get() == 1:
                 self.field_list.append(self.checkbutton_texts[idx])
-        self._validate_all()
+        self.validate_all()
         shelve_put_key(BANK_MARIADB_INI, (self.standard, self.field_list))
 
-    def _validate_all(self):
+    def validate_all(self):
 
         if self.standard == MENU_TEXT['Show'] + MENU_TEXT['Statement']:
             if DB_amount in self.field_list:
@@ -1788,7 +1781,7 @@ class SelectDownloadPrices(BuiltCheckButton):
             checkbutton_texts=checkbutton_texts
         )
 
-    def _button_1_button2(self, event):
+    def button_1_button2(self, event):
 
         self.button_state = self._button2_text
         self.field_list = []
@@ -1797,7 +1790,7 @@ class SelectDownloadPrices(BuiltCheckButton):
                 self.field_list.append(self.checkbutton_texts[idx])
         self.quit_widget()
 
-    def _button_1_button3(self, event):
+    def button_1_button3(self, event):
 
         self.button_state = self._button3_text
         self.field_list = []
@@ -1816,7 +1809,7 @@ class PrintList(BuiltText):
         text                String of Text Lines
     """
 
-    def _set_tags(self, textline, line):
+    def set_tags(self, textline, line):
         if not line % 2:
             self.text_widget.tag_add(LIGHTBLUE, str(line + 1) + '.0',
                                      str(line + 1) + '.' + str(len(textline)))
@@ -1836,7 +1829,7 @@ class PandasBoxHolding(BuiltPandasBox):
         data_table          list of dataframed rows (named tuples 'PANDAS_NAME_SHOW'
     """
 
-    def _set_properties(self):
+    def set_properties(self):
 
         self.dataframe = self.dataframe.drop(
             columns=[DB_amount_currency, DB_price_currency, DB_currency],
@@ -1845,7 +1838,7 @@ class PandasBoxHolding(BuiltPandasBox):
         self.pandas_table.updateModel(TableModel(self.dataframe))
         self.pandas_table.redraw()
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         if isinstance(self.dataframe, tuple):
             (data, columns) = self.dataframe
@@ -1872,7 +1865,7 @@ class PandasBoxHoldingPercent(BuiltPandasBox):
 
         return position_dict[DB_name]
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         data_to_date, data_from_date = self.dataframe
         # delete complete sale and buy positions of to_date and from_date
@@ -1922,11 +1915,11 @@ class PandasBoxHoldingPercent(BuiltPandasBox):
         self.dataframe = self.dataframe[[DB_name, DB_total_amount, DB_market_price, DB_pieces,
                                          FN_TOTAL_PERCENT, FN_PERIOD_PERCENT]]
 
-    def _set_column_format(self):
+    def set_column_format(self):
 
         self.column_format = {FN_TOTAL_PERCENT: (E, '%', 2, COLOR_NEGATIVE, COLUMN_FORMATS_TYP_DECIMAL),
                               FN_PERIOD_PERCENT: (E, '%', 2, COLOR_NEGATIVE, COLUMN_FORMATS_TYP_DECIMAL)}
-        BuiltPandasBox._set_column_format(self)
+        BuiltPandasBox.set_column_format(self)
 
 
 class PandasBoxHoldingPortfolios(PandasBoxHolding):
@@ -1938,7 +1931,7 @@ class PandasBoxHoldingPortfolios(PandasBoxHolding):
         dataframe           data per price_date
     """
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         # create dataframe
         set_option('display.float_format', lambda x: '%0.2f' % x)
@@ -1984,7 +1977,7 @@ class PandasBoxHoldingTransaction(PandasBoxHolding):
         data_table          list of dataframed rows (named tuples 'PANDAS_NAME_SHOW'
     """
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         if isinstance(self.dataframe, tuple):
             (data, columns) = self.dataframe
@@ -2007,7 +2000,7 @@ class PandasBoxPrices(BuiltPandasBox):
         dataframe           data per price_date
     """
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         (db_field, data, self.origin, mode) = self.dataframe
         dataframe = DataFrame(data)
@@ -2026,7 +2019,7 @@ class PandasBoxPrices(BuiltPandasBox):
                             self.dataframe[dataframe_column] / base_value - 1) * 100
                         break
 
-    def _set_column_format(self):
+    def set_column_format(self):
 
         for column in self.dataframe.columns:
             _, name_ = column
@@ -2036,7 +2029,7 @@ class PandasBoxPrices(BuiltPandasBox):
             else:
                 # Yahoo columns are violet
                 self.pandas_table.columncolors[column] = '#EE82EE'
-        BuiltPandasBox._set_column_format(self)
+        BuiltPandasBox.set_column_format(self)
 
 
 class PandasBoxIsins(BuiltPandasBox):
@@ -2047,7 +2040,7 @@ class PandasBoxIsins(BuiltPandasBox):
         dataframe           data per price_date
     """
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         (db_field, data, mode, columns) = self.dataframe
         if db_field == FN_PROFIT_LOSS:
@@ -2077,13 +2070,13 @@ class PandasBoxIsins(BuiltPandasBox):
                     self.dataframe[name_] = (
                         self.dataframe[name_] / base_rows[name_] - 1) * 100
 
-    def _set_column_format(self):
+    def set_column_format(self):
 
         self.column_format = {}
         for column in self.dataframe.columns:
             self.column_format[column] = (
                 E, '%', 2, COLOR_NEGATIVE, COLUMN_FORMATS_TYP_DECIMAL)
-        BuiltPandasBox._set_column_format(self)
+        BuiltPandasBox.set_column_format(self)
 
 
 class PandasBoxStatement(BuiltPandasBox):
@@ -2112,7 +2105,7 @@ class PandasBoxStatement(BuiltPandasBox):
                     self.amount = -self.amount
         return self.amount
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         if isinstance(self.dataframe, tuple):
             data, columns = self.dataframe
@@ -2128,7 +2121,7 @@ class PandasBoxStatement(BuiltPandasBox):
             self.dataframe[DB_closing_balance] = self.dataframe[[DB_closing_balance, DB_closing_status]].apply(
                 lambda x: self._debit(*x), axis=1)
 
-    def _set_properties(self):
+    def set_properties(self):
 
         self.dataframe = self.dataframe.drop(
             axis=1, errors='ignore',
@@ -2152,9 +2145,9 @@ class PandasBoxBalances(PandasBoxStatement):
         data_table          list of dataframe rows (named tuples 'PANDAS_NAME_SHOW'
     """
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
-        PandasBoxStatement._dataframe(self)
+        PandasBoxStatement.create_dataframe(self)
         self.dataframe.drop(KEY_ACC_BANK_CODE, inplace=True, axis=1)
 
 
@@ -2169,7 +2162,7 @@ class PandasBoxBalancesAllBanks(PandasBoxStatement):
         data_table          list of dataframe rows (named tuples 'PANDAS_NAME_SHOW'
     """
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         bank_names = dictbank_names()
         dataframe_all = concat(self.dataframe)
@@ -2192,7 +2185,7 @@ class PandasBoxBalancesAllBanks(PandasBoxStatement):
         # append total sum all Bank
         dataframes.append(dataframe_all.tail(1))
         self.dataframe = concat(dataframes, ignore_index=True)
-        PandasBoxStatement._dataframe(self)
+        PandasBoxStatement.create_dataframe(self)
         self.dataframe.reset_index()
         # calculate percent changes
         self.dataframe[FN_DAILY_PERCENT] = (
@@ -2211,13 +2204,13 @@ class PandasBoxBalancesAllBanks(PandasBoxStatement):
             [KEY_BANK_NAME, KEY_ACC_BANK_CODE, DB_entry_date], inplace=True, axis=1)
         self.dataframe.insert(0, KEY_BANK_NAME, bank_name)
 
-    def _set_column_format(self):
+    def set_column_format(self):
 
         self.column_format = {FN_TOTAL: (
             E, EURO, 2, COLOR_NEGATIVE, COLUMN_FORMATS_TYP_DECIMAL)}
-        PandasBoxStatement._set_column_format(self)
+        PandasBoxStatement.set_column_format(self)
 
-    def _set_row_format(self):
+    def set_row_format(self):
 
         for i, row in self.pandas_table.model.df.iterrows():
             if row[KEY_BANK_NAME]:
@@ -2251,7 +2244,7 @@ class PandasBoxTotals(BuiltPandasBox):
         else:
             return x[12:]
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         self.dataframe = DataFrame(self.dataframe, columns=[
             DB_iban, DB_date, DB_status, DB_total_amount])
@@ -2286,7 +2279,7 @@ class PandasBoxTransactionProfit(BuiltPandasBox):
         dataframe           List of tuples with transaction data
     """
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         self.dataframe = DataFrame(
             self.dataframe,
@@ -2296,11 +2289,11 @@ class PandasBoxTransactionProfit(BuiltPandasBox):
                    FN_PROFIT: self.dataframe[FN_PROFIT].sum(), DB_amount_currency: EURO}
         self.dataframe.loc[len(self.dataframe.index)] = sum_row
 
-    def _set_column_format(self):
+    def set_column_format(self):
 
         self.column_format = {FN_PROFIT: (
             E, DB_amount_currency, 2, COLOR_NEGATIVE, COLUMN_FORMATS_TYP_DECIMAL)}
-        BuiltPandasBox._set_column_format(self)
+        BuiltPandasBox.set_column_format(self)
 
 
 class PandasBoxTransactionDetail(BuiltPandasBox):
@@ -2311,7 +2304,7 @@ class PandasBoxTransactionDetail(BuiltPandasBox):
         dataframe           List of tuples with transaction data
     """
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         self.count_transactions, data = self.dataframe
         self.dataframe = DataFrame(
@@ -2333,13 +2326,13 @@ class PandasBoxTransactionDetail(BuiltPandasBox):
         self.dataframe.drop(
             columns=[DB_counter], inplace=True)
 
-    def _set_column_format(self):
+    def set_column_format(self):
 
         self.column_format = {FN_PIECES_CUM: (E, '', 2, COLOR_NEGATIVE, COLUMN_FORMATS_TYP_DECIMAL),
                               FN_PROFIT_CUM: (E, DB_amount_currency, 2, COLOR_NEGATIVE, COLUMN_FORMATS_TYP_DECIMAL)}
-        BuiltPandasBox._set_column_format(self)
+        BuiltPandasBox.set_column_format(self)
 
-    def _set_row_format(self):
+    def set_row_format(self):
 
         if self.count_transactions < self.dataframe.shape[0]:
             self.pandas_table.setRowColors(
@@ -2365,7 +2358,7 @@ class PandasBoxAcquisitionTable(BuiltPandasBox):
         super().__init__(title=title, dataframe=self.acquisition_data, name='Acquisition',
                          message=header,  enable_menus=False, editable=False, showtoolbar=False)
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         self.dataframe = DataFrame(
             self.dataframe,
@@ -2380,10 +2373,10 @@ class PandasBoxAcquisitionTable(BuiltPandasBox):
         """
         self.selected_row = self.pandas_table.get_row_clicked(
             event)  # starts with 0
-        self._processing()
+        self.processing()
         self.quit_widget()
 
-    def _processing(self):
+    def processing(self):
 
         acquisition_values = Acquisition(
             header=self.title,
@@ -2403,7 +2396,7 @@ class PandasBoxAcquisitionTable(BuiltPandasBox):
         self.mariadb.update_holding_acquisition(
             self.iban, self.isin, HoldingAcquisition(**data_row), period=self.period, mode="ALL")
 
-    def _set_properties(self):
+    def set_properties(self):
 
         for index, _ in self.dataframe.iterrows():
             if index != 0:
@@ -2436,7 +2429,7 @@ class PandasBoxTransactionTable(BuiltPandasBox):
         super().__init__(title=title, dataframe=self.transactions_data, name='Transaction',
                          message=header, root=self, editable=False, enable_menus=False, edit_rows=True)
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         self.dataframe = DataFrame(
             self.dataframe,
@@ -2490,7 +2483,7 @@ class PrintMessageCode(BuiltText):
         ERROR = 'ERROR:       '
     """
 
-    def _set_tags(self, textline, line):
+    def set_tags(self, textline, line):
         if len(textline) > 13:
             if textline[0:13] == ERROR:
                 self.text_widget.tag_add(ERROR, str(line + 1) + '.0',
@@ -2505,7 +2498,7 @@ class PrintMessageCode(BuiltText):
                                          str(line + 1) + '.' + str(len(textline)))
                 self.text_widget.tag_config(INFORMATION, foreground='GREEN')
 
-    def _destroy_widget(self, text):
+    def destroy_widget(self, text):
 
         info = re.compile(INFORMATION)
         if info.search(text):
@@ -2557,10 +2550,10 @@ class VersionTransaction(BuiltEnterBox):
         else:
             MessageBoxTermination()
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
         self.button_state = self._button1_text
-        self._validation()
+        self.validation()
         if self._footer.get() == '':
             for key in self.field_dict.keys():
                 self.field_dict[key] = int(self.field_dict[key])

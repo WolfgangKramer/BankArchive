@@ -1,6 +1,6 @@
 """
 Created on 12.04.2021
-__updated__ = "2024-07-10"
+__updated__ = "2024-07-22"
 @author: Wolfg
 
     Farrell, D 2016 DataExplore: An Application for General Data Analysis in Research and Education. Journal of Open

@@ -1,6 +1,6 @@
 '''
 Created on 26.11.2019
-__updated__ = "2024-07-09"
+__updated__ = "2024-07-24"
 @author: Wolfgang Kramer
 '''
 
@@ -29,7 +29,7 @@ from banking.declarations import (
     HOLDING, HOLDING_VIEW, HOLDING_T,
     ISIN, PRICES,
     KEY_ACC_IBAN, KEY_ACC_ACCOUNT_NUMBER, KEY_ACC_ALLOWED_TRANSACTIONS, KEY_ACC_PRODUCT_NAME,
-    LEDGER, LEDGER_COA, SEPA,
+    LEDGER_COA, SEPA,
     MESSAGE_TEXT,
     ORIGIN,
     PERCENT,
@@ -49,6 +49,11 @@ from banking.forms import Acquisition
 from banking.special import transfer_holding_to_access, transfer_statement_to_access
 from banking.utils import Calculate, date_yyyymmdd, date_db, check_main_thread
 
+BANKS = 'banken'
+LEDGER = 'ledger'
+RENTAL = 'rental'
+
+DB_NAMES = [BANKS, LEDGER, RENTAL]
 
 dec2 = Calculate(places=2)
 dec6 = Calculate(places=6)

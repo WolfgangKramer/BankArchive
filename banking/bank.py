@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2024-03-25"
+__updated__ = "2024-07-17"
 @author: Wolfgang Kramer
 """
 from banking.declarations import (
@@ -26,7 +26,7 @@ import re
 import webbrowser
 
 
-class InitBank:
+class InitBank(object):
     """
     Data Bank Dialogue
     """
@@ -120,7 +120,7 @@ class InitBank:
         self.to_date = date.today()
 
 
-class InitBankSync:
+class InitBankSync(object):
     """
     Data Bank Synchronization
     """
@@ -191,7 +191,7 @@ class InitBankSync:
         self.dialogs = Dialogs(mariadb)
 
 
-class InitBankAnonymous:
+class InitBankAnonymous(object):
     """
     Data Bank Anoymous Dialogue
     """

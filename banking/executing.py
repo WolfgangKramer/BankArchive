@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2024-07-14"
+__updated__ = "2024-07-19"
 Author: Wolfang Kramer
 """
 
@@ -943,10 +943,10 @@ class FinTS_MariaDB_Banking(object):
 
         self._delete_footer()
         _data_holding_performance = None
-        period = (date.today() - timedelta(days=360), date.today())
+        from_date = date.today() - timedelta(days=360)
+        to_date = date.today()
         title = ' '.join([bank_name, MENU_TEXT['Holding Performance']])
         while True:
-            from_date, to_date = period
             input_date = InputDate(title=title,
                                    from_date=from_date, to_date=to_date)
             if isinstance(_data_holding_performance, BuiltPandasBox):
@@ -962,10 +962,10 @@ class FinTS_MariaDB_Banking(object):
                 select_holding_total = self.mariadb.select_holding_total(
                     iban=iban, period=(from_date, to_date))
             if select_holding_total:
-                title = ' '.join([title, ' ',
-                                  MESSAGE_TEXT['Period'].format(from_date, to_date)])
+                title_period = ' '.join([title, ' ',
+                                         MESSAGE_TEXT['Period'].format(from_date, to_date)])
                 _data_holding_performance = PandasBoxHoldingPortfolios(
-                    title=title, dataframe=select_holding_total)
+                    title=title_period, dataframe=select_holding_total)
             else:
                 self._footer.set(
                     MESSAGE_TEXT['DATA_NO'].format(bank_name, iban))
@@ -1288,12 +1288,13 @@ class FinTS_MariaDB_Banking(object):
             to_date = input_date.field_dict[FN_TO_DATE]
             data_total_amounts = self.mariadb.select_total_amounts(
                 period=(from_date, to_date))
-            title = ' '.join([title, MESSAGE_TEXT['Period'].format(
+            title_period = ' '.join([title, MESSAGE_TEXT['Period'].format(
                 from_date, to_date)])
             if data_total_amounts:
-                PandasBoxTotals(title=title, dataframe=data_total_amounts, )
+                PandasBoxTotals(title=title_period,
+                                dataframe=data_total_amounts, )
             else:
-                MessageBoxInfo(title=title, message=(
+                MessageBoxInfo(title=title_period, message=(
                     MESSAGE_TEXT['DATA_NO'].format('', '')))
 
     def _import_bankidentifier(self):
@@ -1776,8 +1777,6 @@ class FinTS_MariaDB_Banking(object):
                                                           KEY_ACC_PRODUCT_NAME, DB_entry_date,
                                                           DB_closing_status, DB_closing_balance, DB_closing_currency,
                                                           DB_opening_status, DB_opening_balance, DB_opening_currency])
-            title = ' '.join(
-                [MENU_TEXT['Show'], bank_name, MENU_TEXT['Balances']])
             PandasBoxBalances(title=title, dataframe=dataframe,
                               dataframe_sum=[DB_closing_balance, DB_opening_balance])
         else:
@@ -1928,13 +1927,14 @@ class FinTS_MariaDB_Banking(object):
                 TRANSACTION_VIEW, date_field_list.field_list, result_dict=True, date_name=DB_price_date,
                 iban=iban, period=(from_date, to_date))
 
-            title = ' '.join(
+            title_period = ' '.join(
                 [title, MESSAGE_TEXT['Period'].format(from_date, to_date)])
             if data_list:
-                PandasBoxHoldingTransaction(title=title, dataframe=data_list,
+                PandasBoxHoldingTransaction(title=title_period, dataframe=data_list,
                                             dataframe_sum=[DB_posted_amount, DB_acquisition_amount])
             else:
-                self._footer.set(MESSAGE_TEXT['DATA_NO'].format(title, ''))
+                self._footer.set(
+                    MESSAGE_TEXT['DATA_NO'].format(title_period, ''))
 
     def _show_holdings(self, bank_code, account):
 
@@ -1969,7 +1969,7 @@ class FinTS_MariaDB_Banking(object):
                 data_list = sorted(data_date_,
                                    key=lambda i: (i[DB_name]))
                 title_period = ' '.join(
-                    [title, MESSAGE_TEXT['Period'].format(date_, date_)])
+                    [title, date_])
                 PandasBoxHolding(title=title_period,
                                  dataframe=(
                                      data_list, date_field_list.field_list),
@@ -2001,10 +2001,10 @@ class FinTS_MariaDB_Banking(object):
             to_date = input_date.field_dict[FN_TO_DATE]
             data_to_date = self.mariadb.select_holding_data(
                 iban=iban, price_date=to_date)
-            title1 = ' '.join(
+            title_period = ' '.join(
                 [title, MESSAGE_TEXT['Period'].format(from_date, to_date)])
             PandasBoxHoldingPercent(
-                title=title1, dataframe=(data_to_date, data_from_date))
+                title=title_period, dataframe=(data_to_date, data_from_date))
 
     def _transactions_pieces(self, bank_name, iban):
 
@@ -2036,9 +2036,9 @@ class FinTS_MariaDB_Banking(object):
         self._delete_footer()
         from_date = date(2000, 1, 1)
         to_date = date.today()
+        title = ' '.join(
+            [bank_name, MENU_TEXT['Profit of closed Transactions']])
         while True:
-            title = ' '.join(
-                [bank_name, MENU_TEXT['Profit of closed Transactions']])
             input_date = InputDate(title=title,
                                    header=MESSAGE_TEXT['SELECT'],
                                    from_date=from_date, to_date=to_date)
@@ -2054,7 +2054,7 @@ class FinTS_MariaDB_Banking(object):
         result = self.mariadb.transaction_profit_closed(
             iban=iban, period=(from_date, to_date))
         if result:
-            title = ' '.join(
+            title_period = ' '.join(
                 [title, MESSAGE_TEXT['Period'].format(from_date, to_date)])
             PandasBoxTransactionProfit(title=title, dataframe=list(result))
         else:
@@ -2069,8 +2069,6 @@ class FinTS_MariaDB_Banking(object):
         title = ' '.join(
             [bank_name, MENU_TEXT['Profit Transactions incl. current Depot Positions']])
         while True:
-            title = ' '.join(
-                [bank_name, MENU_TEXT['Profit Transactions incl. current Depot Positions']])
             input_date = InputDate(title=title,
                                    header=MESSAGE_TEXT['SELECT'],
                                    from_date=from_date, to_date=to_date)
@@ -2081,9 +2079,10 @@ class FinTS_MariaDB_Banking(object):
             result = self.mariadb.transaction_profit_all(
                 iban=iban, period=(from_date, to_date))
             if result:
-                title = ' '.join(
+                title_period = ' '.join(
                     [title, MESSAGE_TEXT['Period'].format(from_date, to_date)])
-                PandasBoxTransactionProfit(title=title, dataframe=list(result))
+                PandasBoxTransactionProfit(
+                    title=title_period, dataframe=list(result))
             else:
                 MessageBoxInfo(title=title,
                                message=MESSAGE_TEXT['TRANSACTION_NO'].format(from_date, to_date))
@@ -2358,9 +2357,9 @@ class DataTransactionDetail(Data_ISIN_Period):
                 select_isin_transaction = self._data_transaction_add_portfolio(
                     iban, select_isin_transaction)
             from_date, to_date = self.period
-            title = ' '.join(
+            title_period = ' '.join(
                 [self.title, MESSAGE_TEXT['Period'].format(from_date, to_date)])
-            PandasBoxTransactionDetail(title=title, dataframe=(count_transactions, select_isin_transaction),
+            PandasBoxTransactionDetail(title=title_period, dataframe=(count_transactions, select_isin_transaction),
                                        )
         else:
             self.footer = MESSAGE_TEXT['DATA_NO'].format(

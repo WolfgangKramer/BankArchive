@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2024-07-15"
+__updated__ = "2024-07-22"
 @author: Wolfgang Kramer
 """
 
@@ -621,7 +621,7 @@ class BuiltBox(object):
             self._row = 1
             self._create_header()
             # --------- entry ----------------------------------------------
-            self._create_fields()
+            self.create_fields()
             # ------------------ Message -------------------------------
             self._create_footer()
             # ------------------ Buttons -------------------------------
@@ -676,40 +676,40 @@ class BuiltBox(object):
             button1 = ttk.Button(button_frame, text=self._button1_text)
             button1.grid(row=0, column=0, sticky=E, padx='3m',
                          pady='3m', ipadx='2m', ipady='1m')
-            button1.bind('<Return>', self._button_1_button1)
-            button1.bind('<Button-1>', self._button_1_button1)
+            button1.bind('<Return>', self.button_1_button1)
+            button1.bind('<Button-1>', self.button_1_button1)
         if self._button2_text is not None:
             button2 = ttk.Button(button_frame, text=self._button2_text,)
             button2.grid(row=0, column=1, sticky=E, padx='3m',
                          pady='3m', ipadx='2m', ipady='1m')
-            button2.bind('<Return>', self._button_1_button2)
-            button2.bind('<Button-1>', self._button_1_button2)
+            button2.bind('<Return>', self.button_1_button2)
+            button2.bind('<Button-1>', self.button_1_button2)
         if self._button3_text is not None:
             button3 = ttk.Button(button_frame, text=self._button3_text)
             button3.grid(row=0, column=2, sticky=E, padx='3m',
                          pady='3m', ipadx='2m', ipady='1m')
-            button3.bind('<Return>', self._button_1_button3)
-            button3.bind('<Button-1>', self._button_1_button3)
+            button3.bind('<Return>', self.button_1_button3)
+            button3.bind('<Button-1>', self.button_1_button3)
         if self._button4_text is not None:
             button4 = ttk.Button(button_frame, text=self._button4_text)
             button4.grid(row=0, column=3, sticky=E, padx='3m',
                          pady='3m', ipadx='2m', ipady='1m')
-            button4.bind('<Return>', self._button_1_button4)
-            button4.bind('<Button-1>', self._button_1_button4)
+            button4.bind('<Return>', self.button_1_button4)
+            button4.bind('<Button-1>', self.button_1_button4)
         if self._button5_text is not None:
             button5 = ttk.Button(button_frame, text=self._button5_text)
             button5.grid(row=0, column=4, sticky=E, padx='3m',
                          pady='3m', ipadx='2m', ipady='1m')
-            button5.bind('<Return>', self._button_1_button5)
-            button5.bind('<Button-1>', self._button_1_button5)
+            button5.bind('<Return>', self.button_1_button5)
+            button5.bind('<Button-1>', self.button_1_button5)
         if self._button6_text is not None:
             button6 = ttk.Button(button_frame, text=self._button6_text)
             button6.grid(row=0, column=5, sticky=E, padx='3m',
                          pady='3m', ipadx='2m', ipady='1m')
-            button6.bind('<Return>', self._button_1_button6)
-            button6.bind('<Button-1>', self._button_1_button6)
+            button6.bind('<Return>', self.button_1_button6)
+            button6.bind('<Button-1>', self.button_1_button6)
 
-    def _create_fields(self):
+    def create_fields(self):
 
         pass
 
@@ -724,57 +724,57 @@ class BuiltBox(object):
         geometry_put(self._box_window)
         quit_widget(self._box_window)
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
         self.button_state = self._button1_text
         if self._footer.get() == '':
             self.quit_widget()
 
-    def _button_1_button2(self, event):
+    def button_1_button2(self, event):
 
         self.button_state = self._button2_text
         self.quit_widget()
 
-    def _button_1_button3(self, event):
+    def button_1_button3(self, event):
 
         self.button_state = self._button3_text
         self.quit_widget()
 
-    def _button_1_button4(self, event):
+    def button_1_button4(self, event):
 
         self.button_state = self._button4_text
         self.quit_widget()
 
-    def _button_1_button5(self, event):
+    def button_1_button5(self, event):
 
         self.button_state = self._button5_text
         self.quit_widget()
 
-    def _button_1_button6(self, event):
+    def button_1_button6(self, event):
 
         self.button_state = self._button6_text
         self.quit_widget()
 
     def _keyboard(self):
 
-        add_hotkey("ctrl+right", self._handle_ctrl_right)
-        add_hotkey("ctrl+left", self._handle_ctrl_left)
-        add_hotkey("ctrl+up", self._handle_ctrl_up)
-        add_hotkey("ctrl+down", self._handle_ctrl_down)
+        add_hotkey("ctrl+right", self.handle_ctrl_right)
+        add_hotkey("ctrl+left", self.handle_ctrl_left)
+        add_hotkey("ctrl+up", self.handle_ctrl_up)
+        add_hotkey("ctrl+down", self.handle_ctrl_down)
 
-    def _handle_ctrl_right(self):
-
-        pass
-
-    def _handle_ctrl_left(self):
+    def handle_ctrl_right(self):
 
         pass
 
-    def _handle_ctrl_up(self):
+    def handle_ctrl_left(self):
 
         pass
 
-    def _handle_ctrl_down(self):
+    def handle_ctrl_up(self):
+
+        pass
+
+    def handle_ctrl_down(self):
 
         pass
 
@@ -808,7 +808,7 @@ class BuiltRadioButtons(BuiltBox):
                          button3_text=button3_text, button4_text=button4_text,
                          button5_text=button5_text)
 
-    def _create_fields(self):
+    def create_fields(self):
 
         self._radiobutton_value = StringVar()
         radiobutton_key_length = len(
@@ -829,7 +829,7 @@ class BuiltRadioButtons(BuiltBox):
             if self._default_value == radiobutton_key:
                 radiobutton.invoke()
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
         self.button_state = self._button1_text
         self.field = self._radiobutton_value.get()
@@ -838,7 +838,7 @@ class BuiltRadioButtons(BuiltBox):
         else:
             self.quit_widget()
 
-    def _button_1_button2(self, event):
+    def button_1_button2(self, event):
 
         self.button_state = self._button2_text
         try:
@@ -880,7 +880,7 @@ class BuiltCheckButton(BuiltBox):
                          button3_text=button3_text, button4_text=button4_text,
                          button5_text=button5_text)
 
-    def _create_fields(self):
+    def create_fields(self):
 
         self._check_vars = []
         row = self._row
@@ -899,35 +899,35 @@ class BuiltCheckButton(BuiltBox):
             if check_text in self.default_texts:
                 self._check_vars[idx].set(1)
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
         self.button_state = self._button1_text
         self.field_list = []
         for idx, check_var in enumerate(self._check_vars):
             if check_var.get() == 1:
                 self.field_list.append(self.checkbutton_texts[idx])
-                self._validate()
-        self._validate_all()
+                self.validate()
+        self.validate_all()
         # self.field_list = list(set(self.field_list))  # delete duplicates
         self.quit_widget()
 
-    def _button_1_button4(self, event):
+    def button_1_button4(self, event):
 
         self.button_state = self._button4_text
         for idx, _ in enumerate(self.checkbutton_texts):
             self._check_vars[idx].set(1)
 
-    def _button_1_button5(self, event):
+    def button_1_button5(self, event):
 
         self.button_state = self._button5_text
         for idx, _ in enumerate(self.checkbutton_texts):
             self._check_vars[idx].set(0)
 
-    def _validate(self):
+    def validate(self):
 
         pass
 
-    def _validate_all(self):
+    def validate_all(self):
 
         pass
 
@@ -965,7 +965,7 @@ class BuiltEnterBox(BuiltBox):
                          button3_text=button3_text, button4_text=button4_text,
                          button5_text=button5_text, button6_text=button6_text)
 
-    def _create_fields(self):
+    def create_fields(self):
 
         # --------- entry ----------------------------------------------
         for field_def in self._field_defs:
@@ -997,17 +997,17 @@ class BuiltEnterBox(BuiltBox):
                                             width=field_def.length + 4,
                                             textvariable=field_def.textvar)
                 widget_entry.myId = field_def.name
-                widget_entry.bind('<KeyRelease>', self._combo_position)
+                widget_entry.bind('<KeyRelease>', self.combo_position)
 
                 if field_def.selected:
                     widget_entry.bind("<<ComboboxSelected>>",
-                                      self._comboboxselected_action)
+                                      self.comboboxselected_action)
                 if field_def.readonly:
                     widget_entry.config(state='readonly')
             if field_def.focus_out:
-                widget_entry.bind("<FocusOut>", self._focus_out_action)
+                widget_entry.bind("<FocusOut>", self.focus_out_action)
             if field_def.focus_in:
-                widget_entry.bind("<FocusIn>", self._focus_in_action)
+                widget_entry.bind("<FocusIn>", self.focus_in_action)
             if field_def.protected:
                 widget_entry.config(state=DISABLED)
             if field_def.name in [KEY_PIN]:
@@ -1020,14 +1020,14 @@ class BuiltEnterBox(BuiltBox):
             field_def.widget = widget_entry
         self._field_defs[0].widget.focus_set()
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
         self.button_state = self._button1_text
-        self._validation()
+        self.validation()
         if self._footer.get() == '':
             self.quit_widget()
 
-    def _button_1_button2(self, event):
+    def button_1_button2(self, event):
 
         self.button_state = self._button2_text
         for field_def in self._field_defs:
@@ -1035,7 +1035,7 @@ class BuiltEnterBox(BuiltBox):
             if field_def.default_value is not None:
                 field_def.widget.insert(0, field_def.default_value)
 
-    def _validation(self):
+    def validation(self):
 
         self.field_dict = {}
         self._footer.set('')
@@ -1044,33 +1044,33 @@ class BuiltEnterBox(BuiltBox):
                 self._footer.set(field_validation(field_def.name, field_def))
                 if self._footer.get():
                     break
-                self._validation_addon(field_def)
+                self.validation_addon(field_def)
                 if self._footer.get():
                     break
             self.field_dict[field_def.name] = field_def.widget.get()
-        self._validation_all_addon(self._field_defs)
+        self.validation_all_addon(self._field_defs)
         for field_def in self._field_defs:
             if field_def.upper:
                 self.field_dict[field_def.name] = self.field_dict[field_def.name].upper(
                 )
 
-    def _validation_addon(self, field_def):
+    def validation_addon(self, field_def):
         """
         more field validations
         """
         pass
 
-    def _validation_all_addon(self, field_defs):
+    def validation_all_addon(self, field_defs):
         """
         validations of the fields on the whole
         """
         pass
 
-    def _comboboxselected_action(self, event):
+    def comboboxselected_action(self, event):
 
         pass
 
-    def _combo_position(self, event):
+    def combo_position(self, event):
         """
         positioning combolist on key release
         only combo_values selectable
@@ -1086,15 +1086,15 @@ class BuiltEnterBox(BuiltBox):
                 get = field_attr.widget.get()
                 _, index = list_positioning(field_attr.combo_values, get)
                 event.widget.current(index)
-                self._comboboxselected_action(event)
+                self.comboboxselected_action(event)
         except Exception:
             pass
 
-    def _focus_out_action(self, event):
+    def focus_out_action(self, event):
 
         pass
 
-    def _focus_in_action(self, event):
+    def focus_in_action(self, event):
 
         pass
 
@@ -1139,7 +1139,7 @@ class BuiltColumnBox(BuiltBox):
                          button3_text=button3_text, button4_text=button4_text,
                          button5_text=button5_text)
 
-    def _create_fields(self):
+    def create_fields(self):
 
         self._row += 2
         if self._array_def:
@@ -1185,27 +1185,27 @@ class BuiltColumnBox(BuiltBox):
                     field_def.widget = widget_entry
                     if field_def.selected:
                         widget_entry.bind(
-                            "<<ComboboxSelected>>", self._comboboxselected_action)
+                            "<<ComboboxSelected>>", self.comboboxselected_action)
                     if field_def.readonly:
                         widget_entry.config(state='readonly')
                 if field_def.focus_out:
-                    widget_entry.bind("<FocusOut>", self._focus_out_action)
+                    widget_entry.bind("<FocusOut>", self.focus_out_action)
                 if field_def.focus_in:
-                    widget_entry.bind("<FocusIn>", self._focus_in_action)
+                    widget_entry.bind("<FocusIn>", self.focus_in_action)
                 row_def[icx] = field_def
                 if field_def.default_value is not None:
                     field_def.textvar.set(field_def.default_value)
             self._array_def[irx] = row_def
             self._row += 1
 
-    def _button_1_button1(self, event):
+    def button_1_button1(self, event):
 
         self.button_state = self._button1_text
-        self._validation()
+        self.validation()
         if self._footer.get() == '':
             self.quit_widget()
 
-    def _validation(self):
+    def validation(self):
 
         for row_def in self._array_def:
             for field_def in row_def:
@@ -1225,7 +1225,7 @@ class BuiltColumnBox(BuiltBox):
                     if self._footer.get():
                         return
 
-                    self._validation_addon(field_def)
+                    self.validation_addon(field_def)
                     if self._footer.get():
                         return
                     row.append(field_def.widget.get())
@@ -1233,25 +1233,25 @@ class BuiltColumnBox(BuiltBox):
                     row.append(field_def.default_value)
             self.array.append(tuple(row))
 
-        self._validation_all_addon(self._array_def)
+        self.validation_all_addon(self._array_def)
 
-    def _validation_addon(self, field_def):
-
-        pass
-
-    def _validation_all_addon(self, array_def):
+    def validation_addon(self, field_def):
 
         pass
 
-    def _comboboxselected_action(self, event):
+    def validation_all_addon(self, array_def):
 
         pass
 
-    def _focus_out_action(self, event):
+    def comboboxselected_action(self, event):
 
         pass
 
-    def _focus_in_action(self, event):
+    def focus_out_action(self, event):
+
+        pass
+
+    def focus_in_action(self, event):
 
         pass
 
@@ -1278,7 +1278,7 @@ class BuiltText(object):
             self._builttext_window = Toplevel()
             self._builttext_window.title(title)
             self._builttext_window.geometry(BUILTEXT_WINDOW_POSITION)
-            if self._destroy_widget(text):  # check: discard output
+            if self.destroy_widget(text):  # check: discard output
                 destroy_widget(self._builttext_window)
                 return
             # --------------------------------------------------------------
@@ -1304,7 +1304,7 @@ class BuiltText(object):
                 if line_length < len(textline):
                     line_length = len(textline)
                 self.text_widget.insert(END, textline + '\n')
-                self._set_tags(textline, line)
+                self.set_tags(textline, line)
             self.text_widget.configure(
                 height=HEIGHT_TEXT, width=line_length+10)
             # self.text_widget.config(state=DISABLED)
@@ -1327,10 +1327,10 @@ class BuiltText(object):
 
         quit_widget(self._builttext_window)
 
-    def _set_tags(self, textline, line):
+    def set_tags(self, textline, line):
         pass
 
-    def _destroy_widget(self, text):
+    def destroy_widget(self, text):
         # insert text checking code
         return False
 
@@ -1392,8 +1392,8 @@ class BuiltPandasBox(Frame):
         self.fields = {**FIELDS_HOLDING, **FIELDS_STATEMENT, **FIELDS_TRANSACTION,
                        **FIELDS_BANKIDENTIFIER, **FIELDS_SERVER, **FIELDS_ISIN,
                        **FIELDS_PRICES, **FIELDS_LEDGER, **FIELDS_LEDGER_COA}
-        self._dataframe()
-        self._dataframe_append_sum()
+        self.create_dataframe()
+        self.create_dataframe_append_sum()
         self.name = name
         self.showtoolbar = showtoolbar
         self.selected_row = None
@@ -1427,9 +1427,9 @@ class BuiltPandasBox(Frame):
         self.pandas_table.showindex = True
         setGeometry(self.dataframe_window)
         self._set_options()
-        self._set_properties()
-        self._set_column_format()
-        self._set_row_format()
+        self.set_properties()
+        self.set_column_format()
+        self.set_row_format()
         self.pandas_table.updateModel(TableModel(self.dataframe))
         self.pandas_table.redraw()
         self.pandas_table.show()
@@ -1455,7 +1455,7 @@ class BuiltPandasBox(Frame):
         """
         self.selected_row = self.pandas_table.get_row_clicked(
             event)  # starts with 0
-        self._processing()
+        self.processing()
 
     def create_data_table(self):
         """
@@ -1474,11 +1474,11 @@ class BuiltPandasBox(Frame):
             self.data_table.append(data_row)
         return self.data_table
 
-    def _dataframe(self):
+    def create_dataframe(self):
 
         pass
 
-    def _dataframe_append_sum(self):
+    def create_dataframe_append_sum(self):
         """
         Append Sum Row for columns in self.dataframe_sum
         """
@@ -1499,19 +1499,19 @@ class BuiltPandasBox(Frame):
             sum_row[DB_currency] = EURO
             dataframe.loc[len(dataframe.index)] = sum_row
 
-    def _processing(self):
+    def processing(self):
 
         pass
 
-    def _set_properties(self):
+    def set_properties(self):
 
         pass
 
-    def _set_row_format(self):
+    def set_row_format(self):
 
         pass
 
-    def _set_column_format(self):
+    def set_column_format(self):
 
         columns = list(self.dataframe.columns)
         for column in columns:
