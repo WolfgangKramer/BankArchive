@@ -1,8 +1,10 @@
-# README – `Menue` Class
+# README – BankArchive
 
 ## Overview
 
-The `Menue` class implements the central Tkinter menu system of the banking application.
+The `ConnectController` class establishes the connection to the MariaDB database.
+
+The `BankMenu` class implements the central Tkinter menu system of the banking application.
 
 It dynamically builds the complete application menu structure depending on:
 
@@ -15,15 +17,16 @@ The class encapsulates all GUI menus and directly connects them with the corresp
 
 ---
 
-# `Menue` Class
+# Prerequisites
 
-```python
-class Menue:
+```
+Python 3.13
+MariaDB 11.8
 ```
 
 ## Purpose
 
-The class creates the complete application menu bar and manages:
+The application creates the complete menu bar and manages:
 
 - ledger functions
 - display and reporting functions
@@ -349,6 +352,7 @@ When the application closes:
 - database connections are closed
 - temporary PDF files are deleted
 - the application exits cleanly
+- the log file is not being deleted !!!
 
 ---
 
@@ -374,7 +378,11 @@ The menus are fully data-driven.
 
 ## Separation of Concerns
 
-GUI and business logic are separated:
+GUI, business logic, bank dialogue, services, repository, MariaDB database are separated:
 
-- `Menue` → GUI layer
-- `Workf
+- GUI: `bank_menu_ui.py`
+- Business Logic: `bank_menu_workflows.py`
+- Bank dialogue: `dialog.py`
+- Services: `services.py`
+- Repository: `repository.py`
+- MariaDB database: `mariadb.py`
