@@ -1,168 +1,177 @@
-# 
+# README – `Menue` Class
 
 ## Overview
 
-A banking application.
+The `Menue` class implements the central Tkinter menu system of the banking application.
 
 It dynamically builds the complete application menu structure depending on:
 
-* available bank data
-* application configuration
-* configured accounts
-* enabled database and analysis features
+- available bank data
+- application configuration
+- configured accounts
+- enabled database and analysis features
 
-It encapsulates all GUI menus and directly connects them with the corresponding workflow classes.
+The class encapsulates all GUI menus and directly connects them with the corresponding workflow classes.
 
-\---
+---
+
+# `Menue` Class
+
+```python
+class Menue:
+```
 
 ## Purpose
 
-The application menu bar contains:
+The class creates the complete application menu bar and manages:
 
-* ledger functions
-* display and reporting functions
-* download operations
-* database analysis
-* configuration and bank management
+- ledger functions
+- display and reporting functions
+- download operations
+- database analysis
+- configuration and bank management
 
-\---
+---
 
-# Constructor
+# Application Startup
+
+The application is started through the following bootstrap code:
 
 ```python
-from banking.bank\_menu\_ui import BankMenu
-
-from banking.declarations import WM\_DELETE\_WINDOW
-
+from banking.bank_menu_ui import BankMenu
+from banking.declarations import WM_DELETE_WINDOW
 from banking.connect import ConnectController
-
-from banking.connect\_data import connectionresult
-
+from banking.connect_data import connectionresult
 
 
 def main():
+    controller = ConnectController()
+    controller.run()
 
-&#x20;   controller = ConnectController()
+    if not connectionresult.connected:
+        return
 
-&#x20;   controller.run()
+    while True:
+        executing = BankMenu()
 
-
-
-&#x20;   if not connectionresult.connected:
-
-&#x20;       return
-
-
-
-&#x20;   while True:
-
-&#x20;       executing = BankMenu()
+        if executing.button_state == WM_DELETE_WINDOW:
+            break
 
 
+if __name__ == "__main__":
+    main()
+```
 
-&#x20;       if executing.button\_state == WM\_DELETE\_WINDOW:
+## Startup Sequence
 
-&#x20;           break
+| Step | Description |
+|---|---|
+| `ConnectController()` | Initializes the connection controller |
+| `controller.run()` | Starts the database and banking connection process |
+| `connectionresult.connected` | Verifies that the connection was successful |
+| `BankMenu()` | Starts the Tkinter banking application |
+| `WM_DELETE_WINDOW` | Detects proper application shutdown |
 
+## Purpose
 
+The startup procedure ensures that:
 
-if \_\_name\_\_ == "\_\_main\_\_":
+- all required connections are established before the GUI starts
+- the application exits safely if no connection is available
+- the Tkinter main application loop can restart safely if required
 
-&#x20;   main()```
-
-## Parameters
-
-|Parameter|Description|
-|-|-|
-|`title`|Window title|
-|`repo`|Repository access for database and configuration|
-|`service`|Service layer|
-|`footer`|Tkinter `StringVar` for status messages|
-|`progress`|ProgressBar instance|
-|`window`|Main Tkinter window (`Tk`)|
-
-\---
+---
 
 # Workflow Objects
 
 During initialization, several workflow classes are created:
 
 ```python
-self.w\_ledg
-self.w\_show
-self.w\_dwnld
-self.w\_db
-self.w\_cust
+self.w_ledg
+self.w_show
+self.w_dwnld
+self.w_db
+self.w_cust
 ```
 
 ## Responsibilities
 
-|Workflow|Purpose|
-|-|-|
-|`LedgerWorkFlow`|Accounting and ledger operations|
-|`ShowWorkFlow`|Display and reporting|
-|`DownloadWorkFlow`|Bank data downloads|
-|`DatabaseWorkFlow`|Database analysis|
-|`CustomizingWorkFlow`|Configuration and administration|
+| Workflow | Purpose |
+|---|---|
+| `LedgerWorkFlow` | Accounting and ledger operations |
+| `ShowWorkFlow` | Display and reporting |
+| `DownloadWorkFlow` | Bank data downloads |
+| `DatabaseWorkFlow` | Database analysis |
+| `CustomizingWorkFlow` | Configuration and administration |
 
-\---
+---
+
+# Menu Creation
+
+The method:
+
+```python
+create_menu()
+```
+
+creates the complete menu structure.
 
 ## Main Menus
 
 The application may generate the following top-level menus:
 
-|Menu|Description|
-|-|-|
-|`Ledger`|Accounting and ledger operations|
-|`Show`|Account and portfolio display|
-|`Download`|Bank and market data downloads|
-|`Database`|Data analysis and reporting|
-|`Customize`|Configuration and administration|
+| Menu | Description |
+|---|---|
+| `Ledger` | Accounting and ledger operations |
+| `Show` | Account and portfolio display |
+| `Download` | Bank and market data downloads |
+| `Database` | Data analysis and reporting |
+| `Customize` | Configuration and administration |
 
-\---
+---
 
 # Ledger Menu
 
 Created by:
 
 ```python
-\_create\_menu\_ledger()
+_create_menu_ledger()
 ```
 
 ## Functions
 
 ### Validation
 
-* Check Upload
-* Check Bank Statement
+- Check Upload
+- Check Bank Statement
 
 ### Search
 
-* Ledger search
-* Search via statement
+- Ledger search
+- Search via statement
 
 ### Analysis
 
-* Balances
-* Assets
-* Journal
-* Accounts
-* Account categories
+- Balances
+- Assets
+- Journal
+- Accounts
+- Account categories
 
 ### Additional Functions
 
-* Show chart of accounts
-* Reset daily ledger balance
-* Show statements without ledger entries
+- Show chart of accounts
+- Reset daily ledger balance
+- Show statements without ledger entries
 
-\---
+---
 
 # Show Menu
 
 Created by:
 
 ```python
-\_create\_menu\_show()
+_create_menu_show()
 ```
 
 ## Functions
@@ -171,37 +180,37 @@ Created by:
 
 Dynamic submenu for:
 
-* banking websites
-* external finance websites
+- banking websites
+- external finance websites
 
 ### Alpha Vantage
 
 Optional features:
 
-* show market data
-* symbol search
+- show market data
+- symbol search
 
 ### Bank Display Functions
 
-* account balances
-* account statements
-* holdings
-* transactions
+- account balances
+- account statements
+- holdings
+- transactions
 
-\---
+---
 
 # Dynamic Bank Menus
 
 Created by:
 
 ```python
-\_create\_menu\_banks()
+_create_menu_banks()
 ```
 
 The menu structure is dynamically generated from:
 
 ```python
-bank\_owner\_account
+bank_owner_account
 ```
 
 ## Structure
@@ -219,143 +228,143 @@ Bank
  └── Account
 ```
 
-\---
+---
 
 # Download Menu
 
 Created by:
 
 ```python
-\_create\_menu\_download()
+_create_menu_download()
 ```
 
 ## Functions
 
-* Download all banks
-* Import prices
-* Download individual banks
-* Download holdings
+- Download all banks
+- Import prices
+- Download individual banks
+- Download holdings
 
-\---
+---
 
 # Database Menu
 
 Created by:
 
 ```python
-\_create\_menu\_database()
+_create_menu_database()
 ```
 
 ## Analysis Functions
 
 ### Portfolio Analysis
 
-* Performance analysis
-* ISIN comparison
-* Percentage comparison
-* Transaction details
+- Performance analysis
+- ISIN comparison
+- Percentage comparison
+- Transaction details
 
 ### Price Analysis
 
-* Technical indicators
-* Price analysis
+- Technical indicators
+- Price analysis
 
 ### Tables
 
-* Transaction tables
-* Holding tables
-* ISIN tables
+- Transaction tables
+- Holding tables
+- ISIN tables
 
 ### Updates
 
-* Update holding market prices
-* Update portfolio total values
+- Update holding market prices
+- Update portfolio total values
 
-\---
+---
 
 # Customize Menu
 
 Created by:
 
 ```python
-\_create\_menu\_customizing()
+_create_menu_customizing()
 ```
 
 ## Functions
 
 ### Application
 
-* Edit INI configuration file
-* Reset screen positions
+- Edit INI configuration file
+- Reset screen positions
 
 ### Import
 
-* Bank identifier CSV
-* Server CSV
-* Ticker data
+- Bank identifier CSV
+- Server CSV
+- Ticker data
 
 ### Bank Administration
 
-* Create new bank
-* Delete bank
-* Change login data
-* Synchronize bank data
-* Change FinTS transaction version
-* Change security functions
+- Create new bank
+- Delete bank
+- Change login data
+- Synchronize bank data
+- Change FinTS transaction version
+- Change security functions
 
 ### Display
 
-* Show all bank data
-* Show individual bank data
+- Show all bank data
+- Show individual bank data
 
-\---
+---
 
 # Error Handling
 
 ## Safe Callback Execution
 
 ```python
-\_safe\_callback()
+_safe_callback()
 ```
 
 This method wraps menu functions in a safe callback handler:
 
-* prevents Tkinter tracebacks
-* handles controlled application exits
-* protects the GUI from crashes
+- prevents Tkinter tracebacks
+- handles controlled application exits
+- protects the GUI from crashes
 
-\---
+---
 
 # Window Closing
 
 ```python
-wm\_deletion\_window()
+wm_deletion_window()
 ```
 
 ## Responsibilities
 
 When the application closes:
 
-* the main window is destroyed
-* database connections are closed
-* temporary PDF files are deleted
-* the application exits cleanly
+- the main window is destroyed
+- database connections are closed
+- temporary PDF files are deleted
+- the application exits cleanly
 
-\---
+---
 
 # Dynamic Menu Logic
 
 The menu structure depends on:
 
-|Condition|Effect|
-|-|-|
-|available banks|bank menus are created|
-|enabled ledger|ledger menu becomes visible|
-|Alpha Vantage configured|market data functions enabled|
-|available holding accounts|analysis functions enabled|
-|completed configuration|database and download menus enabled|
+| Condition | Effect |
+|---|---|
+| available banks | bank menus are created |
+| enabled ledger | ledger menu becomes visible |
+| Alpha Vantage configured | market data functions enabled |
+| available holding accounts | analysis functions enabled |
+| completed configuration | database and download menus enabled |
 
-\---
+---
 
 # Architectural Features
 
@@ -367,44 +376,5 @@ The menus are fully data-driven.
 
 GUI and business logic are separated:
 
-* `Menue` → GUI layer
-* `Workflow` classes → business logic
-
-## Extensibility
-
-New menu functions can easily be added through:
-
-* additional workflow methods
-* new `\_create\_menu\_\*` methods
-
-\---
-
-# Example Menu Structure
-
-```text
-Ledger
-Show
- ├── WebSites
- ├── Alpha Vantage
- └── Banks
-      └── Owners
-           └── Accounts
-
-Download
-Database
-Customize
-```
-
-# Conclusion
-
-The `Menue` provides a flexible and dynamic menu system for the banking application.
-
-Thanks to the strict separation between GUI and workflow logic, the architecture remains:
-
-* maintainable
-* extensible
-* modular
-* data-driven
-
-It serves as the central entry point for all user interactions within the application.
-
+- `Menue` → GUI layer
+- `Workf
