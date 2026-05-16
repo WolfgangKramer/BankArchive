@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-05-12"
+__updated__ = "2026-05-16"
 @author: Wolfgang Kramer
 """
 
@@ -1546,80 +1546,155 @@ class Dialogs(object):
         return holdings
 
     def statements(self, bank):
-
         if self._start_dialog(bank) in START_DIALOG_FAILED:
             return WM_DELETE_WINDOW
-
-        statements = []
+    
         bank.tan_process = 4
+        statements = []
+    
         response, hirms_codes = self._send_msg(
-            bank, self.messages.msg_statements(bank))
+            bank,
+            self.messages.msg_statements(bank),
+        )
+    
         if self._decoupled_process(bank, response, hirms_codes):
             response, hirms_codes = self._send_msg(
-                bank, self.messages.msg_tan_decoupled(bank))
+                bank,
+                self.messages.msg_tan_decoupled(bank),
+            )
+    
         response, hirms_codes = self._receive_msg(
-            bank, response, hirms_codes)
-        if not response:
-            return statements  # no statements found or SCA in threading mode
-
-        if CODE_3010 in hirms_codes:
+            bank,
+            response,
+            hirms_codes,
+        )
+    
+        # No statements found or SCA in threading mode
+        if not response or CODE_3010 in hirms_codes:
             return statements
-
-        if CODE_0030 not in hirms_codes:
-            if CODE_3040 in hirms_codes:  # further turnovers exist
-                MessageBoxInfo(
-                    message=get_message(
-                        MESSAGE_TEXT, CODE_3040, bank.bank_name, bank.account_number,
-                        bank.account_product_name
-                        ),
-                    information=WARNING
-                    )
-            if bank.statement_mt940:
-                hikaz = self._get_segment(bank, 'KAZ')
-                seg = response.find_segment_first(hikaz)
-                if not seg:
-                    MessageBoxInfo(
-                        message=get_message(
-                            MESSAGE_TEXT, 'HIKAZ', 'HKKAZ', bank.bank_name,
-                            bank.account_number, bank.account_product_name
-                            ),
-                        information=ERROR
-                        )
-                    return statements  # threading continues
-
-                try:
-                    statement_booked_str = seg.statement_booked.decode('utf-8')
-                except UnicodeDecodeError:
-                    statement_booked_str = seg.statement_booked.decode(
-                        'latin1')
-                if self._logging:
-                    logger.debug('\n\n>>>>> START MT940 DATA ' +
-                                 40 * '>' + '\n')
-                    log_target(statement_booked_str)
-                    logging.getLogger(__name__).debug(
-                        '\n\n>>>>> START MT940 DATA PARSING ' + 30 * '>' + '\n')
-                statements = MT940Service(self.repo, self.identifier_service).parse(statement_booked_str, bank.bank_code)
-            elif bank.statement_camt:
-                seg = response.find_segment_first(HICAZ1)
-                if not seg:
-                    MessageBoxInfo(
-                        message=get_message(
-                            MESSAGE_TEXT, 'HIKAZ', 'HKCAZ', bank.bank_name,
-                            bank.account_number, bank.account_product_name
-                            ),
-                        information=ERROR
-                        )
-                    return statements  # threading continues
-
-                statements = seg.statement_booked.camt_statements._data[0]
-                if self._logging:
-                    dom = minidom.parseString(statements)
-                    pretty_xml = dom.toprettyxml(indent="  ")
-                    logger.debug('\n\n>>>>> START CAMT_052 DATA ' +
-                                 40 * '>' + '\n')
-                    log_target(pretty_xml)
-                    logging.getLogger(__name__).debug(
-                        '\n\n>>>>> START CAMT_052 DATA PARSING ' + 30 * '>' + '\n')
-                statements = CAMT052Service(self.repo, self.identifier_service).parse(statements, bank)
+    
+        if CODE_0030 in hirms_codes:
+            self._end_dialog(bank)
+            return statements
+    
+        # Additional turnovers are available
+        if CODE_3040 in hirms_codes:
+            MessageBoxInfo(
+                message=get_message(
+                    MESSAGE_TEXT,
+                    CODE_3040,
+                    bank.bank_name,
+                    bank.account_number,
+                    bank.account_product_name,
+                ),
+                information=WARNING,
+            )
+    
+        if bank.statement_mt940:
+            statements = self._parse_mt940(response, bank)
+    
+        elif bank.statement_camt:
+            statements = self._parse_camt052(response, bank)
+    
         self._end_dialog(bank)
         return statements
+    
+    
+    def _parse_mt940(self, response, bank):
+        hikaz = self._get_segment(bank, "KAZ")
+        seg = response.find_segment_first(hikaz)
+    
+        if not seg:
+            MessageBoxInfo(
+                message=get_message(
+                    MESSAGE_TEXT,
+                    "HIKAZ",
+                    "HKKAZ",
+                    bank.bank_name,
+                    bank.account_number,
+                    bank.account_product_name,
+                ),
+                information=ERROR,
+            )
+            return []
+    
+        statement_data = self._decode_statement(seg.statement_booked)
+    
+        if self._logging:
+            logger.debug(
+                "\n\n>>>>> START MT940 DATA " + ">" * 40 + "\n"
+            )
+            log_target(statement_data)
+    
+            logging.getLogger(__name__).debug(
+                "\n\n>>>>> START MT940 DATA PARSING "
+                + ">" * 30
+                + "\n"
+            )
+    
+        return MT940Service(
+            self.repo,
+            self.identifier_service,
+        ).parse(statement_data, bank.bank_code)
+    
+    
+    def _parse_camt052(self, response, bank):
+        seg = response.find_segment_first(HICAZ1)
+    
+        if not seg:
+            MessageBoxInfo(
+                message=get_message(
+                    MESSAGE_TEXT,
+                    "HIKAZ",
+                    "HKCAZ",
+                    bank.bank_name,
+                    bank.account_number,
+                    bank.account_product_name,
+                ),
+                information=ERROR,
+            )
+            return []
+    
+        statements = seg.statement_booked.camt_statements._data[0]
+    
+        if self._logging:
+            pretty_xml = minidom.parseString(statements).toprettyxml(
+                indent="  "
+            )
+    
+            logger.debug(
+                "\n\n>>>>> START CAMT_052 DATA "
+                + ">" * 40
+                + "\n"
+            )
+    
+            log_target(pretty_xml)
+    
+            logging.getLogger(__name__).debug(
+                "\n\n>>>>> START CAMT_052 DATA PARSING "
+                + ">" * 30
+                + "\n"
+            )
+    
+        return CAMT052Service(
+            self.repo,
+            self.identifier_service,
+        ).parse(statements, bank)
+    
+    
+    @staticmethod
+    def _decode_statement(statement_bytes):
+        # Try supported encodings in order
+        for encoding in ("utf-8", "latin1"):
+            try:
+                return statement_bytes.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+    
+        raise UnicodeDecodeError(
+            "Unable to decode statement data",
+            statement_bytes,
+            0,
+            len(statement_bytes),
+            "Unsupported encoding",
+        )

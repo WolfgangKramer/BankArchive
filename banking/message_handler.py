@@ -100,6 +100,107 @@ MESSAGE_TEXT = {
     'IBAN': 'IBAN invalid',
     'IBAN_MISSED': 'IBAN {} has no account assignment (see LEDGER_COA)',
     'IBAN_USED': 'IBAN is already assigned to another account',
+    'IMPORT_ERROR': """ 
+        CSV import failed.
+        File : {}
+        Error: {}
+        """,
+    'IMPORT_TEXT_SERVER': """
+        CSV format
+        ----------
+        The CSV file must use the following structure:
+    
+        - Encoding: latin1
+        - Delimiter: ;
+        - Optional quote character: "
+        - Line ending: CRLF (\r\n)
+        - First row: header (ignored)
+    
+        Expected columns
+        ----------------
+        The CSV file contains 28 columns in total.
+    
+        Only the following columns are imported:
+    
+        1. code      : Bank / institute code
+        2. server    : HBCI / FinTS server address
+    
+        All remaining columns are ignored during import.
+    
+        Additional processing
+        ---------------------
+        - Existing entries are deleted before import.
+        - Placeholder server entries ('\\r') are removed.
+        - Additional known servers from
+          ``decl.SCRAPER_BANKDATA`` are inserted after import.
+    
+        Notes
+        -----
+        Registration:
+        https://www.hbci-zka.de/register/prod_register.htm
+    """,
+    'IMPORT_TEXT_BANKIDENTIFIER': """
+         CSV format
+            ----------
+            The CSV file must use the following structure:
+        
+            - Encoding: latin1
+            - Delimiter: ;
+            - Optional quote character: "
+            - Line ending: CRLF (\r\n)
+            - First row: header (ignored)
+        
+            Expected columns
+            ----------------
+            1. code                      : Bank code (BLZ)
+            2. payment_provider          : Payment provider type
+            3. payment_provider_name     : Name of the payment provider
+            4. postal_code               : Postal code
+            5. location                  : City / location
+            6. name                      : Bank name
+            7. pan                       : PAN identifier
+            8. bic                       : BIC code
+            9. check_digit_calculation   : Check digit calculation method
+            10. record_number            : Record number
+            11. change_indicator         : Change indicator
+            12. code_deletion            : Deletion flag
+            13. follow_code              : Follow-up bank code
+        
+            Additional processing
+            ---------------------
+            - Existing entries are deleted before import.
+            - Payment providers with provider code '2'    
+    """,
+    'IMPORT_TEXT_TRANSACTION': """
+        CSV format
+        ----------
+        The CSV file must use the following structure:
+    
+        - Encoding: latin1
+        - Delimiter: ;
+        - Optional quote character: "
+        - Line ending: CRLF (\n)
+        - First row: header (ignored)
+    
+        Expected columns:
+        -----------------
+        1. price_date     : Booking or valuation date
+        2. isin           : ISIN of the security
+        3. counter        : Number of transactions
+        4. pieces         : Quantity of shares / units
+        5. price          : Price per unit (decimal point!)
+    
+        Additional values are automatically added during import:
+        --------------------------------------------------------
+        - iban
+        - transaction_type
+        - currencies
+        - posted_amount
+        - origin filename
+    
+        Negative transactions are automatically converted into
+        delivery transactions after import.    
+    """,
     'IMPORT_CSV': 'Import CSV_File into Table {}\n\n Source: \n{}',
     'IMPORT_CSV_MISSED': 'Customizing: Import CSV_File into Table {} ',
     'ISIN_ALPHABETIC': 'Isin_code must start with an alphabetic character',

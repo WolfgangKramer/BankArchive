@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-05-14"
+__updated__ = "2026-05-16"
 Author: Wolfang Kramer
 """
 import requests
@@ -535,45 +535,48 @@ class CustomizingWorkFlow(BaseWorkflow):
     def import_bankidentifier(self):
 
         title = get_menu_text("Import Bankidentifier CSV-File")
-        msg.MessageBoxInfo(
-            title=title,
-            message=msg.get_message(
-                msg.MESSAGE_TEXT, 'IMPORT_CSV', declm.BANKIDENTIFIER.upper(),
-                'Deutsche Bundesbank \nBankleitzahlendateien ungepackt \nCSV-Format'
-                )
-            )
+        msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_BANKIDENTIFIER'))
         webbrowser.open(decl.BUNDESBANK_BLZ_MERKBLATT)
         webbrowser.open(decl.BUNDEBANK_BLZ_DOWNLOAD)
         file_dialogue = FileDialogue(title=title)
         if file_dialogue.filename not in ['', None]:
-            self.repo.import_bankidentifier(file_dialogue.filename)
-            msg.MessageBoxInfo(
-                title=title,
-                message=msg.get_message(msg.MESSAGE_TEXT, 'LOAD_DATA', file_dialogue.filename)
-                )
-            data = self.repo.get_bankidentifier_data()
-            dataframe = DataFrame(data)
-            BuiltPandasBox(title=title, dataframe=dataframe)
+            result = self.repo.import_bankidentifier(file_dialogue.filename)
+            if result is None:
+                msg.MessageBoxInfo(
+                    title=title,
+                    message=msg.get_message(msg.MESSAGE_TEXT, 'LOAD_DATA', file_dialogue.filename)
+                    )
+                data = self.repo.get_bankidentifier_data()
+                dataframe = DataFrame(data)
+                BuiltPandasBox(title=title, dataframe=dataframe)
+            else:
+                msg.MessageBoxInfo(
+                    title=title,
+                    message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_ERROR', file_dialogue.filename, result)
+                    )
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def import_server(self):
 
         title = get_menu_text("Import Server CSV-File")
-        msg.MessageBoxInfo(
-            title=title,
-            message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_CSV', declm.SERVER.upper(), 'FinTS Download') + decl.FINTS_SERVER
-            )
+        msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_SERVER'))
         webbrowser.open(decl.FINTS_SERVER_ADDRESS)
         file_dialogue = FileDialogue(title=title)
         if file_dialogue.filename not in ['', None]:
-            self.repo.import_server(file_dialogue.filename)
-            msg.MessageBoxInfo(
-                title=title,
-                message=msg.get_message(msg.MESSAGE_TEXT, 'LOAD_DATA', file_dialogue.filename)
-                )
-            data = self.repo.get_server_data()
-            dataframe = DataFrame(data)
-            BuiltPandasBox(title=title, dataframe=dataframe)
+            result = self.repo.import_server(file_dialogue.filename)
+            if result is None:
+                msg.MessageBoxInfo(
+                    title=title,
+                    message=msg.get_message(msg.MESSAGE_TEXT, 'LOAD_DATA', file_dialogue.filename)
+                    )
+                data = self.repo.get_server_data()
+                dataframe = DataFrame(data)
+                BuiltPandasBox(title=title, dataframe=dataframe)
+            else:
+                msg.MessageBoxInfo(
+                    title=title,
+                    message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_ERROR', file_dialogue.filename, result)
+                    )
             
     @_wrapper(before="_delete_footer", after="_show_informations")
     def import_tickers(self):
@@ -1114,25 +1117,23 @@ class DatabaseWorkFlow(BaseWorkflow):
         decimals: decimal_point
         """
         title = get_menu_text("Import Transactions")
-        _text = ("\n\nStructure of CSV_File: \n"
-                 "\nColumns: \n price_date, ISIN, name, pieces, price\n"
-                 "\n         PriceDate Format: YYYY-MM-DD"
-                 "\n         Pieces and Price DecimalPoint"
-                 "\n         Pieces NEGATIVE for Deliveries \n"
-                 "\nHeader_line will be ignored"
-                 )
-        msg.MessageBoxInfo(title=title, message=' '.join(
-            [bank_name, msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_CSV', declm.TRANSACTION.upper(), decl.NOT_ASSIGNED), _text]))
+        msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TRANSACTION'))
         file_dialogue = FileDialogue(title=title)
         if file_dialogue.filename not in ['', None]:
-            self.repo.import_transaction(iban, file_dialogue.filename)
-            msg.MessageBoxInfo(
-                title=title,
-                message=msg.get_message(msg.MESSAGE_TEXT, 'LOAD_DATA', file_dialogue.filename)
-                )
-            data = self.repo.get_transaction_of_iban(iban)
-            dataframe = DataFrame(data)
-            BuiltPandasBox(title=title, dataframe=dataframe)
+            result = self.repo.import_transaction(iban, file_dialogue.filename)
+            if result is None:
+                msg.MessageBoxInfo(
+                    title=title,
+                    message=msg.get_message(msg.MESSAGE_TEXT, 'LOAD_DATA', file_dialogue.filename)
+                    )
+                data = self.repo.get_transaction_data_of_iban(iban)
+                dataframe = DataFrame(data)
+                BuiltPandasBox(title=title, dataframe=dataframe)
+            else:
+                msg.MessageBoxInfo(
+                    title=title,
+                    message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_ERROR', file_dialogue.filename, result)
+                    )
     @_wrapper(before="_delete_footer", after="_show_informations")
     def transactions_pieces(self, bank_name, iban):
 

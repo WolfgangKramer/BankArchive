@@ -1,6 +1,6 @@
 """
 Created on 26.11.2019
-__updated__ = "2026-05-09"
+__updated__ = "2026-05-16"
 @author: Wolfgang Kramer
 """
 import sqlalchemy
@@ -8,6 +8,7 @@ import json
 import re
 import threading
 
+from pathlib import Path
 from collections.abc import Sequence
 from inspect import stack
 from typing import Iterable, Any
@@ -1404,19 +1405,113 @@ class MariaDBImporter:
     into MariaDB tables in a structured, safe way.
     """
 
-
-    def import_local_infile(self, filename: str, fields: list) -> None:
-        fields = ", ".join(fields)
-        sql = f"""
-        LOAD DATA LOCAL INFILE '{filename}'
-        INTO TABLE prices
-        FIELDS TERMINATED BY ','
-        LINES TERMINATED BY '\n'
-        ({fields})
+    def execute_load_data(
+        self,
+        *,
+        filename: str,
+        table: str,
+        columns: str,
+        set_clause: str | None = None,
+        line_terminator: str = "\\r\\n",
+        field_terminator: str = ";",
+        encoding: str = "latin1",
+        ignore_lines: int = 1,
+        replace: bool = True,
+        local: bool = True,
+        commit: bool = False,
+    ) -> None:
         """
-        self.executor.execute(sql)
-        self.executor.execute('COMMIT')
+        Execute a generic MySQL LOAD DATA import.
     
+        Parameters
+        ----------
+        filename : str
+            Path to the CSV file.
+    
+        table : str
+            Target database table.
+    
+        columns : str
+            Column definition for the LOAD DATA statement.
+    
+        set_clause : str, optional
+            Optional SQL SET clause.
+    
+        line_terminator : str, optional
+            CSV line ending.
+    
+        field_terminator : str, optional
+            CSV field delimiter.
+    
+        encoding : str, optional
+            File encoding.
+    
+        ignore_lines : int, optional
+            Number of header rows to ignore.
+    
+        replace : bool, optional
+            Use REPLACE INTO TABLE.
+    
+        local : bool, optional
+            Use LOCAL INFILE.
+    
+        commit : bool, optional
+            Execute COMMIT after import.
+        """
+    
+        sql_filename = str(Path(filename)).replace("\\", "\\\\")
+    
+        local_sql = "LOCAL" if local else ""
+        replace_sql = "REPLACE" if replace else ""
+    
+        load_sql = f"""
+            LOAD DATA LOW_PRIORITY {local_sql} INFILE '{sql_filename}'
+            {replace_sql} INTO TABLE {table}
+            CHARACTER SET {encoding}
+            FIELDS TERMINATED BY '{field_terminator}'
+            OPTIONALLY ENCLOSED BY '"'
+            ESCAPED BY '"'
+            LINES TERMINATED BY '{line_terminator}'
+            IGNORE {ignore_lines} LINES
+            (
+                {columns}
+            )
+        """
+    
+        if set_clause:
+            load_sql += f"\nSET\n{set_clause}"
+    
+        load_sql += ";"
+    
+        self.executor.execute(load_sql)
+    
+        if commit:
+            self.executor.execute("COMMIT")
+
+    def import_local_infile(
+        self,
+        filename: str,
+        fields: list[str],
+    ) -> None:
+        """
+        Import CSV data into the prices table.
+        """
+    
+        columns = ", ".join(fields)
+    
+        self.execute_load_data(
+            filename=filename,
+            table="prices",
+            columns=columns,
+            line_terminator="\\n",
+            field_terminator=",",
+            encoding="utf8",
+            ignore_lines=1,
+            replace=False,
+            local=True,
+            commit=True,
+        )
+
 
 class MariaDB(
         MariaDBInitializer,

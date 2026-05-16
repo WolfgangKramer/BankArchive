@@ -8,6 +8,7 @@ import tempfile
 import json
 
 
+from pathlib import Path
 from decimal import Decimal
 from itertools import chain
 from typing import Dict, Optional, Iterable, List, Tuple, Any, Union
@@ -19,6 +20,7 @@ import banking.declarations_mariadb as declm
 
 from banking.mariadb import MariaDB
 from banking.utils import date_days
+from banking.declarations import FN_PROFIT
 
 
 class SingletonNoLockMeta(type):
@@ -136,36 +138,57 @@ class BankIdentifierRepository(BaseRepository):
 
     def import_bankidentifier(self, filename: str) -> None:
         """
-        Import CSV file into the BANKIDENTIFIER table.
-
-        Parameters
-        ----------
-        filename : str
-            Path to the CSV file to import.
-
+        Import bank identifier data into the BANKIDENTIFIER table.
+    
         Notes
         -----
-        CSV download: Bundesbank - Bankleitzahlen
+        Source:
+        Bundesbank - Bankleitzahlen
         https://www.bundesbank.de/de/aufgaben/unbarer-zahlungsverkehr/serviceangebot/bankleitzahlen/download-bankleitzahlen-602592
         """
-        # Delete existing entries
-        self.db.executor.execute(f'DELETE FROM {declm.BANKIDENTIFIER}')
-
-        # Load CSV
-        sql = (
-            f"LOAD DATA LOW_PRIORITY LOCAL INFILE '{filename}' "
-            f"REPLACE INTO TABLE {declm.BANKIDENTIFIER} "
-            "CHARACTER SET latin1 "
-            "FIELDS TERMINATED BY ';' OPTIONALLY ENCLOSED BY '\"' ESCAPED BY '\"' "
-            "LINES TERMINATED BY '\r\n' IGNORE 1 LINES "
-            "(`code`, `payment_provider`, `payment_provider_name`, `postal_code`, "
-            "`location`, `name`, `pan`, `bic`, `check_digit_calculation`, "
-            "`record_number`, `change_indicator`, `code_deletion`, `follow_code`);"
-        )
-        self.db.executor.execute(sql)
-
-        # Delete unwanted payment providers
-        self.db.executor.execute(f"DELETE FROM {declm.BANKIDENTIFIER} WHERE payment_provider='2'")
+    
+        columns = """
+            `code`,
+            `payment_provider`,
+            `payment_provider_name`,
+            `postal_code`,
+            `location`,
+            `name`,
+            `pan`,
+            `bic`,
+            `check_digit_calculation`,
+            `record_number`,
+            `change_indicator`,
+            `code_deletion`,
+            `follow_code`
+        """
+    
+        try:
+            # Remove existing records
+            self.db.executor.execute(
+                f"DELETE FROM {declm.BANKIDENTIFIER}"
+            )
+    
+            # Import CSV file
+            self.db.execute_load_data(
+                filename=filename,
+                table=declm.BANKIDENTIFIER,
+                columns=columns,
+            )
+    
+            # Remove unwanted payment providers
+            cleanup_sql = f"""
+                DELETE FROM {declm.BANKIDENTIFIER}
+                WHERE payment_provider = '2'
+            """
+    
+            self.db.executor.execute(cleanup_sql)
+    
+            return None
+    
+        except Exception as exc:
+    
+            return exc
 
 
 class CustomizingRepository(BaseRepository):
@@ -419,8 +442,8 @@ class HoldingRepository(BaseRepository):
     def _select_holding_data(
         self,
         field_list: Union[str, Iterable[str]] = (
-            "isin_code, name, total_amount, acquisition_amount, "
-            "pieces, market_price, price_currency, amount_currency"
+            declm.DB_ISIN, declm.DB_name, declm.DB_total_amount, declm.DB_acquisition_amount,
+            declm.DB_pieces, declm.DB_market_price, declm.DB_price_currency, declm.DB_amount_currency
         ),
         *,
         result_dict: bool = True,
@@ -1987,23 +2010,50 @@ class PricesRepository(BaseRepository):
         for actions in actions_list:
             self.db.execute_replace(declm.CORPORATE_ACTIONS, actions)
 
-    def import_prices_batch(self, dataframe):
-
+    def import_prices_batch(self, dataframe) -> None:
+        """
+        Import a pandas DataFrame into the prices table.
+        """
+    
         if dataframe.empty:
-            return
-
+            return None
+    
         dataframe = dataframe.reset_index()
-
+    
         tmp = tempfile.mktemp(suffix=".csv")
-
+    
         dataframe.to_csv(
             tmp,
             index=False,
         )
-        tmp = tmp.replace('\\', '/')
-        fields = ["@dummy", declm.DB_ISIN, declm.DB_price_date, declm.DB_open, declm.DB_high, declm.DB_low, declm.DB_close, declm.DB_adjclose, declm.DB_volume, declm.DB_origin, declm.DB_symbol_prices]
-        self.db.import_local_infile(tmp, fields)
-        os.remove(tmp)
+    
+        tmp = tmp.replace("\\", "/")
+    
+        fields = [
+            "@dummy",
+            declm.DB_ISIN,
+            declm.DB_price_date,
+            declm.DB_open,
+            declm.DB_high,
+            declm.DB_low,
+            declm.DB_close,
+            declm.DB_adjclose,
+            declm.DB_volume,
+            declm.DB_origin,
+            declm.DB_symbol_prices,
+        ]
+    
+        try:
+            self.db.import_local_infile(
+                tmp,
+                fields,
+            )
+    
+            return None
+    
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
 
 
 class SelectionRepository(BaseRepository):
@@ -2409,42 +2459,62 @@ class ServerRepository(BaseRepository):
 
     def import_server(self, filename: str) -> None:
         """
-        Import CSV file into the SERVER table.
-
-        Parameters
-        ----------
-        filename : str
-            Path to the CSV file containing server data.
-
+        Import server data into the SERVER table.
+    
         Notes
         -----
-        Only columns 'code' and 'server' are imported from the CSV (28 columns total).
-        Registration: https://www.hbci-zka.de/register/prod_register.htm
+        The CSV contains 28 columns.
+        Only the columns 'code' and 'server'
+        are imported.
         """
-        columns = 28
-        csv_columns = [f'@VAR{x}' for x in range(columns)]
+    
+        # Create placeholders for unused CSV columns
+        csv_columns = [f'@VAR{x}' for x in range(28)]
+    
+        # Import only required columns
         csv_columns[1] = 'code'
         csv_columns[24] = 'server'
-        csv_columns_str = ', '.join(csv_columns)
-
-        self.db.executor.execute(f'DELETE FROM {declm.SERVER}')
-
-        load_sql = (
-            f"LOAD DATA LOW_PRIORITY LOCAL INFILE '{filename}' "
-            f"REPLACE INTO TABLE {declm.SERVER} "
-            "CHARACTER SET latin1 "
-            "FIELDS TERMINATED BY ';' OPTIONALLY ENCLOSED BY '\"' ESCAPED BY '\"' "
-            f"LINES TERMINATED BY '\\r\\n' IGNORE 1 LINES ({csv_columns_str});"
-        )
-        self.db.executor.execute(load_sql)
-
-        # Delete placeholder servers
-        self.db.executor.execute(f"DELETE FROM {declm.SERVER} WHERE server='\r'")
-
-        # Insert additional known servers
-        for code, (server, *_) in decl.SCRAPER_BANKDATA.items():
-            self.db.executor.execute(f"INSERT INTO {declm.SERVER} SET code=?, server=?", (code, server))
-
+    
+        columns = ", ".join(csv_columns)
+    
+        try:
+            # Remove existing records
+            self.db.executor.execute(
+                f"DELETE FROM {declm.SERVER}"
+            )
+    
+            # Import CSV file
+            self.db.execute_load_data(
+                filename=filename,
+                table=declm.SERVER,
+                columns=columns,
+            )
+    
+            # Remove invalid placeholder servers
+            cleanup_sql = f"""
+                DELETE FROM {declm.SERVER}
+                WHERE server = '\\r'
+            """
+    
+            self.db.executor.execute(cleanup_sql)
+    
+            # Insert additional known servers
+            insert_sql = f"""
+                INSERT INTO {declm.SERVER}
+                SET code = ?, server = ?
+            """
+    
+            for code, (server, *_) in decl.SCRAPER_BANKDATA.items():
+                self.db.executor.execute(
+                    insert_sql,
+                    (code, server),
+                )
+    
+            return None
+    
+        except Exception as exc:
+    
+            return exc
 
 class TickersRepository(BaseRepository):
 
@@ -2495,7 +2565,7 @@ class TickersRepository(BaseRepository):
         ENCLOSED BY '"'
         LINES TERMINATED BY '\r\n'
         (symbol, company_name, exchange)
-        SET isin_code = 'NA'
+        SET {declm.DB_ISIN} = 'NA'
         """
 
         self.db.executor.execute(sql)
@@ -2545,20 +2615,20 @@ class TransactionRepository(BaseRepository):
         return f"""
             WITH tx AS (
                 SELECT
-                    isin_code,
-                    name,
-                    amount_currency,
+                    {declm.DB_ISIN},
+                    {declm.DB_name},
+                    {declm.DB_amount_currency},
                     CASE
-                        WHEN transaction_type = '{decl.TRANSACTION_DELIVERY}' THEN  pieces
-                        WHEN transaction_type = '{decl.TRANSACTION_RECEIPT}'  THEN -pieces
+                        WHEN {declm.DB_transaction_type} = '{decl.TRANSACTION_DELIVERY}' THEN  pieces
+                        WHEN {declm.DB_transaction_type} = '{decl.TRANSACTION_RECEIPT}'  THEN -pieces
                     END AS pieces,
                     CASE
-                        WHEN transaction_type = '{decl.TRANSACTION_DELIVERY}' THEN  posted_amount
-                        WHEN transaction_type = '{decl.TRANSACTION_RECEIPT}'  THEN -posted_amount
+                        WHEN {declm.DB_transaction_type} = '{decl.TRANSACTION_DELIVERY}' THEN  posted_amount
+                        WHEN {declm.DB_transaction_type} = '{decl.TRANSACTION_RECEIPT}'  THEN -posted_amount
                     END AS posted_amount
                 FROM {declm.TRANSACTION_VIEW}
                 {where_sql}
-                AND transaction_type IN ('{decl.TRANSACTION_DELIVERY}', '{decl.TRANSACTION_RECEIPT}')
+                AND {declm.DB_transaction_type} IN ('{decl.TRANSACTION_DELIVERY}', '{decl.TRANSACTION_RECEIPT}')
             )
         """
 
@@ -2566,14 +2636,14 @@ class TransactionRepository(BaseRepository):
         return f"""
             {self._transaction_base_cte(where_sql)}
             SELECT
-                isin_code,
-                name,
-                SUM(posted_amount) AS profit,
-                amount_currency,
-                SUM(pieces) AS pieces
+                {declm.DB_ISIN},
+                {declm.DB_name},
+                SUM({declm.DB_posted_amount}) AS profit,
+                {declm.DB_amount_currency},
+                SUM({declm.DB_pieces}) AS pieces
             FROM tx
-            GROUP BY isin_code, name, amount_currency
-            HAVING SUM(pieces) = 0
+            GROUP BY {declm.DB_ISIN}, {declm.DB_name}, {declm.DB_amount_currency}
+            HAVING SUM({declm.DB_pieces}) = 0
         """
 
     def transaction_profit_closed(
@@ -2588,7 +2658,7 @@ class TransactionRepository(BaseRepository):
         return self.db.select_cte(
             sql=sql,
             vars_=vars_,
-            fields=['isin_code', 'name', 'profit', 'amount_currency', 'pieces']
+            fields=[declm.DB_ISIN, declm.DB_name, FN_PROFIT, declm.DB_amount_currency, declm.DB_pieces]
         )
 
     def transaction_profit_all(
@@ -2607,15 +2677,15 @@ class TransactionRepository(BaseRepository):
 
         closed_sql = self._transaction_profit_closed_sql(where_sql)
 
-        holding_sql = """
+        holding_sql = f"""
             SELECT
-                isin_code,
-                name,
-                (total_amount - acquisition_amount) AS profit,
-                amount_currency,
-                pieces
-            FROM holding_view
-            WHERE price_date = ?
+                {declm.DB_ISIN},
+                {declm.DB_name},
+                ({declm.DB_total_amount} - {declm.DB_acquisition_amount}) AS profit,
+                {declm.DB_amount_currency},
+                {declm.DB_pieces}
+            FROM {declm.HOLDING_VIEW}
+            WHERE {declm.DB_price_date} = ?
         """
 
         sql = f"""
@@ -2629,7 +2699,7 @@ class TransactionRepository(BaseRepository):
         return self.db.select_cte(
             sql=sql,
             vars_=vars_,
-            fields=['isin_code', 'name', 'profit', 'amount_currency', 'pieces']
+            fields=[declm.DB_ISIN, declm.DB_name, FN_PROFIT, declm.DB_amount_currency, declm.DB_pieces]
         )
 
     def get_transaction_view_data_of_iban_period(self, fields, iban, period):
@@ -2645,37 +2715,70 @@ class TransactionRepository(BaseRepository):
             declm.TRANSACTION, field_list=declm.TABLE_FIELDS[declm.TRANSACTION],  result_dict=True, iban=iban)
         return result
 
-    def import_transaction(self, iban: str, filename: str):
+    def import_transaction(
+        self,
+        iban: str,
+        filename: str,
+    ) -> None:
         """
-        Import CSV file into TRANSACTION table.
-
-        Parameters
-        ----------
-        iban : str
-            IBAN of the account for which transactions belong.
-        filename : str
-            CSV file containing transactions.
+        Import transaction data into the TRANSACTION table.
         """
-        sql = (
-            f"LOAD DATA LOW_PRIORITY LOCAL INFILE '{filename}' "
-            f"REPLACE INTO TABLE {declm.TRANSACTION} "
-            "CHARACTER SET latin1 "
-            "FIELDS TERMINATED BY ';' OPTIONALLY ENCLOSED BY '\"' ESCAPED BY '\"' "
-            "LINES TERMINATED BY '\r\n' IGNORE 1 LINES "
-            f"(price_date, isin_code, counter, pieces, price) "
-            f"SET iban='{iban}', transaction_type='{decl.TRANSACTION_RECEIPT}', "
-            "price_currency='EUR', amount_currency='EUR', posted_amount=price*pieces, "
-            f"origin='{filename[-50:]}';"
-        )
-        self.db.executor.execute(sql)
-
-        # Correct negative values
-        update_sql = (
-            f"UPDATE {declm.TRANSACTION} "
-            "SET transaction_type=?, counter=ABS(counter), pieces=ABS(pieces), posted_amount=ABS(posted_amount) "
-            "WHERE pieces < 0"
-        )
-        self.db.executor.execute(update_sql, (decl.TRANSACTION_DELIVERY,))
+    
+        columns = f"""
+            {declm.DB_price_date},
+            {declm.DB_ISIN},
+            {declm.DB_counter},
+            {declm.DB_pieces},
+            {declm.DB_price}
+        """
+    
+        set_clause = f"""
+            {declm.DB_iban} = '{iban}',
+            {declm.DB_transaction_type} =
+                '{decl.TRANSACTION_RECEIPT}',
+            {declm.DB_price_currency} = 'EUR',
+            {declm.DB_amount_currency} = 'EUR',
+            {declm.DB_posted_amount} =
+                {declm.DB_price} * {declm.DB_pieces},
+            {declm.DB_origin} =
+                '{Path(filename).name[-50:]}'
+        """
+    
+        try:
+            # Import CSV file
+            self.db.execute_load_data(
+                filename=filename,
+                table=declm.TRANSACTION,
+                columns=columns,
+                set_clause=set_clause,
+                line_terminator="\\n",
+            )
+    
+            # Convert negative transactions
+            # into delivery transactions
+            normalize_sql = f"""
+                UPDATE {declm.TRANSACTION}
+                SET
+                    {declm.DB_transaction_type} = ?,
+                    {declm.DB_counter} =
+                        ABS({declm.DB_counter}),
+                    {declm.DB_pieces} =
+                        ABS({declm.DB_pieces}),
+                    {declm.DB_posted_amount} =
+                        ABS({declm.DB_posted_amount})
+                WHERE {declm.DB_pieces} < 0
+            """
+    
+            self.db.executor.execute(
+                normalize_sql,
+                (decl.TRANSACTION_DELIVERY,),
+            )
+    
+            return None
+    
+        except Exception as exc:
+    
+            return exc
 
     def get_transaction(self, iban, isin_code, price_date, counter):
 
@@ -2812,6 +2915,26 @@ class TransactionRepository(BaseRepository):
                 )
 
 
+def forward_methods(repo_names, debug=False):
+    def decorator(cls):
+
+        def __getattr__(self, name):
+            for repo_name in repo_names:
+                repo = getattr(self, repo_name)
+
+                if hasattr(repo, name):
+                    if debug:
+                        print(f"[forward] {cls.__name__}.{name} → {repo_name}.{name}")
+                    return getattr(repo, name)
+
+            raise AttributeError(f"{cls.__name__} hat keine Methode '{name}'")
+
+        cls.__getattr__ = __getattr__
+        return cls
+
+    return decorator
+
+
 REPOSITORIES = {
     "application": ApplicationRepository,
     "bank_identifier": BankIdentifierRepository,
@@ -2834,26 +2957,6 @@ REPOSITORIES = {
     "transaction": TransactionRepository,
     "tickers": TickersRepository,
 }
-
-
-def forward_methods(repo_names, debug=False):
-    def decorator(cls):
-
-        def __getattr__(self, name):
-            for repo_name in repo_names:
-                repo = getattr(self, repo_name)
-
-                if hasattr(repo, name):
-                    if debug:
-                        print(f"[forward] {cls.__name__}.{name} → {repo_name}.{name}")
-                    return getattr(repo, name)
-
-            raise AttributeError(f"{cls.__name__} hat keine Methode '{name}'")
-
-        cls.__getattr__ = __getattr__
-        return cls
-
-    return decorator
 
 
 @forward_methods(REPOSITORIES.keys(), debug=False)
