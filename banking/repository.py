@@ -20,7 +20,6 @@ import banking.declarations_mariadb as declm
 
 from banking.mariadb import MariaDB
 from banking.utils import date_days
-from banking.declarations import FN_PROFIT
 
 
 class SingletonNoLockMeta(type):
@@ -2556,19 +2555,58 @@ class TickersRepository(BaseRepository):
             declm.TICKERS, field_list=declm.TABLE_FIELDS[declm.TICKERS],  result_dict=True)
         return result
 
-    def import_tickers(self, filename):
-
-        sql = f"""
-        LOAD DATA LOCAL INFILE '{filename}'
-        INTO TABLE tickers
-        FIELDS TERMINATED BY ','
-        ENCLOSED BY '"'
-        LINES TERMINATED BY '\r\n'
-        (symbol, company_name, exchange)
-        SET {declm.DB_ISIN} = 'NA'
+    def import_tickers(self, filename: str) -> None:
         """
-
-        self.db.executor.execute(sql)
+        Import ticker symbols into the tickers table.
+    
+        ZIP format 
+        ----------
+        - Encoding: utf8
+        - Delimiter: ,
+        - Quote character: "
+        - Line ending: CRLF (\\r\\n)
+    
+        Expected columns
+        ----------------
+        1. symbol
+        2. company_name
+        3. exchange
+    
+        Additional values
+        -----------------
+        - ISIN is automatically set to 'NA'
+        """
+    
+        columns = """
+            symbol,
+            company_name,
+            exchange
+        """
+    
+        set_clause = f"""
+            {declm.DB_ISIN} = 'NA'
+        """
+    
+        try:
+            # Import CSV file
+            self.db.execute_load_data(
+                filename=filename,
+                table="tickers",
+                columns=columns,
+                set_clause=set_clause,
+                line_terminator="\\r\\n",
+                field_terminator=",",
+                encoding="utf8",
+                ignore_lines=0,
+                replace=False,
+                local=True,
+            )
+    
+            return None
+    
+        except Exception as exc:
+    
+            return exc
 
     def delete_ticker_with_spaces(self):
 
@@ -2658,7 +2696,7 @@ class TransactionRepository(BaseRepository):
         return self.db.select_cte(
             sql=sql,
             vars_=vars_,
-            fields=[declm.DB_ISIN, declm.DB_name, FN_PROFIT, declm.DB_amount_currency, declm.DB_pieces]
+            fields=[declm.DB_ISIN, declm.DB_name, decl.FN_PROFIT, declm.DB_amount_currency, declm.DB_pieces]
         )
 
     def transaction_profit_all(
@@ -2699,7 +2737,7 @@ class TransactionRepository(BaseRepository):
         return self.db.select_cte(
             sql=sql,
             vars_=vars_,
-            fields=[declm.DB_ISIN, declm.DB_name, FN_PROFIT, declm.DB_amount_currency, declm.DB_pieces]
+            fields=[declm.DB_ISIN, declm.DB_name, decl.FN_PROFIT, declm.DB_amount_currency, declm.DB_pieces]
         )
 
     def get_transaction_view_data_of_iban_period(self, fields, iban, period):

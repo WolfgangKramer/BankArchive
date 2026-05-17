@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2026-05-08"
+__updated__ = "2026-05-17"
 @author: Wolfgang Kramer
 """
 
@@ -60,6 +60,7 @@ BUNDESBANK_BLZ_MERKBLATT = b"https://www.bundesbank.de/resource/blob/602848/50cb
 BUNDEBANK_BLZ_DOWNLOAD = b"https://www.bundesbank.de/de/aufgaben/unbarer-zahlungsverkehr/serviceangebot/bankleitzahlen/download-bankleitzahlen-602592"
 MSEDGE_DRIVER_DOWNLOAD = b"https://developer.microsoft.com/en-us/microsoft-edge/tools/webdriver"
 FINTS_SERVER_ADDRESS = b"https://www.fints.org/de/hersteller/produktregistrierung"
+TICKER_ADDRESS =  b"https://investexcel.net/stocks-traded-german-exchanges/?utm_source=chatgpt.com"
 
 FRANKFURTER_BOERSE = b"https://www.boerse-frankfurt.de/aktien/suche"
 BNPPARIBAS = b"https://www.derivate.bnpparibas.com/realtime"

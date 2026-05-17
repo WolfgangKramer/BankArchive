@@ -1,6 +1,6 @@
 '''
 Created on 02.01.2026
-__updated__ = "2026-04-10"
+__updated__ = "2026-05-17"
 @author: Wolfgang Kramer
 '''
 from tkinter import (
@@ -10,12 +10,9 @@ from tkinter.ttk import Style, Entry, Label, Combobox, Button
 from PIL import ImageTk
 from mariadb import connect, Error
 
+import banking.declarations as decl
 import banking.declarations_mariadb as declm
-from banking.declarations import (
-    MARIADB_NAME, MARIADB_USER,
-    MARIADB_PASSWORD, MARIADB_HOST,
-    WM_DELETE_WINDOW, BUTTON_OK
-)
+
 from banking.message_handler import  get_message, MESSAGE_TITLE, MESSAGE_TEXT
 from banking.connect_data import ConnectionResult, connectionresult
 
@@ -58,27 +55,27 @@ class ConnectView:
         )
         self.message_widget.pack(side="bottom", fill="x")
 
-        self.window.protocol(WM_DELETE_WINDOW, self._on_close)
+        self.window.protocol(decl.WM_DELETE_WINDOW, self._on_close)
 
     def _build_ui(self):
         self._define_styles()
 
         self.user_entry = self._add_labeled_entry(
-            MARIADB_USER, connectionresult.user, 40
+            decl.MARIADB_USER, connectionresult.user, 40
         )
         self.user_entry.focus_set()
         self.user_entry.bind("<KeyRelease>", self._schedule_db_load)
 
         self.password_entry = self._add_labeled_entry(
-            MARIADB_PASSWORD, connectionresult.password, 80, show="*"
+            decl.MARIADB_PASSWORD, connectionresult.password, 80, show="*"
         )
         self.password_entry.bind("<KeyRelease>", self._schedule_db_load)
 
         self.host_entry = self._add_labeled_entry(
-            MARIADB_HOST, connectionresult.host, 120
+            decl.MARIADB_HOST, connectionresult.host, 120
         )
 
-        self.db_label = Label(self.window, text=MARIADB_NAME)
+        self.db_label = Label(self.window, text=decl.MARIADB_NAME)
         self.db_combo = Combobox(self.window, state="normal", width=30)
         self.db_combo.bind("<<ComboboxSelected>>", self._database_selected)
 
@@ -87,7 +84,7 @@ class ConnectView:
 
         self.connect_button = Button(
             self.window,
-            text=BUTTON_OK,
+            text=decl.BUTTON_OK,
             command=self._connect_to_db
         )
         self.canvas.create_window(300, 240, window=self.connect_button)

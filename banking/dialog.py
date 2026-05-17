@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-05-16"
+__updated__ = "2026-05-17"
 @author: Wolfgang Kramer
 """
 
@@ -29,43 +29,11 @@ from fints.segments.statement import HIKAZ6, HIKAZ7, HICAZ1, HICAZS1
 from fints.utils import Password
 from mt940.models import Transactions
 
-from banking.declarations_mariadb import (
-    STATEMENT, TABLE_FIELDS,
-    DB_amount, DB_currency, DB_entry_date, DB_date,
-    DB_camt,
-    DB_show_messages, DB_logging,
-    DB_status, DB_bank_reference, DB_posting_text,
-    DB_end_to_end_reference, DB_mandate_id, DB_purpose_code, DB_applicant_name,
-    DB_applicant_iban,
-    DB_id, DB_transaction_code, DB_prima_nota, DB_remittance_information, DB_purpose,
-    DB_opening_balance, DB_opening_status, DB_opening_currency, DB_opening_entry_date,
-    DB_closing_balance, DB_closing_status, DB_closing_currency, DB_closing_entry_date,
-    )
-from banking.declarations import (
-    CODE_0030, CODE_3010, CODE_3040, CODE_3955, CREDIT,
-    DIALOG_ID_UNASSIGNED,
-    ERROR, EURO,
-    INFORMATION, IDENTIFIER,
-    PERCENT,
-    KEY_SYSTEM_ID,
-    KEY_BPD, KEY_UPD, KEY_BANK_NAME, KEY_STORAGE_PERIOD, KEY_TWOSTEP, KEY_ACCOUNTS, KEY_SUPPORTED_CAMT_MESSAGE, KEY_SUPPORTED_SEPA_FORMATS,
-    KEY_MIN_PIN_LENGTH, KEY_MAX_PIN_LENGTH, KEY_MAX_TAN_LENGTH,
-    KEY_VERSION_TRANSACTION, KEY_VERSION_TRANSACTION_ALLOWED,
-    KEY_TAN_REQUIRED,
-    KEY_ACC_IBAN, KEY_ACC_ACCOUNT_NUMBER, KEY_ACC_ALLOWED_TRANSACTIONS,
-    KEY_ACC_BANK_CODE, KEY_ACC_CURRENCY, KEY_ACC_CUSTOMER_ID, KEY_ACC_OWNER_NAME,
-    KEY_ACC_PRODUCT_NAME, KEY_ACC_SUBACCOUNT_NUMBER, KEY_ACC_TYPE,
-    PNS,
-    START_DIALOG_FAILED,
-    WARNING,
-    # form declaratives
-    WM_DELETE_WINDOW, DEBIT)
+import banking.declarations as decl
+import banking.declarations_mariadb as declm
+import banking.message_handler as msg
+
 from banking.fints_extension import HIKAZS6, HIKAZS7, HIWPDS5, HIWPDS6
-from banking.message_handler import (
-    is_main_thread, get_message,
-    Informations, bankdata_informations_append,
-    MESSAGE_TEXT,
-    MessageBoxException, MessageBoxTermination, MessageBoxInfo, MessageBoxAsk)
 from banking.forms import PrintMessageCode, InputPIN
 from banking.message import Messages
 from banking.utils import (
@@ -111,7 +79,7 @@ class UPDService:
         if accounts:
             bank.accounts = accounts
             self.repo.shelve_put_key(
-                bank.bank_code, (KEY_ACCOUNTS, accounts)
+                bank.bank_code, (decl.KEY_ACCOUNTS, accounts)
             )
 
         self._show_message(bank)
@@ -132,7 +100,7 @@ class UPDService:
 
         bank.upd_version = seg.upd_version
         self.repo.shelve_put_key(
-            bank.bank_code, (KEY_UPD, bank.upd_version)
+            bank.bank_code, (decl.KEY_UPD, bank.upd_version)
         )
 
         Dialogs.upd_updated = True
@@ -161,15 +129,15 @@ class UPDService:
         )
 
         acc = {
-            KEY_ACC_IBAN: iban,
-            KEY_ACC_ACCOUNT_NUMBER: upd.account_information.account_number,
-            KEY_ACC_SUBACCOUNT_NUMBER: upd.account_information.subaccount_number,
-            KEY_ACC_BANK_CODE: upd.account_information.bank_identifier.bank_code,
-            KEY_ACC_CUSTOMER_ID: upd.customer_id,
-            KEY_ACC_TYPE: upd.account_type,
-            KEY_ACC_CURRENCY: upd.account_currency,
-            KEY_ACC_PRODUCT_NAME: upd.account_product_name,
-            KEY_ACC_ALLOWED_TRANSACTIONS: [
+            decl.KEY_ACC_IBAN: iban,
+            decl.KEY_ACC_ACCOUNT_NUMBER: upd.account_information.account_number,
+            decl.KEY_ACC_SUBACCOUNT_NUMBER: upd.account_information.subaccount_number,
+            decl.KEY_ACC_BANK_CODE: upd.account_information.bank_identifier.bank_code,
+            decl.KEY_ACC_CUSTOMER_ID: upd.customer_id,
+            decl.KEY_ACC_TYPE: upd.account_type,
+            decl.KEY_ACC_CURRENCY: upd.account_currency,
+            decl.KEY_ACC_PRODUCT_NAME: upd.account_product_name,
+            decl.KEY_ACC_ALLOWED_TRANSACTIONS: [
                 t.transaction
                 for t in upd.allowed_transactions
                 if t.transaction is not None
@@ -178,7 +146,7 @@ class UPDService:
 
         owner_name = (upd.name_account_owner_1 or "") + (upd.name_account_owner_2 or "")
         if owner_name:
-            acc[KEY_ACC_OWNER_NAME] = owner_name
+            acc[decl.KEY_ACC_OWNER_NAME] = owner_name
 
         return acc
 
@@ -186,14 +154,14 @@ class UPDService:
     # UI
     # -----------------------------
     def _show_message(self, bank):
-        MessageBoxInfo(
-            message=get_message(
-                MESSAGE_TEXT,
+        msg.MessageBoxInfo(
+            message=msg.get_message(
+                msg.MESSAGE_TEXT,
                 'FINTS_UPDATE_UPD_VERSION',
                 bank.bank_name,
                 bank.upd_version
             ),
-            information=INFORMATION
+            information=decl.INFORMATION
         )
 
 
@@ -213,7 +181,7 @@ class BPDService:
     def update_bank(self, bank: Any, response: Any, update_bpd: bool = False) -> None:
         """Main entry point."""
 
-        self.repo.shelve_del_key(bank.bank_code, KEY_SUPPORTED_SEPA_FORMATS) # deprecated key 
+        self.repo.shelve_del_key(bank.bank_code, decl.KEY_SUPPORTED_SEPA_FORMATS) # deprecated key 
         
         hibpa = self._get_segment(response, HIBPA3)
         if not hibpa:
@@ -261,7 +229,7 @@ class BPDService:
 
         self.repo.shelve_put_key(
             bank.bank_code,
-            [(KEY_BPD, bank.bpd_version), (KEY_BANK_NAME, bank.bank_name)]
+            [(decl.KEY_BPD, bank.bpd_version), (decl.KEY_BANK_NAME, bank.bank_name)]
         )
 
         Dialogs.bpd_updated = True
@@ -306,7 +274,7 @@ class BPDService:
 
         self.repo.shelve_put_key(
             bank.bank_code,
-            (KEY_SUPPORTED_CAMT_MESSAGE, bank.supported_camt_messages)
+            (decl.KEY_SUPPORTED_CAMT_MESSAGE, bank.supported_camt_messages)
         )
 
     def _store_twostep_parameters(self, bank: Any, response: Any) -> None:
@@ -323,7 +291,7 @@ class BPDService:
 
             self.repo.shelve_put_key(
                 bank.bank_code,
-                (KEY_TWOSTEP, bank.twostep_parameters)
+                (decl.KEY_TWOSTEP, bank.twostep_parameters)
             )
             return
 
@@ -346,7 +314,7 @@ class BPDService:
 
         self.repo.shelve_put_key(
             bank.bank_code,
-            (KEY_VERSION_TRANSACTION_ALLOWED, result)
+            (decl.KEY_VERSION_TRANSACTION_ALLOWED, result)
         )
 
     def _store_transaction_versions(self, bank: Any, response: Any) -> None:
@@ -364,7 +332,7 @@ class BPDService:
 
         self.repo.shelve_put_key(
             bank.bank_code,
-            (KEY_VERSION_TRANSACTION, bank.transaction_versions)
+            (decl.KEY_VERSION_TRANSACTION, bank.transaction_versions)
         )
 
     def _store_pin_tan_rules(self, bank: Any, response: Any) -> None:
@@ -377,17 +345,17 @@ class BPDService:
             ]
 
             values = [
-                (KEY_MIN_PIN_LENGTH, seg.parameter.min_pin_length),
-                (KEY_MAX_PIN_LENGTH, seg.parameter.max_pin_length),
-                (KEY_MAX_TAN_LENGTH, seg.parameter.max_tan_length),
-                (KEY_TAN_REQUIRED, tans_required),
+                (decl.KEY_MIN_PIN_LENGTH, seg.parameter.min_pin_length),
+                (decl.KEY_MAX_PIN_LENGTH, seg.parameter.max_pin_length),
+                (decl.KEY_MAX_TAN_LENGTH, seg.parameter.max_tan_length),
+                (decl.KEY_TAN_REQUIRED, tans_required),
             ]
         else:
-            MessageBoxInfo(message=get_message(MESSAGE_TEXT, 'HIPINS1'))
+            msg.MessageBoxInfo(message=msg.get_message(msg.MESSAGE_TEXT, 'HIPINS1'))
             values = [
-                (KEY_MIN_PIN_LENGTH, 3),
-                (KEY_MAX_PIN_LENGTH, 20),
-                (KEY_MAX_TAN_LENGTH, 10),
+                (decl.KEY_MIN_PIN_LENGTH, 3),
+                (decl.KEY_MAX_PIN_LENGTH, 20),
+                (decl.KEY_MAX_TAN_LENGTH, 10),
             ]
 
         self.repo.shelve_put_key(bank.bank_code, values)
@@ -399,7 +367,7 @@ class BPDService:
 
         self.repo.shelve_put_key(
             bank.bank_code,
-            (KEY_STORAGE_PERIOD, bank.storage_period)
+            (decl.KEY_STORAGE_PERIOD, bank.storage_period)
         )
 
     # ------------------------------------------------------------------
@@ -407,14 +375,14 @@ class BPDService:
     # ------------------------------------------------------------------
 
     def _notify_bpd_update(self, bank: Any) -> None:
-        MessageBoxInfo(
-            message=get_message(
-                MESSAGE_TEXT,
+        msg.MessageBoxInfo(
+            message=msg.get_message(
+                msg.MESSAGE_TEXT,
                 'FINTS_UPDATE_BPD_VERSION',
                 bank.bank_name,
                 bank.bpd_version
             ),
-            information=INFORMATION
+            information=decl.INFORMATION
         )
 
 
@@ -443,7 +411,7 @@ class IdentifierService:
         identifiers = []
 
         # Find identifiers in purpose string
-        for key in IDENTIFIER.keys():
+        for key in decl.IDENTIFIER.keys():
             pattern = key + delimiter
             match = re.search(pattern, compact)
             if match:
@@ -457,7 +425,7 @@ class IdentifierService:
             next_start = identifiers[i + 1][1] if i + 1 < len(identifiers) else None
 
             value = compact[end:next_start] if next_start else compact[end:]
-            entry[IDENTIFIER[clean_name]] = value[:65]
+            entry[decl.IDENTIFIER[clean_name]] = value[:65]
 
         # Store original purpose cleaned (optional refinement possible)
         entry.setdefault("purpose_wo_identifier", purpose)
@@ -504,7 +472,7 @@ class MT940Service:
         """
         cleaned = {}
         for key, value in data.items():
-            if key not in TABLE_FIELDS[STATEMENT] or value is None:
+            if key not in declm.TABLE_FIELDS[declm.STATEMENT] or value is None:
                 continue
 
             if isinstance(value, str):
@@ -645,14 +613,14 @@ class CAMT052Service:
     
         def convert_amount(amount, status):
             amount = amount if isinstance(amount, Decimal) else dec2.convert(amount)
-            return amount if status == CREDIT else -amount
+            return amount if status == decl.CREDIT else -amount
     
         def normalize_amount(a):
             if isinstance(a, dict) and "#text" in a:
                 amount = dec2.convert(a["#text"])
-                currency = a.get("@Ccy", EURO)
+                currency = a.get("@Ccy", decl.EURO)
                 return amount, currency
-            return None, EURO
+            return None, decl.EURO
     
         def get_date(node):
             if isinstance(node, dict):
@@ -660,7 +628,7 @@ class CAMT052Service:
             return node
     
         def get_status(indicator):
-            return DEBIT if indicator == "DBIT" else CREDIT
+            return decl.DEBIT if indicator == "DBIT" else decl.CREDIT
     
         def extract_balance(bal):
             tp = bal.get("Tp", {})
@@ -711,23 +679,23 @@ class CAMT052Service:
     
             if running_balance is not None:
                 entry_obj.update({
-                    DB_opening_balance: abs(running_balance),
-                    DB_opening_status: opening_status,
-                    DB_opening_currency: opening_currency,
-                    DB_opening_entry_date: opening_date,
+                    declm.DB_opening_balance: abs(running_balance),
+                    declm.DB_opening_status: opening_status,
+                    declm.DB_opening_currency: opening_currency,
+                    declm.DB_opening_entry_date: opening_date,
                 })
     
             amount, currency = normalize_amount(entry.get("Amt"))
             status = get_status(entry.get("CdtDbtInd"))
     
             entry_obj.update({
-                DB_amount: amount,
-                DB_currency: currency,
-                DB_status: status,
-                DB_entry_date: get_date(entry.get("BookgDt")),
-                DB_date: get_date(entry.get("ValDt")),
-                DB_posting_text: entry.get("AddtlNtryInf"),
-                DB_bank_reference: entry.get("AcctSvcrRef"),
+                declm.DB_amount: amount,
+                declm.DB_currency: currency,
+                declm.DB_status: status,
+                declm.DB_entry_date: get_date(entry.get("BookgDt")),
+                declm.DB_date: get_date(entry.get("ValDt")),
+                declm.DB_posting_text: entry.get("AddtlNtryInf"),
+                declm.DB_bank_reference: entry.get("AcctSvcrRef"),
             })
     
             if running_balance is not None:
@@ -735,14 +703,14 @@ class CAMT052Service:
                     running_balance,
                     convert_amount(amount, status)
                 )
-                opening_status = CREDIT if running_balance > 0 else DEBIT
-                opening_date = entry_obj[DB_entry_date]
+                opening_status = decl.CREDIT if running_balance > 0 else decl.DEBIT
+                opening_date = entry_obj[declm.DB_entry_date]
     
                 entry_obj.update({
-                    DB_closing_balance: abs(running_balance),
-                    DB_closing_status: opening_status,
-                    DB_closing_entry_date: opening_date,
-                    DB_closing_currency: opening_currency,
+                    declm.DB_closing_balance: abs(running_balance),
+                    declm.DB_closing_status: opening_status,
+                    declm.DB_closing_entry_date: opening_date,
+                    declm.DB_closing_currency: opening_currency,
                 })
     
             # --- BkTxCd ---
@@ -750,29 +718,29 @@ class CAMT052Service:
             prtry = (bk.get("Prtry") or {}).get("Cd")
             if prtry:
                 parts = prtry.split("+")
-                entry_obj[DB_id] = parts[0] if len(parts) > 0 else None
-                entry_obj[DB_transaction_code] = parts[1] if len(parts) > 1 else None
-                entry_obj[DB_prima_nota] = parts[2] if len(parts) > 2 else None
+                entry_obj[declm.DB_id] = parts[0] if len(parts) > 0 else None
+                entry_obj[declm.DB_transaction_code] = parts[1] if len(parts) > 1 else None
+                entry_obj[declm.DB_prima_nota] = parts[2] if len(parts) > 2 else None
     
             # --- Tx Details ---
             for tx in ensure_list((entry.get("NtryDtls") or {}).get("TxDtls")):
                 refs = tx.get("Refs", {})
     
                 entry_obj.update({
-                    DB_remittance_information: refs.get("InstrId"),
-                    DB_end_to_end_reference: refs.get("EndToEndId"),
-                    DB_mandate_id: (tx.get("DrctDbtTx", {})
+                    declm.DB_remittance_information: refs.get("InstrId"),
+                    declm.DB_end_to_end_reference: refs.get("EndToEndId"),
+                    declm.DB_mandate_id: (tx.get("DrctDbtTx", {})
                                     .get("MndtRltdInf", {})
                                     .get("MndtId")),
-                    DB_purpose_code: (tx.get("Purp") or {}).get("Cd"),
+                    declm.DB_purpose_code: (tx.get("Purp") or {}).get("Cd"),
                 })
     
                 if tx.get("RmtInf"):
-                    entry_obj[DB_purpose] = tx["RmtInf"].get("Ustrd")
+                    entry_obj[declm.DB_purpose] = tx["RmtInf"].get("Ustrd")
     
                 rltd = tx.get("RltdPties", {})
     
-                if entry_obj[DB_status] == CREDIT:
+                if entry_obj[declm.DB_status] == decl.CREDIT:
                     party = rltd.get("Dbtr")
                     acct = rltd.get("DbtrAcct")
                 else:
@@ -780,19 +748,19 @@ class CAMT052Service:
                     acct = rltd.get("CdtrAcct")
     
                 if party:
-                    entry_obj[DB_applicant_name] = dict_get_nested_value(party, ["Pty", "Nm"])
+                    entry_obj[declm.DB_applicant_name] = dict_get_nested_value(party, ["Pty", "Nm"])
     
                 if acct:
                     iban = (
                         dict_get_nested_value(acct, ["Id", "IBAN"])
                         or dict_get_nested_value(acct, ["Id", "Othr", "Id"])
                     )
-                    entry_obj[DB_applicant_iban] = iban
+                    entry_obj[declm.DB_applicant_iban] = iban
     
-            if entry_obj[DB_status] != CREDIT:
+            if entry_obj[declm.DB_status] != decl.CREDIT:
                 entry_obj = self._create_identifiers(entry_obj, identifier_delimiter)
     
-            entry_obj[DB_camt] = "052"
+            entry_obj[declm.DB_camt] = "052"
             entries_out.append(entry_obj)
     
         # --- Closing balance check ---
@@ -800,23 +768,23 @@ class CAMT052Service:
             last = entries_out[-1]
     
             calc = convert_amount(
-                last[DB_closing_balance],
-                last[DB_closing_status]
+                last[declm.DB_closing_balance],
+                last[declm.DB_closing_status]
             )
 
    
             if closing_balance != calc:
-                MessageBoxInfo(
-                    message=get_message(
-                        MESSAGE_TEXT, 'BANK_BALANCE_DIFFERENCE',
+                msg.MessageBoxInfo(
+                    message=msg.get_message(
+                        msg.MESSAGE_TEXT, 'BANK_BALANCE_DIFFERENCE',
                         bank.account_product_name,
                         bank.account_number,
                         closing_balance,
-                        last[DB_closing_balance],
+                        last[declm.DB_closing_balance],
                         calc,
                         str(dec2.subtract(closing_balance, calc))
                     ),
-                    information=WARNING
+                    information=decl.WARNING
                 )
     
         return entries_out
@@ -932,7 +900,7 @@ class MT535Service:
                         float(f"{m.group(2)}.{m.group(3)}")
                     )
                 elif m := re_marketprice01.match(clause):
-                    instrument["price_currency"] = PERCENT
+                    instrument["price_currency"] = decl.PERCENT
                     instrument["market_price"] = dec6.convert(
                         float(f"{m.group(1)}.{m.group(2)}")
                     )
@@ -1002,12 +970,12 @@ class Dialogs(object):
         self.repo = Repository()
         self.messages = Messages()
         self.identifier_service = IdentifierService()
-        result = application_store.get([DB_logging, DB_show_messages])
+        result = application_store.get([declm.DB_logging, declm.DB_show_messages])
         if result:
-            self._show_message = result[DB_show_messages]
-            self._logging = result[DB_logging]
+            self._show_message = result[declm.DB_show_messages]
+            self._logging = result[declm.DB_logging]
         if not self._show_message:
-            self._show_message = ERROR
+            self._show_message = decl.ERROR
 
     def _start_dialog(self, bank: Any) -> Optional[Any]:
         """
@@ -1035,7 +1003,7 @@ class Dialogs(object):
     def _reset_dialog_state(self, bank: Any) -> None:
         """Reset dialog-related state."""
         bank.opened_bank_code = None
-        bank.dialog_id = DIALOG_ID_UNASSIGNED
+        bank.dialog_id = decl.DIALOG_ID_UNASSIGNED
         bank.tan_process = 4
         bank.sca = True
 
@@ -1072,15 +1040,15 @@ class Dialogs(object):
             bool: False if user canceled input
         """
 
-        if bank.bank_code in PNS:
+        if bank.bank_code in decl.PNS:
             return True
 
         input_pin = InputPIN(bank.bank_code, bank_name=bank.bank_name)
 
-        if input_pin.button_state == WM_DELETE_WINDOW:
+        if input_pin.button_state == decl.WM_DELETE_WINDOW:
             return False
 
-        PNS[bank.bank_code] = input_pin.pin
+        decl.PNS[bank.bank_code] = input_pin.pin
         return True
 
     def _send_dialog_init(self, bank: Any) -> Optional[Any]:
@@ -1124,9 +1092,9 @@ class Dialogs(object):
             if bank.iban == seg.iban and seg.extension:
                 formatted = json.dumps(seg.extension, indent=4)
 
-                MessageBoxInfo(
-                    message=get_message(
-                        MESSAGE_TEXT,
+                msg.MessageBoxInfo(
+                    message=msg.get_message(
+                        msg.MESSAGE_TEXT,
                         'HIUPD_EXTENSION',
                         bank.bank_name,
                         bank.account_number,
@@ -1134,13 +1102,13 @@ class Dialogs(object):
                         bank.iban,
                         formatted
                     ),
-                    info_storage=Informations.BANKDATA_INFORMATIONS
+                    info_storage=msg.Informations.BANKDATA_INFORMATIONS
                 )
    
     def _reset_retry_state(self, bank: Any) -> None:
 
-        Informations.bankdata_informations = ''
-        PNS.pop(bank.bank_code, None)
+        msg.Informations.bankdata_informations = ''
+        decl.PNS.pop(bank.bank_code, None)
 
     def _finalize_dialog(self, bank: Any, response: Any) -> Optional[Any]:
         """
@@ -1175,9 +1143,9 @@ class Dialogs(object):
     
     def _handle_missing_tan(self, bank: Any) -> None:
         """Show error if TAN segment missing."""
-        MessageBoxInfo(
-            message=get_message(
-                MESSAGE_TEXT,
+        msg.MessageBoxInfo(
+            message=msg.get_message(
+                msg.MESSAGE_TEXT,
                 'HITAN_MISSED',
                 bank.bank_name,
                 bank.account_number,
@@ -1226,7 +1194,7 @@ class Dialogs(object):
 
         for seg in response.find_segments(HIRMS2):
             for hirms in seg.responses:
-                if hirms.code == CODE_0030:
+                if hirms.code == decl.CODE_0030:
                     bank.tan_process = 2
                     return True
 
@@ -1255,14 +1223,14 @@ class Dialogs(object):
 
     def _handle_tan_cancel(self, bank: Any) -> None:
         """Handle user canceling TAN input."""
-        MessageBoxInfo(
-            message=get_message(
-                MESSAGE_TEXT,
+        msg.MessageBoxInfo(
+            message=msg.get_message(
+                msg.MESSAGE_TEXT,
                 'TAN_CANCEL',
                 bank.bank_name,
                 bank.account_number
             ),
-            information=ERROR
+            information=decl.ERROR
         )
 
     def _get_segment(self, bank, segment_type):
@@ -1271,8 +1239,8 @@ class Dialogs(object):
             if (seg.__name__[2:5] == segment_type and
                     seg.__name__[5:6] == str(bank.transaction_versions[segment_type])):
                 return seg
-        MessageBoxTermination(info=get_message(
-            MESSAGE_TEXT, 'SEGMENT_VERSION',
+        msg.MessageBoxTermination(info=msg.get_message(
+            msg.MESSAGE_TEXT, 'SEGMENT_VERSION',
             'HI', segment_type, bank.transaction_versions[segment_type]
             ),
             bank=bank)
@@ -1283,50 +1251,50 @@ class Dialogs(object):
         if seg is not None:
             bank.dialog_id = seg.dialog_id
         else:
-            MessageBoxTermination(info=get_message(MESSAGE_TEXT, 'HNHBK3'), bank=bank)
+            msg.MessageBoxTermination(info=msg.get_message(msg.MESSAGE_TEXT, 'HNHBK3'), bank=bank)
         seg = response.find_segment_first(HISYN4)
         if seg is not None:
             bank.system_id = seg.system_id
             bank.security_identifier = seg.system_id
             self.repo.shelve_put_key(
-                bank.bank_code, (KEY_SYSTEM_ID, seg.system_id))
+                bank.bank_code, (decl.KEY_SYSTEM_ID, seg.system_id))
         else:
-            MessageBoxTermination(info=get_message(MESSAGE_TEXT, 'HISYN4'), bank=bank)
+            msg.MessageBoxTermination(info=msg.get_message(msg.MESSAGE_TEXT, 'HISYN4'), bank=bank)
         UPDService(self.repo).process_response(bank, response)
 
 
     def _receive_msg(self, bank, response, hirms_codes):
 
-        if CODE_0030 in hirms_codes:
+        if decl.CODE_0030 in hirms_codes:
             seg = response.find_segment_first(HITAN7)
             if not seg:
                 seg = response.find_segment_first(HITAN6)
                 if not seg:
-                    MessageBoxInfo(
-                        message=get_message(
-                            MESSAGE_TEXT, CODE_0030, bank.bank_name, bank.account_number,
+                    msg.MessageBoxInfo(
+                        message=msg.get_message(
+                            msg.MESSAGE_TEXT, decl.CODE_0030, bank.bank_name, bank.account_number,
                             bank.account_product_name
                             ),
-                        information=WARNING
+                        information=decl.WARNING
                         )
                     return [], hirms_codes
-            if is_main_thread():
+            if msg.is_main_thread():
                 bank.task_reference = seg.task_reference
                 bank.challenge_hhduc = seg.challenge_hhduc  # e.g. Consors: QR_Code contains TAN
                 response, hirms_codes = self._get_tan(bank, response)
             else:
-                MessageBoxInfo(
-                    message=get_message(
-                        MESSAGE_TEXT, CODE_0030, bank.bank_name, bank.account_number,
+                msg.MessageBoxInfo(
+                    message=msg.get_message(
+                        msg.MESSAGE_TEXT, decl.CODE_0030, bank.bank_name, bank.account_number,
                         bank.account_product_name
                         ),
-                    information=WARNING
+                    information=decl.WARNING
                     )
         return response, hirms_codes
 
     def _decoupled_process(self, bank, response, hirms_codes):
 
-        if CODE_0030 in hirms_codes and bank.bank_code == '76030080':  # Consors  Show QR_Code
+        if decl.CODE_0030 in hirms_codes and bank.bank_code == '76030080':  # Consors  Show QR_Code
             # store QR_code with tan in bank
             bank.challenge_hhduc = None
             bank.challenge = ''
@@ -1334,13 +1302,13 @@ class Dialogs(object):
                 bank.challenge_hhduc = seg.challenge_hhduc
                 bank.challenge = seg.challenge
                 break
-        if CODE_3955 in hirms_codes:
+        if decl.CODE_3955 in hirms_codes:
             # Security clearance is provided via another channel
             for seg in response.find_segments(HITAN7):
                 bank.task_reference = seg.task_reference
-                message_box_ask = MessageBoxAsk(
-                    message=get_message(
-                        MESSAGE_TEXT, 'HITAN', seg.challenge)
+                message_box_ask = msg.MessageBoxAsk(
+                    message=msg.get_message(
+                        msg.MESSAGE_TEXT, 'HITAN', seg.challenge)
                 )
                 if message_box_ask.result:
                     bank.tan_process = 'S'
@@ -1359,27 +1327,27 @@ class Dialogs(object):
                 if response.code == '3076':      # SCA not required
                     bank.sca = False
                 if response.code[0] in ['0', '1']:
-                    if self._show_message == INFORMATION:
-                        bankdata_informations_append(INFORMATION, message)
+                    if self._show_message == decl.INFORMATION:
+                        msg.bankdata_informations_append(decl.INFORMATION, message)
                 elif response.code[0] == '3':
                     if response.code == '3010':    # no entries found
-                        MessageBoxInfo(
-                            message=get_message(
-                                MESSAGE_TEXT, 'NO_TURNOVER', bank.bank_name,
+                        msg.MessageBoxInfo(
+                            message=msg.get_message(
+                                msg.MESSAGE_TEXT, 'NO_TURNOVER', bank.bank_name,
                                 bank.account_number, bank.account_product_name
                                 )
                             )
-                    if self._show_message in [INFORMATION, WARNING]:
-                        bankdata_informations_append(WARNING, message)
+                    if self._show_message in [decl.INFORMATION, decl.WARNING]:
+                        msg.bankdata_informations_append(decl.WARNING, message)
                         bank.warning_message = True
                 else:
                     error = True
-                    bankdata_informations_append(WARNING, message)
+                    msg.bankdata_informations_append(decl.WARNING, message)
                     if response.reference_element:
-                        bankdata_informations_append(WARNING, ' ' .join(
+                        msg.bankdata_informations_append(decl.WARNING, ' ' .join(
                             ['- Bezugssegment', str(response.reference_element)]))
                     if response.parameters:
-                        bankdata_informations_append(ERROR, ' ' .join(
+                        msg.bankdata_informations_append(decl.ERROR, ' ' .join(
                             ['- Parameters', str(response.parameters)]))
             return error, codes
         if self._logging:
@@ -1393,18 +1361,18 @@ class Dialogs(object):
                           headers={b'Content-Type': 'text/plain;charset=UTF-8'},
                           data=base64.b64encode(message.render_bytes()))
         if r.status_code < 200 or r.status_code > 299:
-            MessageBoxTermination(
-                info=get_message(MESSAGE_TEXT, 'SEND_ERROR', r.status_code), bank=bank)
+            msg.MessageBoxTermination(
+                info=msg.get_message(msg.MESSAGE_TEXT, 'SEND_ERROR', r.status_code), bank=bank)
         try:
             response = FinTSInstituteMessage(
                 segments=base64.b64decode(r.content.decode('latin1')))
         except Exception:
-            MessageBoxException(message=get_message(MESSAGE_TEXT, 'RESPONSE'))
-            PrintMessageCode(text=Informations.bankdata_informations)
+            msg.MessageBoxException(message=msg.get_message(msg.MESSAGE_TEXT, 'RESPONSE'))
+            PrintMessageCode(text=msg.Informations.bankdata_informations)
             if dialog_init:
                 return None,  []
             else:
-                MessageBoxTermination(bank=bank)
+                msg.MessageBoxTermination(bank=bank)
         bank.response = response
         if self._logging:
             with Password.protect():
@@ -1419,11 +1387,11 @@ class Dialogs(object):
             hirms_error, hirms_codes = fints_code(bank, seg)
             fints_codes = fints_codes + hirms_codes
         if hirmg_error or hirms_error:
-            PrintMessageCode(text=Informations.bankdata_informations)
+            PrintMessageCode(text=msg.Informations.bankdata_informations)
             if dialog_init:
                 return None,  fints_codes
             else:
-                MessageBoxTermination(bank=bank)
+                msg.MessageBoxTermination(bank=bank)
         return response, fints_codes
 
     def anonymous(self, bank):
@@ -1433,7 +1401,7 @@ class Dialogs(object):
         # Reset the message counter for a new session
         bank.message_number = 1
         # Mark the dialog as not yet assigned
-        bank.dialog_id = DIALOG_ID_UNASSIGNED
+        bank.dialog_id = decl.DIALOG_ID_UNASSIGNED
         # Send anonymous dialog initialization message
         response, _ = self._send_msg(
             bank,
@@ -1452,7 +1420,7 @@ class Dialogs(object):
         """
         # Start synchronization dialog
         bank.message_number = 1
-        bank.dialog_id = DIALOG_ID_UNASSIGNED
+        bank.dialog_id = decl.DIALOG_ID_UNASSIGNED
         # Send synchronization request
         response, _ = self._send_msg(
             bank,
@@ -1468,7 +1436,7 @@ class Dialogs(object):
         if not seg:
             response = self._start_dialog(bank)
             # Process updates only if dialog startup succeeded
-            if response not in START_DIALOG_FAILED:
+            if response not in decl.START_DIALOG_FAILED:
                 UPDService(self.repo).process_response(bank, response)
                 # Close the update dialog
                 self._end_dialog(bank)
@@ -1479,8 +1447,8 @@ class Dialogs(object):
         """
     
         # Start dialog with the bank server
-        if self._start_dialog(bank) in START_DIALOG_FAILED:
-            return WM_DELETE_WINDOW
+        if self._start_dialog(bank) in decl.START_DIALOG_FAILED:
+            return decl.WM_DELETE_WINDOW
     
         holdings = []
     
@@ -1512,8 +1480,8 @@ class Dialogs(object):
     
         # Abort if the required segment is missing
         if not seg:
-            MessageBoxTermination(
-                info=get_message(MESSAGE_TEXT, 'HIWPD', hiwpd.__name__),
+            msg.MessageBoxTermination(
+                info=msg.get_message(msg.MESSAGE_TEXT, 'HIWPD', hiwpd.__name__),
                 bank=bank
             )
             return holdings
@@ -1546,8 +1514,8 @@ class Dialogs(object):
         return holdings
 
     def statements(self, bank):
-        if self._start_dialog(bank) in START_DIALOG_FAILED:
-            return WM_DELETE_WINDOW
+        if self._start_dialog(bank) in decl.START_DIALOG_FAILED:
+            return decl.WM_DELETE_WINDOW
     
         bank.tan_process = 4
         statements = []
@@ -1570,24 +1538,24 @@ class Dialogs(object):
         )
     
         # No statements found or SCA in threading mode
-        if not response or CODE_3010 in hirms_codes:
+        if not response or decl.CODE_3010 in hirms_codes:
             return statements
     
-        if CODE_0030 in hirms_codes:
+        if decl.CODE_0030 in hirms_codes:
             self._end_dialog(bank)
             return statements
     
         # Additional turnovers are available
-        if CODE_3040 in hirms_codes:
-            MessageBoxInfo(
-                message=get_message(
-                    MESSAGE_TEXT,
-                    CODE_3040,
+        if decl.CODE_3040 in hirms_codes:
+            msg.MessageBoxInfo(
+                message=msg.get_message(
+                    msg.MESSAGE_TEXT,
+                    decl.CODE_3040,
                     bank.bank_name,
                     bank.account_number,
                     bank.account_product_name,
                 ),
-                information=WARNING,
+                information=decl.WARNING,
             )
     
         if bank.statement_mt940:
@@ -1605,16 +1573,16 @@ class Dialogs(object):
         seg = response.find_segment_first(hikaz)
     
         if not seg:
-            MessageBoxInfo(
-                message=get_message(
-                    MESSAGE_TEXT,
+            msg.MessageBoxInfo(
+                message=msg.get_message(
+                    msg.MESSAGE_TEXT,
                     "HIKAZ",
                     "HKKAZ",
                     bank.bank_name,
                     bank.account_number,
                     bank.account_product_name,
                 ),
-                information=ERROR,
+                information=decl.ERROR,
             )
             return []
     
@@ -1642,16 +1610,16 @@ class Dialogs(object):
         seg = response.find_segment_first(HICAZ1)
     
         if not seg:
-            MessageBoxInfo(
-                message=get_message(
-                    MESSAGE_TEXT,
+            msg.MessageBoxInfo(
+                message=msg.get_message(
+                    msg.MESSAGE_TEXT,
                     "HIKAZ",
                     "HKCAZ",
                     bank.bank_name,
                     bank.account_number,
                     bank.account_product_name,
                 ),
-                information=ERROR,
+                information=decl.ERROR,
             )
             return []
     

@@ -12,6 +12,7 @@ from tkinter import Tk, messagebox, TclError
 from dataclasses import dataclass
 from threading import current_thread, main_thread
 
+import banking.declarations as decl
 from banking.declarations import (
     CODE_0030, CODE_3040,
     ERROR, INFORMATION, WARNING
@@ -105,7 +106,35 @@ MESSAGE_TEXT = {
         File : {}
         Error: {}
         """,
-    'IMPORT_TEXT_SERVER': """
+    'IMPORT_TEXT_TICKER': f"""
+        ZIP format
+        ----------
+        The ZIP file is converted into the following CSV file during import.
+        
+        CSV format
+        ----------
+        - Encoding: utf8
+        - Delimiter: ,
+        - Quote character: "
+        - Line ending: CRLF (\\r\\n)
+    
+        Expected columns
+        ----------------
+        1. symbol
+        2. company_name
+        3. exchange
+    
+        Additional values
+        -----------------
+        - ISIN is automatically set to 'NA'
+
+        Notes
+        -----
+        Download Spreadsheet of Companies Traded on German Stock Exchanges
+        
+        {decl.TICKER_ADDRESS}
+    """,    
+    'IMPORT_TEXT_SERVER': f"""
         CSV format
         ----------
         The CSV file must use the following structure:
@@ -136,40 +165,51 @@ MESSAGE_TEXT = {
     
         Notes
         -----
-        Registration:
-        https://www.hbci-zka.de/register/prod_register.htm
+        Registration to get CSV File:
+        
+        {decl.FINTS_SERVER_ADDRESS}
     """,
-    'IMPORT_TEXT_BANKIDENTIFIER': """
+    'IMPORT_TEXT_BANKIDENTIFIER': f"""
          CSV format
-            ----------
-            The CSV file must use the following structure:
+        ----------
+        The CSV file must use the following structure:
+    
+        - Encoding: latin1
+        - Delimiter: ;
+        - Optional quote character: "
+        - Line ending: CRLF (\r\n)
+        - First row: header (ignored)
+    
+        Expected columns
+        ----------------
+        1. code                      : Bank code (BLZ)
+        2. payment_provider          : Payment provider type
+        3. payment_provider_name     : Name of the payment provider
+        4. postal_code               : Postal code
+        5. location                  : City / location
+        6. name                      : Bank name
+        7. pan                       : PAN identifier
+        8. bic                       : BIC code
+        9. check_digit_calculation   : Check digit calculation method
+        10. record_number            : Record number
+        11. change_indicator         : Change indicator
+        12. code_deletion            : Deletion flag
+        13. follow_code              : Follow-up bank code
+    
+        Additional processing
+        ---------------------
+        - Existing entries are deleted before import.
+        - Payment providers with provider code '2'    
         
-            - Encoding: latin1
-            - Delimiter: ;
-            - Optional quote character: "
-            - Line ending: CRLF (\r\n)
-            - First row: header (ignored)
+        Notes
+        -----
+        Informations
         
-            Expected columns
-            ----------------
-            1. code                      : Bank code (BLZ)
-            2. payment_provider          : Payment provider type
-            3. payment_provider_name     : Name of the payment provider
-            4. postal_code               : Postal code
-            5. location                  : City / location
-            6. name                      : Bank name
-            7. pan                       : PAN identifier
-            8. bic                       : BIC code
-            9. check_digit_calculation   : Check digit calculation method
-            10. record_number            : Record number
-            11. change_indicator         : Change indicator
-            12. code_deletion            : Deletion flag
-            13. follow_code              : Follow-up bank code
+        {decl.BUNDESBANK_BLZ_MERKBLATT}
         
-            Additional processing
-            ---------------------
-            - Existing entries are deleted before import.
-            - Payment providers with provider code '2'    
+        Download
+        
+        {decl.BUNDEBANK_BLZ_DOWNLOAD}
     """,
     'IMPORT_TEXT_TRANSACTION': """
         CSV format

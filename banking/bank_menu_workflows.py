@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-05-16"
+__updated__ = "2026-05-17"
 Author: Wolfang Kramer
 """
 import requests
@@ -15,7 +15,7 @@ import banking.declarations as decl
 import banking.declarations_mariadb as declm
 import banking.message_handler as msg
 
-from banking.services import PDFService
+from banking.services_file import PDFService
 from banking.formatters import ShelveFormatter
 from banking.connect_data import connectionresult
 from banking.bank import InitBank, InitBankSync, InitBankAnonymous
@@ -46,6 +46,7 @@ from banking.forms import (
     VersionTransaction, SelectDownloadPrices,
 )
 from banking.scraper import AlphaVantage, BmwBank
+from banking.services_file import FileService
 from banking.trading_calendar import xetra_cls
 from banking.utils import (
     application_store,
@@ -538,7 +539,7 @@ class CustomizingWorkFlow(BaseWorkflow):
         msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_BANKIDENTIFIER'))
         webbrowser.open(decl.BUNDESBANK_BLZ_MERKBLATT)
         webbrowser.open(decl.BUNDEBANK_BLZ_DOWNLOAD)
-        file_dialogue = FileDialogue(title=title)
+        file_dialogue = FileDialogue(title=title, filetypes='csv')
         if file_dialogue.filename not in ['', None]:
             result = self.repo.import_bankidentifier(file_dialogue.filename)
             if result is None:
@@ -561,7 +562,7 @@ class CustomizingWorkFlow(BaseWorkflow):
         title = get_menu_text("Import Server CSV-File")
         msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_SERVER'))
         webbrowser.open(decl.FINTS_SERVER_ADDRESS)
-        file_dialogue = FileDialogue(title=title)
+        file_dialogue = FileDialogue(title=title, filetypes='csv')
         if file_dialogue.filename not in ['', None]:
             result = self.repo.import_server(file_dialogue.filename)
             if result is None:
@@ -582,23 +583,25 @@ class CustomizingWorkFlow(BaseWorkflow):
     def import_tickers(self):
 
         title = get_menu_text("Import Ticker Symbols")
-        IMPORT_SERVER = b"https://investexcel.net/stocks-traded-german-exchanges/?utm_source=chatgpt.com"
-        msg.MessageBoxInfo(
-            title=title,
-            message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_CSV', declm.TICKERS.upper(), 'Stocks Traded on German Exchanges')
-            )
-        websites(IMPORT_SERVER)
-        file_dialogue = FileDialogue(title=title)
+        msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TICKER'))
+        webbrowser.open(decl.TICKER_ADDRESS)
+        file_dialogue = FileDialogue(title=title, filetypes='zip') # zip file
         if file_dialogue.filename not in ['', None]:
-            self.repo.import_tickers(file_dialogue.filename)
-            msg.MessageBoxInfo(
-                title=title,
-                message=msg.get_message(msg.MESSAGE_TEXT, 'LOAD_DATA', file_dialogue.filename)
-                )
-            data = self.repo.get_tickers_data()
-            dataframe = DataFrame(data)
-            BuiltPandasBox(title=title, dataframe=dataframe)
-            self.repo.delete_ticker_with_spaces()
+            csv_file = FileService.spreadsheet_zip_to_csv(file_dialogue.filename) # convert to csv file          
+            result = self.repo.import_tickers(csv_file)
+            if result is None:
+                msg.MessageBoxInfo(
+                    title=title,
+                    message=msg.get_message(msg.MESSAGE_TEXT, 'LOAD_DATA', file_dialogue.filename)
+                    )
+                data = self.repo.get_tickers_data()
+                dataframe = DataFrame(data)
+                BuiltPandasBox(title=title, dataframe=dataframe)
+            else:
+                msg.MessageBoxInfo(
+                    title=title,
+                    message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_ERROR', file_dialogue.filename, result)
+                    )
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def bank_security_function(self, bank_code, new):

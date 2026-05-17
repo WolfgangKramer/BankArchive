@@ -84,7 +84,7 @@ from banking.declarations import (
     STANDARD,
     TYP_ALPHANUMERIC,
     WM_DELETE_WINDOW, FORMAT_VARIABLE, COST_FIFO, FN_ALL_BANKS, FN_BANK_NAME,
-    TYP_DATE, TYP_DECIMAL,
+    TYP_DATE, TYP_DECIMAL, KEY_ACC_IBAN,
     )
 from banking.formbuilts import (
     MAX_FIELD_LENGTH,
@@ -2554,6 +2554,8 @@ class PandasBoxLedgerCoaTable(BuiltPandasBox):
             mandatory = [declm.DB_name]
             ledger_coa = LedgerCoaTableRowBox(LEDGER_COA, LEDGER_COA, row_dict,
                                               protected=protected, mandatory=mandatory,
+                                              combo_positioning_dict={declm.DB_iban: self.get_all_ibans()},
+                                              combo_insert_value=[declm.DB_iban], 
                                               title=self.title, button1_text=BUTTON_UPDATE)
 
             self.button_state = ledger_coa.button_state
@@ -2620,6 +2622,15 @@ class PandasBoxLedgerCoaTable(BuiltPandasBox):
                     )
         return ledger_coa
 
+    def get_all_ibans(self):
+        
+        bank_codes = self.repo.listbank_codes()
+        ibans = []
+        for bank_code in bank_codes:
+            accounts = self.repo.shelve_get_accounts(bank_code)
+            for acc in accounts:
+                ibans.append(acc[decl.KEY_ACC_IBAN])
+        return ibans        
 
 class PandasBoxLedgerStatement(BuiltPandasBox):
     """

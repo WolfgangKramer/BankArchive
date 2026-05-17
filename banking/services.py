@@ -4,9 +4,7 @@ Created on 02.03.2026
 '''
 
 import yfinance as yf
-import os
 
-from fpdf import FPDF
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Dict, List, Tuple, Any, Optional
@@ -23,7 +21,6 @@ from banking.utils import (
     signed_balance
     )
 from banking.trading_calendar import xetra_cls
-from banking.declarations import NOT_ASSIGNED
 
 
 class CostBasisStrategy(ABC):
@@ -956,7 +953,7 @@ class LedgerServices:
             account = asset_account_dict.get(declm.DB_account, decl.NOT_ASSIGNED)
             name = asset_account_dict.get(declm.DB_name, decl.NOT_ASSIGNED)
             owner_name = asset_account_dict.get(decl.KEY_ACC_OWNER_NAME, decl.NOT_ASSIGNED)
-            iban = asset_account_dict.get(declm.DB_iban, NOT_ASSIGNED)
+            iban = asset_account_dict.get(declm.DB_iban, decl.NOT_ASSIGNED)
             portfolio = asset_account_dict.get(declm.DB_portfolio, 0)
             balance: Optional[float] = None
 
@@ -1311,119 +1308,6 @@ class Services(
         self.repo = repo
 
 
-class PDFService:
-    """
-    Framework: 
-        with headings (H1–H3),
-        body text,
-        logs (INFO/WARN/ERROR),
-        tables and clean styling
-        
-    Example:
-    
-                    pdf = PDFService("report.pdf")
-                    pdf.add_page()
-                    
-                    # Titel
-                    pdf.add_heading("System Report", level=1)
-                    pdf.add_heading("Zusammenfassung", level=2)
-                    
-                    # Text
-                    pdf.add_text("Das ist ein Beispieltext.\nMit Zeilenumbruch.")
-                    
-                    # Logs
-                    pdf.add_log("System gestartet", "INFO")
-                    pdf.add_log("Speicher fast voll", "WARN")
-                    pdf.add_log("Fehler beim Laden!", "ERROR")
-                    
-                    # Tabelle
-                    headers = ["Name", "Status", "Wert"]
-                    rows = [
-                        ["CPU", "OK", "45%"],
-                        ["RAM", "WARN", "85%"],
-                        ["Disk", "ERROR", "95%"]
-                    ]
-                    
-                    pdf.add_heading("Systemwerte", level=2)
-                    pdf.add_table(headers, rows)
-                    
-                    # Seitenumbruch testen
-                    pdf.add_text("Neue Seite\fHier geht es weiter")
-                    
-                    pdf.save()
-                    pdf.show()    
-        
-    """
-    PDF_FILE_NAME = "report.pdf"
-
-    def __init__(self, filename=PDF_FILE_NAME):
-        self.pdf = FPDF()
-        self.filename = filename
-        self.pdf.set_auto_page_break(auto=True, margin=15)
-
-        # 🔹 Stylesystem
-        self.styles = {
-            "H1": {"size": 12, "color": (0, 0, 0), "style": "B"},
-            "H2": {"size": 10, "color": (0, 0, 0), "style": "B"},
-            "H3": {"size": 8, "color": (50, 50, 50), "style": "B"},
-            "BODY": {"size": 8, "color": (0, 0, 0), "style": ""},
-            "INFO": {"size": 8, "color": (0, 102, 204), "style": ""},
-            "WARN": {"size": 8, "color": (255, 140, 0), "style": "B"},
-            "ERROR": {"size": 8, "color": (200, 0, 0), "style": "B"},
-        }
-
-    def _apply_style(self, style_name):
-        style = self.styles.get(style_name, self.styles["BODY"])
-        self.pdf.set_font("Arial", style=style["style"], size=style["size"])
-        self.pdf.set_text_color(*style["color"])
-
-    def add_page(self):
-        self.pdf.add_page()
-
-    def add_text(self, text, style="BODY", line_height=8):
-        self._apply_style(style)
-
-        pages = text.split("\f")
-        for i, page in enumerate(pages):
-            if i > 0:
-                self.add_page()
-            self.pdf.multi_cell(0, line_height, page)
-
-    def add_heading(self, text, level=1):
-        style = f"H{level}"
-        self._apply_style(style)
-        self.pdf.ln(5)
-        self.pdf.cell(0, 10, text, ln=True)
-        self.pdf.ln(2)
-
-    def add_log(self, text, level="INFO"):
-        prefix = f"[{level}] "
-        self.add_text(prefix + text, style=level)
-
-    def add_table(self, headers, rows, col_widths=None):
-        self._apply_style("BODY")
-
-        if not col_widths:
-            col_widths = [190 / len(headers)] * len(headers)
-
-        # Header
-        self._apply_style("H3")
-        for i, header in enumerate(headers):
-            self.pdf.cell(col_widths[i], 10, str(header), border=1)
-        self.pdf.ln()
-
-        # Rows
-        self._apply_style("BODY")
-        for row in rows:
-            for i, col in enumerate(row):
-                self.pdf.cell(col_widths[i], 8, str(col), border=1)
-            self.pdf.ln()
-
-    def save(self):
-        self.pdf.output(self.filename)
-
-    def show(self):
-        os.startfile(self.filename)
 
 
     

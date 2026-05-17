@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-05-12"
+__updated__ = "2026-05-17"
 @author: Wolfgang Kramer
 """
 from __future__ import annotations
@@ -19,14 +19,10 @@ from tkinter import Tk, messagebox, TclError
 from datetime import date, timedelta, datetime
 from decimal import Decimal, getcontext, ROUND_HALF_EVEN, DivisionByZero
 
+import banking.declarations as decl
 import banking.message_handler as msg
 
 from banking.connect_data import connectionresult
-from banking.declarations import (
-    EURO, CREDIT,
-    POPUP_MENU_TEXT, MENU_TEXT,
-    WIDTH_TEXT
-)
 
 def is_title(title, sub_menu_name):
     """
@@ -88,7 +84,7 @@ def get_popup_menu_text(key):
     Errors are handled and key is returned as text:
     - Key not found
     """
-    return POPUP_MENU_TEXT.get(key, key)
+    return decl.POPUP_MENU_TEXT.get(key, key)
 
 
 def get_menu_text(key):
@@ -97,7 +93,7 @@ def get_menu_text(key):
     Errors are handled and key is returned as text:
     - Key not found
     """
-    return MENU_TEXT.get(key, key)
+    return decl.MENU_TEXT.get(key, key)
 
 
 def get_signature(obj):
@@ -423,10 +419,10 @@ def signed_balance(amount: Decimal | float, status: str) -> Decimal:
     """
     Return signed balance depending on credit/debit status.
     """
-    return dec2.convert(amount) if status == CREDIT else dec2.convert(-amount)
+    return dec2.convert(amount) if status == decl.CREDIT else dec2.convert(-amount)
 
 
-def printer(print_columns=['col1', 'col2', 'col4'], print_line_length=WIDTH_TEXT,
+def printer(print_columns=['col1', 'col2', 'col4'], print_line_length=decl.WIDTH_TEXT,
             def_columns={'col1': (12, 0, 'char'), 'col2': (12, 2, 'decimal'),
                          'col3': (12, 0, 'char'), 'col4': (12, 0, 'date')},
             data_list=[{'col1': 'col1 text', 'col2': 21.45,
@@ -766,7 +762,7 @@ class Amount():
     >>> Amount('123.45', 'EUR') --> 123.45 EUR
     """
 
-    def __init__(self, amount, currency=EURO, places=2):
+    def __init__(self, amount, currency=decl.EURO, places=2):
 
         self.amount = str(amount)
         if self.amount == 'nan':
@@ -781,7 +777,7 @@ class Amount():
             if m.group(0) == self.amount:
                 self.amount = Calculate(places=self.places).convert(
                     self.amount.replace(',', '.'))
-                if self.currency == EURO:
+                if self.currency == decl.EURO:
                     self.currency = u"\N{euro sign}"
         else:
             self.currency = ''

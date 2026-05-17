@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2026-05-12"
+__updated__ = "2026-05-17"
 @author: Wolfgang Kramer
 """
 
@@ -163,6 +163,13 @@ class FileDialogue():
                 filetypes = (("Microsoft Office Excel files", "*.xlsx"),)
             else:
                 filetypes = (("CSV files", "*.csv"), ("all files", "*.*"))
+        else:
+            if filetypes == 'zip':
+                filetypes = (("Zip files", "*.zip"),)
+            elif filetypes == 'csv':
+                filetypes = (("CSV files", "*.csv"),)
+            else:
+                filetypes = (("all files", "*.*"),)
         if create_file:
             directory = application_store.get(declm.DB_directory)
             if directory:
