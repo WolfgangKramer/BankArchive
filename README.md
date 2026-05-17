@@ -2,10 +2,11 @@
 
 ## Overview
 
+This application is applicable only to banks in Germany that support the FINTS protocol.
+
 The `ConnectController` class establishes the connection to the MariaDB database.
 
 The `BankMenu` class implements the central Tkinter menu system of the banking application.
-
 It dynamically builds the complete application menu structure depending on:
 
 - available bank data
