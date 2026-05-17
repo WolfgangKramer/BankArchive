@@ -20,6 +20,8 @@ The class encapsulates all GUI menus and directly connects them with the corresp
 # Prerequisites
 
 ```
+Microsoft WIN 11
+Microsoft Edge
 Python 3.13
 MariaDB 11.8
 ```
