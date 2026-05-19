@@ -126,7 +126,7 @@ class DownloadServices:
                     bank.statement_camt = True
                 else:
                     msg.bankdata_informations_append(
-                        msg.WARNING,
+                        decl.WARNING,
                         msg.MessageBoxInfo(
                             msg.MESSAGE_TEXT,
                             'SUPPORTED_CAMT_MESSAGES',
@@ -143,7 +143,7 @@ class DownloadServices:
                     bank.account_product_name,
                     bank.iban
                     )
-                msg.bankdata_informations_append(msg.WARNING, information)
+                msg.bankdata_informations_append(decl.WARNING, information)
             else:
                 information = msg.get_message(
                     msg.MESSAGE_TEXT,
@@ -156,10 +156,10 @@ class DownloadServices:
                     )
                 if bank.scraper:
                     if 'HKKAZ' in account[decl.KEY_ACC_ALLOWED_TRANSACTIONS]:
-                        msg.bankdata_informations_append(msg.INFORMATION, information)
+                        msg.bankdata_informations_append(decl.INFORMATION, information)
                         if self._statements(bank) is None:
                             msg.bankdata_informations_append(
-                                msg.WARNING,
+                                decl.WARNING,
                                 msg.get_message(
                                     msg.MESSAGE_TEXT,
                                     'DOWNLOAD_NOT_DONE',
@@ -169,10 +169,10 @@ class DownloadServices:
                             return
                 else:
                     if 'HKWPD' in account[decl.KEY_ACC_ALLOWED_TRANSACTIONS]:
-                        msg.bankdata_informations_append(msg.INFORMATION, information)
+                        msg.bankdata_informations_append(decl.INFORMATION, information)
                         if self._holdings(bank) in decl.START_DIALOG_FAILED:
                             msg.bankdata_informations_append(
-                                msg.WARNING,
+                                decl.WARNING,
                                 msg.get_message(
                                     msg.MESSAGE_TEXT,
                                     'DOWNLOAD_NOT_DONE',
@@ -181,10 +181,10 @@ class DownloadServices:
                                 )
                             return
                     if bank.statement_mt940 or bank.statement_camt:
-                        msg.bankdata_informations_append(msg.INFORMATION, information)
+                        msg.bankdata_informations_append(decl.INFORMATION, information)
                         if self._statements(bank) in decl.START_DIALOG_FAILED:
                             msg.bankdata_informations_append(
-                                msg.WARNING,
+                                decl.WARNING,
                                 msg.get_message(
                                     msg.MESSAGE_TEXT,
                                     'DOWNLOAD_NOT_DONE',
@@ -193,7 +193,7 @@ class DownloadServices:
                                 )
                             return
         msg.bankdata_informations_append(
-            msg.INFORMATION,
+            decl.INFORMATION,
             msg.get_message(
                 msg.MESSAGE_TEXT,
                 'DOWNLOAD_DONE',
@@ -205,7 +205,7 @@ class DownloadServices:
         Insert downloaded  Holding Bank Data in Database
         """
         msg.bankdata_informations_append(
-            msg.INFORMATION,
+            decl.INFORMATION,
             msg.get_message(
                 msg.MESSAGE_TEXT,
                 'DOWNLOAD_BANK',
@@ -217,7 +217,7 @@ class DownloadServices:
             bank.iban = account[decl.KEY_ACC_IBAN]
             if 'HKWPD' in account[decl.KEY_ACC_ALLOWED_TRANSACTIONS]:
                 msg.bankdata_informations_append(
-                    msg.INFORMATION,
+                    decl.INFORMATION,
                     msg.get_message(
                         msg.MESSAGE_TEXT,
                         'DOWNLOAD_ACCOUNT',
@@ -230,7 +230,7 @@ class DownloadServices:
                     )
                 if self._holdings(bank) in decl.START_DIALOG_FAILED:
                     msg.bankdata_informations_append(
-                        msg.WARNING,
+                        decl.WARNING,
                         msg.get_message(
                             msg.MESSAGE_TEXT,
                             'DOWNLOAD_NOT_DONE',
@@ -472,7 +472,7 @@ class DownloadServices:
                         ledger_balance,
                         str(dec2.subtract(closing_balance, ledger_balance))
                     ),
-                    information=msg.WARNING
+                    information=decl.WARNING
                 )
     
     def _recommend_account(self, account, statement_dict):
@@ -546,7 +546,7 @@ class DownloadServices:
                     name_,
                     isin
                     ),
-                information=msg.WARNING
+                information=decl.WARNING
                 )
             acquisition_amount = data[0].acquisition_amount
         else:
@@ -801,7 +801,7 @@ class ImportServices:
                 msg.MessageBoxInfo(
                     title=title,
                     info_storage=msg.Informations.PRICES_INFORMATIONS,
-                    information=msg.WARNING,
+                    information=decl.WARNING,
                     message=msg.get_message(
                         msg.MESSAGE_TEXT,
                         'PRICES_ERROR',
@@ -1189,7 +1189,7 @@ class TransactionOverviewService:
                 msg.MessageBoxInfo(
                     title=title,
                     info_storage=msg.Informations.PRICES_INFORMATIONS,
-                    information=msg.WARNING,
+                    information=decl.WARNING,
                     message=msg.get_message(
                         msg.MESSAGE_TEXT,
                         'PRICES_ERROR',
@@ -1232,7 +1232,7 @@ class TransactionOverviewService:
                 msg.MessageBoxInfo(
                     title=title,
                     info_storage=msg.Informations.PRICES_INFORMATIONS,
-                    information=msg.WARNING,
+                    information=decl.WARNING,
                     message=msg.get_message(
                         msg.MESSAGE_TEXT,
                         'PRICES_ERROR',

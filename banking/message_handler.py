@@ -13,15 +13,12 @@ from dataclasses import dataclass
 from threading import current_thread, main_thread
 
 import banking.declarations as decl
-from banking.declarations import (
-    CODE_0030, CODE_3040,
-    ERROR, INFORMATION, WARNING
-    )
+
 
 MESSAGE_TITLE = 'BANK ARCHIVE'
 MESSAGE_TEXT = {
-    CODE_0030: 'Bank: {} \n Bank Account: {}  {}       \n     Download not executed,    use single downloading bank data',
-    CODE_3040: 'Bank: {} \n Bank Account: {}  {}       \n     Download partially executed',
+    decl.CODE_0030: 'Bank: {} \n Bank Account: {}  {}       \n     Download not executed,    use single downloading bank data',
+    decl.CODE_3040: 'Bank: {} \n Bank Account: {}  {}       \n     Download partially executed',
     'ACCOUNT_IBAN_MISSED': 'Check TABLE LEDGER_COA: {}, \n Assign valid IBAN to ledger account: {}, {}',
     'ACQUISITION_HEADER': '{}  ACQUISITION AMOUNT CHANGE {} in Period {} - {}',
     'ACQUISITION_AMOUNT': 'Bank: {} \n Bank Account: {}  {}  {}      \n     Acquisition Amount must be adjusted manually',
@@ -485,9 +482,10 @@ class Level():
     """
     severity level of the message
     """
-    INFORMATION = INFORMATION
-    WARNING = WARNING
-    ERROR = ERROR
+    INFORMATION = decl.INFORMATION
+    WARNING = decl.WARNING
+    ERROR = decl.ERROR
+
 
 
 class InfoStorage():
@@ -535,7 +533,7 @@ class InformationMessageFactory:
     def create(
         message: str = "",
         title: str = MESSAGE_TITLE,
-        information: str = INFORMATION,
+        information: str = decl.INFORMATION,
         info_store: str = "",
     ) -> Message:
 
@@ -738,7 +736,7 @@ class MessageBoxInfo:
         self,
         message: str = "",
         title: str = MESSAGE_TITLE,
-        information=INFORMATION,
+        information=decl.INFORMATION,
         info_storage=None,
     ):
         msg = InformationMessageFactory.create(

@@ -2,7 +2,7 @@
 # -*- coding: ISO-8859-15 -*-
 """
 Created on 27.06.2021
-__updated__ = "2026-05-05"
+__updated__ = "2026-05-19"
 @author: Wolfgang Kramer
 
   Attention! new Scraper Class, see     Module: mariadb.py
@@ -283,7 +283,7 @@ class BmwBank(object):
         if error:
             # Print detailed selenium error information
             msg.MessageBoxInfo(
-                message=msg.get_message(
+                message= msg.get_message(
                     msg.MESSAGE_TEXT,
                     'SCRAPER_SELENIUM_EXCEPTION',
                     type(error).__name__,
@@ -293,11 +293,14 @@ class BmwBank(object):
                 info_storage=msg.Informations.BANKDATA_INFORMATIONS
                 )
         msg.MessageBoxException(
-            message=msg.get_message(
+            message= 
+            
+            msg.get_message(
                 msg.MESSAGE_TEXT,
                 'SCRAPER_PAGE_ERROR'
                 )
             )
+        print(no)
         self.logoff()
 
     def _wait_ready_state(self, seconds=20):
@@ -353,7 +356,7 @@ class BmwBank(object):
                                 msg.MESSAGE_TEXT,
                                 'SCRAPER_TIMEOUT'
                                 ),
-                            information=msg.WARNING,
+                            information=decl.WARNING,
                             info_storage=msg.Informations.BANKDATA_INFORMATIONS
                             )
                         return False
@@ -508,6 +511,6 @@ class BmwBank(object):
                 statements[0][declm.DB_opening_balance]
                 )
             msg.MessageBoxInfo(
-                title=title, message=message, information=msg.WARNING,
+                title=title, message=message, information=decl.WARNING,
                 info_storage=msg.Informations.BANKDATA_INFORMATIONS)
         return statements

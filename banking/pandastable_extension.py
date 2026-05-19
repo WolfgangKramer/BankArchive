@@ -1,6 +1,6 @@
 """
 Created on 12.04.2021
-__updated__ = "2026-03-22"
+__updated__ = "2026-05-19"
 @author: Wolfgang Kramer
 
     Modified code of:
@@ -24,20 +24,10 @@ from pandastable import (
 from pandastable.plotting import addFigure
 from pandastable.headers import createSubMenu
 from pandastable.dialogs import applyStyle
-from banking.declarations import (
-    ToolbarSwitch, POPUP_MENU_TEXT,
-    EDIT_ROW, CURRENCY_SIGN, NUMERIC, NO_CURRENCY_SIGN, TechnicalIndicatorData,
-    WM_DELETE_WINDOW,
-)
-from banking.declarations_mariadb import (
-    DB_close,
-    )
-from banking.message_handler import MESSAGE_TITLE
 
-BUTTON_NEW = 'NEW'
-BUTTON_DELETE = 'DELETE'
-BUTTON_RESTORE = 'RESTORE'
-BUTTON_UPDATE = 'UPDATE'
+import banking.declarations as decl
+import banking.declarations_mariadb as declm
+import banking.message_handler as msg
 
 
 class MyPlotViewer(PlotViewer):
@@ -59,7 +49,7 @@ class MyPlotViewer(PlotViewer):
         for window in MyPlotViewer.WINDOW:
             window.destroy()
         MyPlotViewer.WINDOW = []
-        self.button_state = WM_DELETE_WINDOW
+        self.button_state = decl.WM_DELETE_WINDOW
         PlotViewer.close(self)
 
     def setupGUI(self):
@@ -144,7 +134,7 @@ class MyPlotViewer(PlotViewer):
 
     def add_close(self):
 
-        TechnicalIndicatorData.TA_CLOSE.append(DB_close)
+        decl.TechnicalIndicatorData.TA_CLOSE.append(declm.DB_close)
 
         for window in MyPlotViewer.WINDOW:
             window.quit()
@@ -157,16 +147,16 @@ class ToolBarBanking(Frame):
     Modification of class ToolBar
     Uses the parent instance to provide the functions"""
 
-    def __init__(self, parent, parentapp, root, mode=NUMERIC):
+    def __init__(self, parent, parentapp, root, mode=decl.NUMERIC):
 
         Frame.__init__(self, parent, width=600, height=40)
         self.parentframe = parent
         self.parentapp = parentapp
         self.root = root
-        if mode == NUMERIC:
+        if mode == decl.NUMERIC:
             img = self.currency_sign()
             addButton(self, 'CurrenySign', self.toolbar_switch, img, 'ToolBar')
-        if mode == NUMERIC and ToolbarSwitch.toolbar_switch:
+        if mode == decl.NUMERIC and decl.ToolbarSwitch.toolbar_switch:
             img = images.excel()
             addButton(self, 'Export excel', self.root.excel_writer,
                       img, 'export to excel file')
@@ -219,10 +209,10 @@ class ToolBarBanking(Frame):
 
     def toolbar_switch(self):
 
-        if ToolbarSwitch.toolbar_switch:
-            ToolbarSwitch.toolbar_switch = False
+        if decl.ToolbarSwitch.toolbar_switch:
+            decl.ToolbarSwitch.toolbar_switch = False
         else:
-            ToolbarSwitch.toolbar_switch = True
+            decl.ToolbarSwitch.toolbar_switch = True
         self.master.quit()  # quits Frame BuiltPandasBox: next shows reformatted  decimal columns
         # self.parentapp.root.quit() # quits pandas_table of BuiltPandaasBox
 
@@ -411,25 +401,25 @@ class RowHeaderCallForms(RowHeader):
         defaultactions = {}
         if hasattr(self.root, 'show_row'):
             defaultactions.update(
-                {POPUP_MENU_TEXT['Show selected Row']: lambda: self.root.show_row()})
+                {decl.POPUP_MENU_TEXT['Show selected Row']: lambda: self.root.show_row()})
         if hasattr(self.root, 'show_credit_data'):
             defaultactions.update(
-                {POPUP_MENU_TEXT['Show credit data']: lambda: self.root.show_credit_data()})
+                {decl.POPUP_MENU_TEXT['Show credit data']: lambda: self.root.show_credit_data()})
         if hasattr(self.root, 'show_debit_data'):
             defaultactions.update(
-                {POPUP_MENU_TEXT['Show debit data']: lambda: self.root.show_debit_data()})
+                {decl.POPUP_MENU_TEXT['Show debit data']: lambda: self.root.show_debit_data()})
         if hasattr(self.root, 'new_row'):
             defaultactions.update(
-                {POPUP_MENU_TEXT['New Row']: lambda: self.root.new_row()})
+                {decl.POPUP_MENU_TEXT['New Row']: lambda: self.root.new_row()})
         if hasattr(self.root, 'update_row'):
             defaultactions.update(
-                {POPUP_MENU_TEXT['Update selected Row']: lambda: self.root.update_row()})
+                {decl.POPUP_MENU_TEXT['Update selected Row']: lambda: self.root.update_row()})
         if hasattr(self.root, 'del_row'):
             defaultactions.update(
-                {POPUP_MENU_TEXT['Delete selected Row']: lambda: self.root.del_row()})
+                {decl.POPUP_MENU_TEXT['Delete selected Row']: lambda: self.root.del_row()})
         if hasattr(self.root, 'excel_writer'):
             defaultactions.update(
-                {POPUP_MENU_TEXT['Export to Excel']: lambda: self.root.excel_writer()})
+                {decl.POPUP_MENU_TEXT['Export to Excel']: lambda: self.root.excel_writer()})
         main = []
         for key in defaultactions.keys():
             main.append(key)
@@ -458,31 +448,31 @@ class Table(Table):
         currency_code_format: adds currency_code pandas table columns of type Decimal
     """
 
-    def __init__(self, title=MESSAGE_TITLE, root=None,
+    def __init__(self, title=msg.MESSAGE_TITLE, root=None,
                  parent=None, model=None, dataframe=None,
                  width=None, height=None, rows=20, cols=5,
-                 mode=NUMERIC, instant_plotting=False):
+                 mode=decl.NUMERIC, instant_plotting=False):
         self.title = title
         self.root = root
         self.dataframe = dataframe
-        self.toolbar_switch = ToolbarSwitch.toolbar_switch
+        self.toolbar_switch = decl.ToolbarSwitch.toolbar_switch
         self.instant_plotting = instant_plotting
-        if mode == EDIT_ROW:
+        if mode == decl.EDIT_ROW:
             showtoolbar = False
             enable_menus = True
             editable = False
-        elif mode == CURRENCY_SIGN:
+        elif mode == decl.CURRENCY_SIGN:
             showtoolbar = False
             enable_menus = False
             editable = False
-        elif mode == NUMERIC:
+        elif mode == decl.NUMERIC:
             showtoolbar = False
             enable_menus = True
             if self.toolbar_switch:
                 editable = True
             else:
                 editable = False
-        elif mode == NO_CURRENCY_SIGN:
+        elif mode == decl.NO_CURRENCY_SIGN:
             showtoolbar = False
             enable_menus = True
             editable = False
@@ -492,7 +482,7 @@ class Table(Table):
                          showtoolbar=showtoolbar,
                          editable=editable,
                          enable_menus=enable_menus)
-        if mode == NUMERIC:
+        if mode == decl.NUMERIC:
             self.toolbar = ToolBarBanking(
                 parent, self, root, mode=mode)
             self.toolbar.grid(row=0, column=3, rowspan=2, sticky='news')
@@ -691,15 +681,15 @@ class TableRowEdit(Table):
         Special Banking Row Edit Functions
     """
 
-    def __init__(self, title=MESSAGE_TITLE, root=None,
+    def __init__(self, title=msg.MESSAGE_TITLE, root=None,
                  parent=None, model=None, dataframe=None,
                  width=None, height=None, rows=20, cols=5):
         self.title = title
         TableRowEdit.root = root
-        self.toolbar_switch = ToolbarSwitch.toolbar_switch
+        self.toolbar_switch = decl.ToolbarSwitch.toolbar_switch
         super().__init__(parent=parent, model=model, dataframe=dataframe,
                          width=width, height=height, rows=rows, cols=cols,
-                         mode=EDIT_ROW)
+                         mode=decl.EDIT_ROW)
 
         if hasattr(self, 'pf'):
             self.pf.updateData()

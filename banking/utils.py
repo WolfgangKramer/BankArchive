@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-05-17"
+__updated__ = "2026-05-19"
 @author: Wolfgang Kramer
 """
 from __future__ import annotations
@@ -420,76 +420,6 @@ def signed_balance(amount: Decimal | float, status: str) -> Decimal:
     Return signed balance depending on credit/debit status.
     """
     return dec2.convert(amount) if status == decl.CREDIT else dec2.convert(-amount)
-
-
-def printer(print_columns=['col1', 'col2', 'col4'], print_line_length=decl.WIDTH_TEXT,
-            def_columns={'col1': (12, 0, 'char'), 'col2': (12, 2, 'decimal'),
-                         'col3': (12, 0, 'char'), 'col4': (12, 0, 'date')},
-            data_list=[{'col1': 'col1 text', 'col2': 21.45,
-                        'col3': 'col3 text', 'col4': '2020-02-01'}]):
-    header = ''
-    for column in print_columns:
-        def_length, def_dec_places, def_type = def_columns[column]
-        if def_type == 'varchar':
-            def_length = len(column)
-            def_columns[column] = (def_length, def_dec_places, def_type)
-            for data_line in data_list:
-                try:
-                    data_line_column = data_line[column]
-                    if data_line_column is not None:
-                        data_line_column = data_line_column.strip()
-                except KeyError:
-                    data_line_column = None
-                if data_line_column is not None:
-                    def_length_new = len(str(data_line_column))
-                    if def_length_new > def_length:
-                        def_columns[column] = (
-                            def_length_new, def_dec_places, def_type)
-                        def_length = def_length_new
-    for column in print_columns:
-        def_length, def_dec_places, def_type = def_columns[column]
-        formatcolumn = '{:^' + str(def_length) + '}'
-        header = header + \
-            formatcolumn.format(column.upper())[0:def_length] + '|'
-    print_list = ''
-    for data_line in data_list:
-        print_line = ''
-        for column in print_columns:
-            def_length, def_dec_places, def_type = def_columns[column]
-            try:
-                value = data_line[column]
-            except KeyError:
-                value = ''
-            if value is None:
-                value = ' '
-            if def_type in ['int', 'smallint']:
-                formatline = '{:>' + str(def_length) + '}'
-            elif def_type == 'decimal':
-                formatline = '{: ' + str(def_length) + \
-                    '.' + str(def_dec_places) + 'f}'
-            elif def_type == 'date':
-                formatline = '{:^' + str(def_length) + '}'
-            else:
-                formatline = '{:' + str(def_length) + '}'
-            if value is None:
-                print_line = print_line + formatline.format(' ') + '|'
-            else:
-                if def_type == 'date':
-                    try:
-                        print_line = (print_line + formatline.
-                                      format(value.strftime('%Y-%m-%d')) + '|')
-                    except AttributeError:
-                        print_line = print_line + \
-                            formatline.format(value) + '|'
-                else:
-                    if isinstance(value, str):
-                        print_line = print_line + \
-                            formatline.format(value[0:def_length]) + '|'
-                    else:
-                        print_line = print_line + \
-                            formatline.format(value) + '|'
-        print_list = print_list + print_line + '\n'
-    return header, print_list
 
 
 class Calculate(object):

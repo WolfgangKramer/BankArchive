@@ -11,7 +11,7 @@ import webbrowser
 import requests
 import ta
 
-
+from typing import Dict, List, Any
 from decimal import Decimal
 from bisect import bisect_left
 from collections import namedtuple
@@ -24,78 +24,13 @@ from  copy import copy
 
 import banking.declarations_mariadb as declm
 import banking.declarations as decl
+import banking.message_handler as msg
+
 from banking.repository import Repository
 from banking.services import Services
-from banking.trading_calendar import xetra_cls
-
-
-from banking.declarations_mariadb import (
-    TABLE_FIELDS,
-    APPLICATION, APPLICATION_VIEW,  TRANSACTION_VIEW, STATEMENT, HOLDING_VIEW, HOLDING, TRANSACTION, LEDGER_COA,
-    LEDGER, LEDGER_VIEW, ISIN, PRICES,  LEDGER_DELETE,
-    LEDGER_DAILY_BALANCE,
-    DATABASE_FIELDS_PROPERTIES, TABLE_FIELDS_PROPERTIES,
-)
-from banking.declarations import (
-    ALPHA_VANTAGE, ALPHA_VANTAGE_REQUIRED, ALPHA_VANTAGE_REQUIRED_COMBO,
-    ALPHA_VANTAGE_OPTIONAL_COMBO,
-    BUTTON_INDICATOR,
-    CURRENCIES, CREDIT,
-    COST_METHOD, FN_COST_METHOD,
-    DEBIT,
-    ERROR, EURO, EDIT_ROW,
-    FN_ACCOUNT_NUMBER, FN_COMPARATIVE,
-    FN_DATE, FN_PROFIT_LOSS, FN_TOTAL_PERCENT, FN_PERIOD_PERCENT,
-    FN_FROM_DATE, FN_TO_DATE,
-    FN_SHARE,  FN_INDEX, FN_TOTAL,
-    FN_PROFIT_CUM, FN_PIECES_CUM, FN_PROFIT, FN_BALANCE,
-    HTTP_CODE_OK,
-    PERCENT,
-    INFORMATION,
-    KEY_MAX_PIN_LENGTH,
-    KEY_MIN_PIN_LENGTH,
-    KEY_TAN, MAX_PIN_LENGTH, MAX_TAN_LENGTH,
-    KEY_PIN,
-    LIGHTBLUE,
-    MIN_PIN_LENGTH, MIN_TAN_LENGTH,
-    CURRENCY_SIGN, ORIGINS,
-    ORIGIN_SYMBOLS, ORIGIN_LEDGER, ORIGIN_BANKDATA_CHANGED, ORIGIN_INSERTED,
-    SCRAPER_BANKDATA,
-    START_DATE_TRANSACTIONS,
-    TechnicalIndicatorData,
-    TIME_SERIES_INTRADAY,  TIME_SERIES_DAILY_ADJUSTED,
-    TIME_SERIES_WEEKLY,
-    TIME_SERIES_MONTHLY, TIME_SERIES_WEEKLY_ADJUSTED,
-    ToolbarSwitch, TIME_SERIES_DAILY,
-    TRANSACTION_TYPES, TRANSACTION_DELIVERY,
-    VALIDITY_DEFAULT, WARNING, NOT_ASSIGNED, YAHOO,
-    WWW_YAHOO,
-
-    COMBO, CHECK,
-    BUTTON_ADD_CHART,
-    BUTTON_OK, BUTTON_ALPHA_VANTAGE, BUTTON_DATA, BUTTON_CREDIT, BUTTON_COPY, BUTTON_DEBIT,
-    BUTTON_SAVE, BUTTON_NEW, BUTTON_APPEND, BUTTON_REPLACE, BUTTON_NEXT, BUTTON_UPDATE,
-    BUTTON_DELETE, BUTTON_STANDARD, BUTTON_SAVE_STANDARD, BUTTON_SELECT_ALL,
-    BUTTON_PRICES_IMPORT,
-    COLOR_NOT_ASSIGNED, COLOR_ERROR,
-    ENTRY,
-    FORMAT_FIXED,
-    NUMERIC,
-    STANDARD,
-    TYP_ALPHANUMERIC,
-    WM_DELETE_WINDOW, FORMAT_VARIABLE, COST_FIFO, FN_ALL_BANKS, FN_BANK_NAME,
-    TYP_DATE, TYP_DECIMAL, KEY_ACC_IBAN,
-    )
 from banking.formbuilts import (
-    MAX_FIELD_LENGTH,
     BuiltTableRowBox, BuiltPandasBox, BuiltCheckButton, BuiltEnterBox, BuiltText, BuiltSelectBox,
     FieldDefinition, destroy_widget, )
-import banking.message_handler as msg
-from banking.message_handler import (
-    MESSAGE_TITLE, MESSAGE_TEXT,
-    Informations, prices_informations_append,
-    MessageBoxInfo, MessageBoxTermination
-    )
 from banking.utils import (
     application_store,
     Calculate,
@@ -108,7 +43,7 @@ def _set_defaults(field_defs=[FieldDefinition()], default_values=(1,)):
 
     if default_values:
         if len(field_defs) < len(default_values):
-            MessageBoxTermination(
+            msg.MessageBoxTermination(
                 info='SET_DEFAULTS: Items of Field Definition less than Items of Default_Values')
             return False  # thread checking
         for idx, item in enumerate(default_values):
@@ -131,34 +66,34 @@ class AlphaVantageParameter(BuiltEnterBox):
 
         self.title = ' '.join([title, function.upper()])
         _field_defs = []
-        ALPHA_VANTAGE_REQUIRED_COMBO[declm.DB_symbol] = alpha_vantage_symbols
+        decl.ALPHA_VANTAGE_REQUIRED_COMBO[declm.DB_symbol] = alpha_vantage_symbols
         for parameter in parameter_list:
-            if parameter in ALPHA_VANTAGE_REQUIRED:
-                if parameter in ALPHA_VANTAGE_REQUIRED_COMBO.keys():
+            if parameter in decl.ALPHA_VANTAGE_REQUIRED:
+                if parameter in decl.ALPHA_VANTAGE_REQUIRED_COMBO.keys():
                     _field_defs.append(FieldDefinition(
-                        definition=COMBO, name=parameter.upper(), length=25,
-                        combo_values=ALPHA_VANTAGE_REQUIRED_COMBO[parameter]))
+                        definition=decl.COMBO, name=parameter.upper(), length=25,
+                        combo_values=decl.ALPHA_VANTAGE_REQUIRED_COMBO[parameter]))
                 else:
                     _field_defs.append(FieldDefinition(
-                        definition=ENTRY, name=parameter.upper(), length=25))
-            elif parameter in ALPHA_VANTAGE_OPTIONAL_COMBO.keys():
+                        definition=decl.ENTRY, name=parameter.upper(), length=25))
+            elif parameter in decl.ALPHA_VANTAGE_OPTIONAL_COMBO.keys():
                 _field_defs.append(FieldDefinition(
-                    definition=COMBO, name=parameter.upper(), length=25, mandatory=False,
-                    default_value=ALPHA_VANTAGE_OPTIONAL_COMBO[parameter][0],
-                    combo_values=ALPHA_VANTAGE_OPTIONAL_COMBO[parameter]))
+                    definition=decl.COMBO, name=parameter.upper(), length=25, mandatory=False,
+                    default_value=decl.ALPHA_VANTAGE_OPTIONAL_COMBO[parameter][0],
+                    combo_values=decl.ALPHA_VANTAGE_OPTIONAL_COMBO[parameter]))
             elif parameter == 'apikey':
                 _field_defs.append(FieldDefinition(
-                    definition=ENTRY, name=parameter.upper(), length=25,
+                    definition=decl.ENTRY, name=parameter.upper(), length=25,
                     default_value=api_key))
             else:
                 _field_defs.append(FieldDefinition(
-                    definition=ENTRY, name=parameter.upper(), length=25, mandatory=False))
+                    definition=decl.ENTRY, name=parameter.upper(), length=25, mandatory=False))
         FieldNames = namedtuple('FieldNames', parameter_list)
         self._field_defs = FieldNames(*_field_defs)
         if default_values:
             _set_defaults(_field_defs, default_values)
         super().__init__(title=title,
-                         button1_text=BUTTON_DATA, button2_text=BUTTON_ALPHA_VANTAGE,
+                         button1_text=decl.BUTTON_DATA, button2_text=decl.BUTTON_ALPHA_VANTAGE,
                          field_defs=self._field_defs)
 
     def button_1_button1(self, event):
@@ -186,15 +121,15 @@ class AppCustomizing(BuiltTableRowBox):
     def __init__(self, row_dict):
         # Available options for dropdowns
         alpha_vantage_price_period_list = [
-            TIME_SERIES_INTRADAY,
-            TIME_SERIES_DAILY,
-            TIME_SERIES_DAILY_ADJUSTED,
-            TIME_SERIES_WEEKLY,
-            TIME_SERIES_WEEKLY_ADJUSTED,
-            TIME_SERIES_MONTHLY,
+            decl.TIME_SERIES_INTRADAY,
+            decl.TIME_SERIES_DAILY,
+            decl.TIME_SERIES_DAILY_ADJUSTED,
+            decl.TIME_SERIES_WEEKLY,
+            decl.TIME_SERIES_WEEKLY_ADJUSTED,
+            decl.TIME_SERIES_MONTHLY,
         ]
 
-        show_messages_list = [INFORMATION, WARNING, ERROR]
+        show_messages_list = [decl.INFORMATION, decl.WARNING, decl.ERROR]
 
         combo_dict = {
             declm.DB_alpha_vantage_price_period: alpha_vantage_price_period_list,
@@ -202,8 +137,8 @@ class AppCustomizing(BuiltTableRowBox):
         }
 
         super().__init__(
-            APPLICATION,
-            APPLICATION_VIEW,
+            declm.APPLICATION,
+            declm.APPLICATION_VIEW,
             row_dict,
             focus_in=[declm.DB_directory],
             combo_dict=combo_dict,
@@ -246,17 +181,17 @@ class SelectLedgerAccountCategory(BuiltSelectBox):
                 combo_values.append(
                     ' '.join([account_name[0], account_name[1]]))
             field_defs_list.append(self.create_combo_field(
-                declm.DB_account, 50, TYP_ALPHANUMERIC, combo_values))
+                declm.DB_account, 50, decl.TYP_ALPHANUMERIC, combo_values))
         else:
-            self.footer.set(msg.get_message(MESSAGE_TEXT, 'DATA_NO', LEDGER_COA.upper()))
+            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', declm.LEDGER_COA.upper()))
         # from_date
-        field_defs_list.append(self.create_date_field(FN_FROM_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_FROM_DATE))
         # to_date
-        field_defs_list.append(self.create_date_field(FN_TO_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_TO_DATE))
         # initialize empty data_dict
         if not self.data_dict:
-            self.data_dict[FN_FROM_DATE] = date(datetime.now().year, 1, 1)
-            self.data_dict[FN_TO_DATE] = date(datetime.now().year, 12, 31)
+            self.data_dict[decl.FN_FROM_DATE] = date(datetime.now().year, 1, 1)
+            self.data_dict[decl.FN_TO_DATE] = date(datetime.now().year, 12, 31)
         return field_defs_list
 
 
@@ -276,23 +211,23 @@ class SelectLedgerAccount(BuiltSelectBox):
                 combo_values.append(
                     ' '.join([account_name[0], account_name[1]]))
             field_defs_list.append(self.create_combo_field(
-                declm.DB_account, 50, TYP_ALPHANUMERIC, combo_values))
+                declm.DB_account, 50, decl.TYP_ALPHANUMERIC, combo_values))
         else:
-            self.footer.set(msg.get_message(MESSAGE_TEXT, 'DATA_NO', LEDGER_COA.upper()))
+            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', declm.LEDGER_COA.upper()))
         # from_date
-        field_defs_list.append(self.create_date_field(FN_FROM_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_FROM_DATE))
         # to_date
-        field_defs_list.append(self.create_date_field(FN_TO_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_TO_DATE))
         # separator line
-        self.separator = [declm.DB_account, FN_TO_DATE]
+        self.separator = [declm.DB_account, decl.FN_TO_DATE]
         # check_buttons
-        for field_name in TABLE_FIELDS_PROPERTIES[LEDGER_VIEW].keys():
+        for field_name in declm.TABLE_FIELDS_PROPERTIES[declm.LEDGER_VIEW].keys():
             field_defs_list.append(
-                self.create_check_field(field_name, TABLE_FIELDS_PROPERTIES[LEDGER_VIEW][field_name].comment))
+                self.create_check_field(field_name, declm.TABLE_FIELDS_PROPERTIES[declm.LEDGER_VIEW][field_name].comment))
         # initialize empty data_dict
         if not self.data_dict:
-            self.data_dict[FN_FROM_DATE] = date(datetime.now().year, 1, 1)
-            self.data_dict[FN_TO_DATE] = date(datetime.now().year, 12, 31)
+            self.data_dict[decl.FN_FROM_DATE] = date(datetime.now().year, 1, 1)
+            self.data_dict[decl.FN_TO_DATE] = date(datetime.now().year, 12, 31)
         return field_defs_list
 
 class SelectLedgerDailyBalanceAccounts(BuiltSelectBox):
@@ -306,12 +241,12 @@ class SelectLedgerDailyBalanceAccounts(BuiltSelectBox):
         # Accounts
         accounts_dict = self.repo.get_ledger_daily_balance_account_name()
         if not accounts_dict:
-            self.footer.set(msg.get_message(MESSAGE_TEXT, 'DATA_NO', LEDGER_DAILY_BALANCE.upper()))
+            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', declm.LEDGER_DAILY_BALANCE.upper()))
 
         # check_buttons
         for account, account_name in accounts_dict.items():
             field_defs_list.append(
-                self.create_check_field(FN_ACCOUNT_NUMBER + account, account_name))
+                self.create_check_field(decl.FN_ACCOUNT_NUMBER + account, account_name))
         return field_defs_list
 
 class InputPeriod(BuiltSelectBox):
@@ -323,13 +258,13 @@ class InputPeriod(BuiltSelectBox):
 
         field_defs_list = []
         # from_date
-        field_defs_list.append(self.create_date_field(FN_FROM_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_FROM_DATE))
         # to_date
-        field_defs_list.append(self.create_date_field(FN_TO_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_TO_DATE))
         # initialize empty data_dict
         if not self.data_dict:
-            self.data_dict[FN_FROM_DATE] = date(datetime.now().year, 1, 1)
-            self.data_dict[FN_TO_DATE] = date(datetime.now().year, 12, 31)
+            self.data_dict[decl.FN_FROM_DATE] = date(datetime.now().year, 1, 1)
+            self.data_dict[decl.FN_TO_DATE] = date(datetime.now().year, 12, 31)
         return field_defs_list
 
 
@@ -355,16 +290,16 @@ class InputDate(BuiltSelectBox):
 
         field_defs_list = []
         # date
-        field_defs_list.append(self.create_date_field(FN_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_DATE))
         # initialize empty data_dict
         if not self.data_dict:
-            self.data_dict[FN_DATE] = date.today()
+            self.data_dict[decl.FN_DATE] = date.today()
         return field_defs_list
 
     def validation_all_addon(self, field_defs):
 
-        if (getattr(field_defs, FN_DATE).widget.get() > '{:%Y-%m-%d}'.format(date.today())):
-            getattr(self._field_defs, FN_DATE).textvar.set(date.today())
+        if (getattr(field_defs, decl.FN_DATE).widget.get() > '{:%Y-%m-%d}'.format(date.today())):
+            getattr(self._field_defs, decl.FN_DATE).textvar.set(date.today())
 
 
 class InputDateHolding(InputPeriod):
@@ -380,29 +315,29 @@ class InputDateHolding(InputPeriod):
     """
 
     def validation_all_addon(self, field_defs):
-        from_date = getattr(field_defs, FN_FROM_DATE).widget.get()
+        from_date = getattr(field_defs, decl.FN_FROM_DATE).widget.get()
         _date = self._validate_date(from_date)
         if _date:
-            getattr(self._field_defs, FN_FROM_DATE).textvar.set(
+            getattr(self._field_defs, decl.FN_FROM_DATE).textvar.set(
                 _date)  # adjusted date returned
-        to_date = getattr(field_defs, FN_TO_DATE).widget.get()
+        to_date = getattr(field_defs, decl.FN_TO_DATE).widget.get()
         _date = self._validate_date(to_date)
         if _date:
-            getattr(self._field_defs, FN_TO_DATE).textvar.set(
+            getattr(self._field_defs, decl.FN_TO_DATE).textvar.set(
                 _date)  # adjusted date returned
         if from_date == to_date:
             from_date = date_days.subtract(from_date, 1)
-            getattr(self._field_defs, FN_FROM_DATE).textvar.set(
+            getattr(self._field_defs, decl.FN_FROM_DATE).textvar.set(
                 from_date)  # adjusted date returned
-            self.footer.set(msg.get_message(MESSAGE_TEXT, 'DATE_ADJUSTED'))
+            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE_ADJUSTED'))
         if (from_date > to_date):
-            self.footer.set(msg.get_message(MESSAGE_TEXT, 'DATE', from_date))
+            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE', from_date))
 
     def _validate_date(self, _date):
         data_exists = self.repo.exist_holding_of_iban_price_date(self.container, _date)
         if not data_exists:
             _date = self._get_prev_date(_date)
-            self.footer.set(msg.get_message(MESSAGE_TEXT, 'DATE_ADJUSTED'))
+            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE_ADJUSTED'))
         return _date
 
     def _get_prev_date(self, _date):
@@ -428,18 +363,18 @@ class InputIsins(BuiltSelectBox):
         field_defs_list = []
         # comparision field_names
         combo_values = [declm.DB_pieces, declm.DB_market_price,
-                        declm.DB_total_amount, declm.DB_acquisition_amount, FN_PROFIT_LOSS]
+                        declm.DB_total_amount, declm.DB_acquisition_amount, decl.FN_PROFIT_LOSS]
         field_defs_list.append(self.create_combo_field(
-            FN_COMPARATIVE, 20, TYP_ALPHANUMERIC, combo_values))
+            decl.FN_COMPARATIVE, 20, decl.TYP_ALPHANUMERIC, combo_values))
         # separator line
-        self.separator = [FN_COMPARATIVE, FN_TO_DATE]
+        self.separator = [decl.FN_COMPARATIVE, decl.FN_TO_DATE]
         # check_buttons
         for field_name in self.table.keys():
             field_defs_list.append(self.create_check_field(
                 field_name, self.table[field_name]))
         # initialize empty data_dict
-        if FN_COMPARATIVE not in self.data_dict.keys():
-            self.data_dict[FN_COMPARATIVE] = declm.DB_market_price
+        if decl.FN_COMPARATIVE not in self.data_dict.keys():
+            self.data_dict[decl.FN_COMPARATIVE] = declm.DB_market_price
         return field_defs_list
 
 
@@ -456,7 +391,7 @@ class InputDatePrices(BuiltSelectBox):
         # to_date
         field_defs_list.append(self.create_date_field(decl.FN_TO_DATE))
         # selection field_names of table price
-        fields_properties = TABLE_FIELDS_PROPERTIES[declm.PRICES]
+        fields_properties = declm.TABLE_FIELDS_PROPERTIES[declm.PRICES]
         for field_name in fields_properties.keys():
             if field_name not in [declm.DB_ISIN, declm.DB_price_date,declm.DB_symbol_prices, declm.DB_origin]:
                 field_defs_list.append(self.create_check_field(
@@ -482,13 +417,13 @@ class InputDateTable(BuiltSelectBox):
     def create_field_defs_list(self):
 
         field_defs_list = []
-        fields_properties = TABLE_FIELDS_PROPERTIES[self.table]
+        fields_properties = declm.TABLE_FIELDS_PROPERTIES[self.table]
         # from_date
-        field_defs_list.append(self.create_date_field(FN_FROM_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_FROM_DATE))
         # to_date
-        field_defs_list.append(self.create_date_field(FN_TO_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_TO_DATE))
         # separator line
-        self.separator = [FN_TO_DATE]
+        self.separator = [decl.FN_TO_DATE]
         # check_buttons
         for field_name in fields_properties.keys():
             field_defs_list.append(self.create_check_field(
@@ -514,10 +449,10 @@ class InputDateTransactions(BuiltSelectBox):
         else:
             transaction_isin = self.repo.get_transactions_name_isin_of_iban(self.data_dict[declm.DB_iban])
         if not transaction_isin:
-            MessageBoxInfo(
+            msg.MessageBoxInfo(
                 title=self.title,
                 message=msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_NO',
                     '',
                     self.data_dict[declm.DB_iban]
@@ -527,24 +462,24 @@ class InputDateTransactions(BuiltSelectBox):
         else:
             combo_values = list(transaction_isin.keys())
         field_defs_list.append(self.create_combo_field(
-            declm.DB_name,  DATABASE_FIELDS_PROPERTIES[declm.DB_name].length,
-            DATABASE_FIELDS_PROPERTIES[declm.DB_name].typ, combo_values))
+            declm.DB_name,  declm.DATABASE_FIELDS_PROPERTIES[declm.DB_name].length,
+            declm.DATABASE_FIELDS_PROPERTIES[declm.DB_name].typ, combo_values))
         # from_date
-        field_defs_list.append(self.create_date_field(FN_FROM_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_FROM_DATE))
         # to_date
-        field_defs_list.append(self.create_date_field(FN_TO_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_TO_DATE))
         # initialize empty data_dict
         if combo_values and declm.DB_name not in self.data_dict.keys():
             self.data_dict[declm.DB_name] = combo_values[0]
-        if FN_FROM_DATE not in self.data_dict.keys():
-            self.data_dict[FN_FROM_DATE] = START_DATE_TRANSACTIONS
-        if FN_TO_DATE not in self.data_dict.keys():
-            self.data_dict[FN_TO_DATE] = date.today() + timedelta(days=360)
+        if decl.FN_FROM_DATE not in self.data_dict.keys():
+            self.data_dict[decl.FN_FROM_DATE] = decl.START_DATE_TRANSACTIONS
+        if decl.FN_TO_DATE not in self.data_dict.keys():
+            self.data_dict[decl.FN_TO_DATE] = date.today() + timedelta(days=360)
         field_defs_list.append(self.create_combo_field(
-            FN_COST_METHOD, 8, TYP_ALPHANUMERIC, COST_METHOD))
+            decl.FN_COST_METHOD, 8, decl.TYP_ALPHANUMERIC, decl.COST_METHOD))
         # initialize empty data_dict
-        if combo_values and FN_COST_METHOD not in self.data_dict.keys():
-            self.data_dict[FN_COST_METHOD] = COST_FIFO
+        if combo_values and decl.FN_COST_METHOD not in self.data_dict.keys():
+            self.data_dict[decl.FN_COST_METHOD] = decl.COST_FIFO
         return field_defs_list
 
 
@@ -559,32 +494,32 @@ class InputISIN(BuiltSelectBox):
         if self.container:
             combo_values = self.container  # list of isin names
         else:
-            MessageBoxInfo(title=self.title, message=msg.get_message(MESSAGE_TEXT, 'DATA_NO', ISIN, ''))
+            msg.MessageBoxInfo(title=self.title, message=msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', declm.ISIN, ''))
             combo_values = []
         field_def = self.create_combo_field(
-            declm.DB_name,  DATABASE_FIELDS_PROPERTIES[declm.DB_name].length,
-            DATABASE_FIELDS_PROPERTIES[declm.DB_name].typ, combo_values)
+            declm.DB_name,  declm.DATABASE_FIELDS_PROPERTIES[declm.DB_name].length,
+            declm.DATABASE_FIELDS_PROPERTIES[declm.DB_name].typ, combo_values)
         field_def.selected = True
         field_defs_list.append(field_def)
         field_def = self.create_entry_field(
-            declm.DB_ISIN,  DATABASE_FIELDS_PROPERTIES[declm.DB_ISIN].length+1,
-            DATABASE_FIELDS_PROPERTIES[declm.DB_ISIN].typ)
+            declm.DB_ISIN,  declm.DATABASE_FIELDS_PROPERTIES[declm.DB_ISIN].length+1,
+            declm.DATABASE_FIELDS_PROPERTIES[declm.DB_ISIN].typ)
         field_def.protected = True
         field_defs_list.append(field_def)
         # from_date
-        field_defs_list.append(self.create_date_field(FN_FROM_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_FROM_DATE))
         # to_date
-        field_defs_list.append(self.create_date_field(FN_TO_DATE))
+        field_defs_list.append(self.create_date_field(decl.FN_TO_DATE))
         # initialize empty data_dict
         if combo_values and declm.DB_name not in self.data_dict.keys():
             self.data_dict[declm.DB_name] = combo_values[0]
         if declm.DB_ISIN not in self.data_dict.keys():
             if combo_values:
                 self.data_dict[declm.DB_ISIN] = self.repo.get_isin_of_name(self.data_dict[declm.DB_name])
-        if FN_FROM_DATE not in self.data_dict.keys():
-            self.data_dict[FN_FROM_DATE] = date_days.subtract(date.today(), 1)
-        if FN_TO_DATE not in self.data_dict.keys():
-            self.data_dict[FN_TO_DATE] = date.today()
+        if decl.FN_FROM_DATE not in self.data_dict.keys():
+            self.data_dict[decl.FN_FROM_DATE] = date_days.subtract(date.today(), 1)
+        if decl.FN_TO_DATE not in self.data_dict.keys():
+            self.data_dict[decl.FN_TO_DATE] = date.today()
         return field_defs_list
 
     def comboboxselected_action(self, event):
@@ -615,24 +550,24 @@ class InputPIN(BuiltEnterBox):
         if bank_code in bank_names_dict:
             title = bank_names_dict[bank_code]
         else:
-            title = MESSAGE_TITLE
+            title = msg.MESSAGE_TITLE
         pin_length = self.repo.shelve_get_pin_length(bank_code)
-        pin_max_length = MAX_PIN_LENGTH
-        if pin_length[KEY_MAX_PIN_LENGTH] is not None:
-            pin_max_length = pin_length[KEY_MAX_PIN_LENGTH]
-        pin_min_length = MIN_PIN_LENGTH
-        if pin_length[KEY_MIN_PIN_LENGTH] is not None:
-            pin_min_length = pin_length[KEY_MIN_PIN_LENGTH]
+        pin_max_length = decl.MAX_PIN_LENGTH
+        if pin_length[decl.KEY_MAX_PIN_LENGTH] is not None:
+            pin_max_length = pin_length[decl.KEY_MAX_PIN_LENGTH]
+        pin_min_length = decl.MIN_PIN_LENGTH
+        if pin_length[decl.KEY_MIN_PIN_LENGTH] is not None:
+            pin_min_length = pin_length[decl.KEY_MIN_PIN_LENGTH]
         while True:
             super().__init__(
-                header=msg.get_message(MESSAGE_TEXT, 'PIN_INPUT', bank_name, bank_code), title=title,
-                button1_text=BUTTON_OK, button2_text=None, button3_text=None,
-                field_defs=[FieldDefinition(name=KEY_PIN, length=pin_max_length,
+                header=msg.get_message(msg.MESSAGE_TEXT, 'PIN_INPUT', bank_name, bank_code), title=title,
+                button1_text=decl.BUTTON_OK, button2_text=None, button3_text=None,
+                field_defs=[FieldDefinition(name=decl.KEY_PIN, length=pin_max_length,
                                             min_length=pin_min_length)], grab=True
             )
-            if self.button_state == WM_DELETE_WINDOW:
+            if self.button_state == decl.WM_DELETE_WINDOW:
                 break
-            self.pin = self.field_dict[KEY_PIN]
+            self.pin = self.field_dict[decl.KEY_PIN]
             if self.pin.strip() not in [None, '']:
                 break
 
@@ -657,20 +592,20 @@ class InputTAN(BuiltEnterBox):
         if bank_code in bank_names_dict:
             title = bank_names_dict[bank_code]
         else:
-            title = MESSAGE_TITLE
+            title = msg.MESSAGE_TITLE
         tan_max_length = self.repo.shelve_get_tan_max_length(bank_code)
         if not tan_max_length:
-            tan_max_length = MAX_TAN_LENGTH
+            tan_max_length = decl.MAX_TAN_LENGTH
         while True:
             super().__init__(
-                header=msg.get_message(MESSAGE_TEXT, 'TAN_INPUT', bank_code, bank_name), title=title,
-                button1_text=BUTTON_OK, button2_text=None, button3_text=None,
+                header=msg.get_message(msg.MESSAGE_TEXT, 'TAN_INPUT', bank_code, bank_name), title=title,
+                button1_text=decl.BUTTON_OK, button2_text=None, button3_text=None,
                 field_defs=[
-                    FieldDefinition(name=KEY_TAN, length=tan_max_length, min_length=MIN_TAN_LENGTH)]
+                    FieldDefinition(name=decl.KEY_TAN, length=tan_max_length, min_length=decl.MIN_TAN_LENGTH)]
             )
-            if self.button_state == WM_DELETE_WINDOW:
+            if self.button_state == decl.WM_DELETE_WINDOW:
                 break
-            self.tan = self.field_dict[KEY_TAN]
+            self.tan = self.field_dict[decl.KEY_TAN]
             if self.tan.strip() not in [None, '']:
                 break
 
@@ -694,18 +629,18 @@ class BankDataNew(BuiltEnterBox):
             decl.KEY_BANK_CODE, decl.KEY_BANK_NAME, decl.KEY_USER_ID, decl.KEY_PIN, decl.KEY_BIC, decl.KEY_SERVER,
             decl.KEY_IDENTIFIER_DELIMITER, decl.KEY_DOWNLOAD_ACTIVATED, decl.KEY_LOGIN_ONLINE_BANKING])
         field_defs = FieldNames(
-            FieldDefinition(definition=COMBO,
-                            name=decl.KEY_BANK_CODE, length=8, lformat=FORMAT_FIXED,
+            FieldDefinition(definition=decl.COMBO,
+                            name=decl.KEY_BANK_CODE, length=8, lformat=decl.FORMAT_FIXED,
                             combo_values=self.bank_codes, selected=True, focus_out=True),
             FieldDefinition(name=decl.KEY_BANK_NAME, length=70, protected=True),
             FieldDefinition(name=decl.KEY_USER_ID, length=20),
             FieldDefinition(name=decl.KEY_PIN, length=10, mandatory=False),
-            FieldDefinition(name=decl.KEY_BIC, length=11, lformat=FORMAT_FIXED),
+            FieldDefinition(name=decl.KEY_BIC, length=11, lformat=decl.FORMAT_FIXED),
             FieldDefinition(name=decl.KEY_SERVER, length=100),
             FieldDefinition(name=decl.KEY_IDENTIFIER_DELIMITER,
-                            length=1, lformat=FORMAT_FIXED, default_value=':'),
+                            length=1, lformat=decl.FORMAT_FIXED, default_value=':'),
             FieldDefinition(name=decl.KEY_DOWNLOAD_ACTIVATED,
-                            definition=CHECK,
+                            definition=decl.CHECK,
                             checkbutton_text=decl.KEY_DOWNLOAD_ACTIVATED),
             FieldDefinition(name=decl.KEY_LOGIN_ONLINE_BANKING, length=300,
                             mandatory=False),
@@ -716,17 +651,17 @@ class BankDataNew(BuiltEnterBox):
 
         if field_def.name == decl.KEY_BANK_CODE:
             if field_def.widget.get() in self.repo.listbank_codes():
-                self.footer.set(msg.get_message(MESSAGE_TEXT, 'BANK_CODE_EXIST', field_def.widget.get()))
+                self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'BANK_CODE_EXIST', field_def.widget.get()))
             else:
-                if field_def.widget.get() in list(SCRAPER_BANKDATA.keys()):
+                if field_def.widget.get() in list(decl.SCRAPER_BANKDATA.keys()):
                     getattr(self._field_defs,
                             decl.KEY_IDENTIFIER_DELIMITER).textvar.set(
-                                SCRAPER_BANKDATA[field_def.widget.get()][1])
+                                decl.SCRAPER_BANKDATA[field_def.widget.get()][1])
                 return
         if field_def.name == decl.KEY_SERVER:
             http_code = http_error_code(field_def.widget.get())
-            if http_code not in HTTP_CODE_OK:
-                self.footer.set(msg.get_message(MESSAGE_TEXT, 'HTTP_INPUT', http_code, field_def.widget.get()))
+            if http_code not in decl.HTTP_CODE_OK:
+                self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'HTTP_INPUT', http_code, field_def.widget.get()))
 
     def comboboxselected_action(self, event):
 
@@ -777,13 +712,13 @@ class BankDataChange(BuiltEnterBox):
             FieldDefinition(name=decl.KEY_BANK_NAME, length=70, protected=True),
             FieldDefinition(name=decl.KEY_USER_ID, length=20),
             FieldDefinition(name=decl.KEY_PIN, length=10, mandatory=False),
-            FieldDefinition(name=decl.KEY_BIC, length=11, lformat=FORMAT_FIXED),
+            FieldDefinition(name=decl.KEY_BIC, length=11, lformat=decl.FORMAT_FIXED),
             FieldDefinition(name=decl.KEY_SERVER, length=100,
                             default_value=self.repo.get_server_of_bankcode(bank_code)),
-            FieldDefinition(name=decl.KEY_IDENTIFIER_DELIMITER, length=1, lformat=FORMAT_FIXED,
+            FieldDefinition(name=decl.KEY_IDENTIFIER_DELIMITER, length=1, lformat=decl.FORMAT_FIXED,
                             default_value=':'),
             FieldDefinition(name=decl.KEY_DOWNLOAD_ACTIVATED,
-                            definition=CHECK,
+                            definition=decl.CHECK,
                             checkbutton_text=decl.KEY_DOWNLOAD_ACTIVATED), 
             FieldDefinition(name=decl.KEY_LOGIN_ONLINE_BANKING, length=300,
                             mandatory=False),            ]
@@ -799,8 +734,8 @@ class BankDataChange(BuiltEnterBox):
 
         if field_def.name == decl.KEY_SERVER:
             http_code = http_error_code(field_def.widget.get())
-            if http_code not in HTTP_CODE_OK:
-                self.footer.set(msg.get_message(MESSAGE_TEXT, 'HTTP_INPUT', http_code, field_def.widget.get()))
+            if http_code not in decl.HTTP_CODE_OK:
+                self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'HTTP_INPUT', http_code, field_def.widget.get()))
 
 
 class BankDelete(BuiltEnterBox):
@@ -816,9 +751,9 @@ class BankDelete(BuiltEnterBox):
 
         FieldNames = namedtuple('FieldNames', [decl.KEY_BANK_CODE, decl.KEY_BANK_NAME])
         super().__init__(
-            title=title, button1_text=BUTTON_DELETE,
+            title=title, button1_text=decl.BUTTON_DELETE,
             field_defs=FieldNames(
-                FieldDefinition(definition=COMBO,
+                FieldDefinition(definition=decl.COMBO,
                                 name=decl.KEY_BANK_CODE, length=8, selected=True, readonly=True,
                                 combo_values=Repository().listbank_codes()),
                 FieldDefinition(name=decl.KEY_BANK_NAME,
@@ -850,7 +785,7 @@ class IsinTableRowBox(BuiltTableRowBox):
 
     def set_field_def(self, field_def):
         if field_def.name==declm.DB_symbol:
-            field_def.length = MAX_FIELD_LENGTH
+            field_def.length = decl.MAX_FIELD_LENGTH
         return field_def
 
     def button_1_button3(self, event):
@@ -863,7 +798,7 @@ class IsinTableRowBox(BuiltTableRowBox):
     def focus_out_action(self, event):
         
         if event.widget.myId == declm.DB_ISIN:
-            if getattr(self._field_defs, declm.DB_type).widget.get() == FN_INDEX:
+            if getattr(self._field_defs, declm.DB_type).widget.get() == decl.FN_INDEX:
                 isin_name = getattr(self._field_defs, declm.DB_name).widget.get()
                 getattr(self._field_defs, declm.DB_ISIN).textvar.set(isin_name.ljust(12, "0"))
             else:
@@ -878,7 +813,7 @@ class IsinTableRowBox(BuiltTableRowBox):
                 getattr(self._field_defs, declm.DB_ISIN).textvar.set(isin_code)
         if event.widget.myId == declm.DB_ISIN or event.widget.myId == declm.DB_name:
             result = self.repo.select_isin_table(
-                TABLE_FIELDS[ISIN][2:],
+                declm.TABLE_FIELDS[declm.ISIN][2:],
                 name=getattr(self._field_defs, declm.DB_name).widget.get()
                 )
             if result:
@@ -894,7 +829,7 @@ class IsinTableRowBox(BuiltTableRowBox):
                 getattr(self._field_defs, declm.DB_price_currency_valid).textvar.set(result[declm.DB_price_currency_valid])
                 getattr(self._field_defs, declm.DB_last_check).textvar.set(result[declm.DB_last_check])
                 getattr(self._field_defs, declm.DB_industry).textvar.set(result[declm.DB_industry])
-        if event.widget.myId == declm.DB_type and getattr(self._field_defs, declm.DB_type).widget.get() == FN_INDEX:
+        if event.widget.myId == declm.DB_type and getattr(self._field_defs, declm.DB_type).widget.get() == decl.FN_INDEX:
             isin_name = getattr(self._field_defs, declm.DB_name).widget.get()
             getattr(self._field_defs, declm.DB_ISIN).textvar.set(isin_name[:12].ljust(12, "_"))
         if event.widget.myId == declm.DB_symbol:
@@ -902,7 +837,7 @@ class IsinTableRowBox(BuiltTableRowBox):
                 exchange = self.repo.get_ticker_exchange(symbol)
                 getattr(self._field_defs, declm.DB_exchange).textvar.set(exchange)
         if event.widget.myId == declm.DB_origin_symbol:
-            if ALPHA_VANTAGE == getattr(self._field_defs, declm.DB_origin_symbol).widget.get():
+            if decl.ALPHA_VANTAGE == getattr(self._field_defs, declm.DB_origin_symbol).widget.get():
                 key_alpha_vantage = application_store.get(declm.DB_alpha_vantage)
                 if key_alpha_vantage:
                     name = getattr(self._field_defs, declm.DB_name).widget.get()
@@ -912,7 +847,7 @@ class IsinTableRowBox(BuiltTableRowBox):
                     r = requests.get(url)
                     data = r.json()
                     message = ' '.join(
-                        [INFORMATION, ALPHA_VANTAGE, declm.DB_name.upper() + ':', name, '\n     >', keywords,  '<', 3 * '\n'])
+                        [decl.INFORMATION, decl.ALPHA_VANTAGE, declm.DB_name.upper() + ':', name, '\n     >', keywords,  '<', 3 * '\n'])
                     for dict_symbols in data['bestMatches']:
                         if dict_symbols['8. currency'] == 'EUR':
                             str_dict_symbols = str(
@@ -924,16 +859,16 @@ class IsinTableRowBox(BuiltTableRowBox):
                             str_dict_symbols = str_dict_symbols.split(",")
                             message = message + \
                                 2 * '\n' + '   '.join(str_dict_symbols)
-                    prices_informations_append(INFORMATION, message)
-                    PrintMessageCode(title=self.title, header=Informations.PRICES_INFORMATIONS,
-                                     text=Informations.prices_informations)
-            elif YAHOO == getattr(self._field_defs, declm.DB_origin_symbol).widget.get():
+                    msg.prices_informations_append(decl.INFORMATION, message)
+                    PrintMessageCode(title=self.title, header=msg.Informations.PRICES_INFORMATIONS,
+                                     text=msg.Informations.prices_informations)
+            elif decl.YAHOO == getattr(self._field_defs, declm.DB_origin_symbol).widget.get():
                 name = getattr(self._field_defs, declm.DB_name).widget.get()
                 self.yahoo_symbols = self.repo.get_yahoo_symbols(name)
                 if self.yahoo_symbols:
                     getattr(self._field_defs, declm.DB_name).widget.values = self.yahoo_symbols
                 else:
-                    webbrowser.open(WWW_YAHOO)    
+                    webbrowser.open(decl.WWW_YAHOO)    
 
 
 
@@ -947,19 +882,19 @@ class IsinTableRowBox(BuiltTableRowBox):
         """
         if field_def.name==declm.DB_symbol:
             symbol = field_def.widget.get().partition(" ")[0]  # 1. part of string (without following text)
-            if symbol != NOT_ASSIGNED:                    
+            if symbol != decl.NOT_ASSIGNED:                    
                 field_def.textvar.set(symbol)
                 exchange = self.repo.get_ticker_exchange(symbol)
                 getattr(self._field_defs, declm.DB_exchange).textvar.set(exchange)             
 
                 name_symbol = self.repo.select_isin_table([declm.DB_name, declm.DB_symbol], symbol=symbol)
                 if name_symbol and name_symbol[0][declm.DB_name] != getattr(self._field_defs, declm.DB_name).widget.get():
-                    self.header = set(msg.get_message(MESSAGE_TEXT, 'SYMBOL_USED', name_symbol))
+                    self.header = set(msg.get_message(msg.MESSAGE_TEXT, 'SYMBOL_USED', name_symbol))
         elif field_def.name == declm.DB_validity:
             validity = getattr(self._field_defs, declm.DB_validity).widget.get()
-            if validity > VALIDITY_DEFAULT:
+            if validity > decl.VALIDITY_DEFAULT:
                 getattr(self._field_defs, declm.DB_validity).textvar.set(
-                    VALIDITY_DEFAULT)
+                    decl.VALIDITY_DEFAULT)
         elif field_def.name == declm.DB_ISIN:
             isin_code = getattr(self._field_defs, declm.DB_ISIN).widget.get()
             isin_code = isin_code.replace(" ", "")
@@ -967,7 +902,7 @@ class IsinTableRowBox(BuiltTableRowBox):
             getattr(self._field_defs, declm.DB_ISIN).textvar.set(isin_code)
             if not isin_code[0].isalpha():
                 # necessary because of use as field name in named tuples (otherwise runtime error)
-                self.header = (msg.get_message(MESSAGE_TEXT, 'ISIN_ALPHABETIC'))
+                self.header = (msg.get_message(msg.MESSAGE_TEXT, 'ISIN_ALPHABETIC'))
 
 
 class LedgerCoaTableRowBox(BuiltTableRowBox):
@@ -982,10 +917,10 @@ class LedgerCoaTableRowBox(BuiltTableRowBox):
         if field_def.name == declm.DB_iban:
             iban = field_def.widget.get()
             if not iban:
-                field_def.widget.insert(0, NOT_ASSIGNED)
-                iban = NOT_ASSIGNED
-            if iban != NOT_ASSIGNED and self.repo.exist_ledger_coa_with_iban(iban):
-                self.footer.set(msg.get_message(MESSAGE_TEXT, 'IBAN_USED'))
+                field_def.widget.insert(0, decl.NOT_ASSIGNED)
+                iban = decl.NOT_ASSIGNED
+            if iban != decl.NOT_ASSIGNED and self.repo.exist_ledger_coa_with_iban(iban):
+                self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'IBAN_USED'))
 
 class LedgerTableRowBox(BuiltTableRowBox):
     """
@@ -994,13 +929,13 @@ class LedgerTableRowBox(BuiltTableRowBox):
 
     def set_field_def(self, field_def):
         if field_def.name == declm.DB_credit_account:
-            field_def.length = DATABASE_FIELDS_PROPERTIES[declm.DB_credit_account].length + \
-                DATABASE_FIELDS_PROPERTIES[declm.DB_credit_name].length
-            field_def.lformat = FORMAT_VARIABLE   # standard data_type char would be FORMAT_FIXED
+            field_def.length = declm.DATABASE_FIELDS_PROPERTIES[declm.DB_credit_account].length + \
+                declm.DATABASE_FIELDS_PROPERTIES[declm.DB_credit_name].length
+            field_def.lformat = decl.FORMAT_VARIABLE   # standard data_type char would be FORMAT_FIXED
         elif field_def.name == declm.DB_debit_account:
-            field_def.length = DATABASE_FIELDS_PROPERTIES[declm.DB_debit_account].length + \
-                DATABASE_FIELDS_PROPERTIES[declm.DB_debit_name].length
-            field_def.lformat = FORMAT_VARIABLE   # standard data_type char would be FORMAT_FIXED
+            field_def.length = declm.DATABASE_FIELDS_PROPERTIES[declm.DB_debit_account].length + \
+                declm.DATABASE_FIELDS_PROPERTIES[declm.DB_debit_name].length
+            field_def.lformat = decl.FORMAT_VARIABLE   # standard data_type char would be FORMAT_FIXED
         elif field_def.name == declm.DB_category:
             field_def.upper = True
         return field_def
@@ -1011,18 +946,18 @@ class LedgerTableRowBox(BuiltTableRowBox):
             self._field_defs, declm.DB_debit_account).textvar.get()
         if debit_account:
             getattr(self._field_defs, declm.DB_debit_account).textvar.set(
-                debit_account[:TABLE_FIELDS_PROPERTIES[LEDGER][declm.DB_credit_account].length])
+                debit_account[:declm.TABLE_FIELDS_PROPERTIES[declm.LEDGER][declm.DB_credit_account].length])
         credit_account = getattr(
             self._field_defs, declm.DB_credit_account).textvar.get()
         if credit_account:
             getattr(self._field_defs, declm.DB_credit_account).textvar.set(
-                credit_account[:TABLE_FIELDS_PROPERTIES[LEDGER][declm.DB_debit_account].length])
+                credit_account[:declm.TABLE_FIELDS_PROPERTIES[declm.LEDGER][declm.DB_debit_account].length])
         BuiltEnterBox.button_1_button1(self, event)
 
     def button_1_button2(self, event):
 
         self.button_state = self._button2_text
-        if self.button_state == BUTTON_COPY:
+        if self.button_state == decl.BUTTON_COPY:
             self.quit_widget()  # selected row as template in insert mode
         else:
             # restore data in update_mode
@@ -1033,28 +968,28 @@ class LedgerTableRowBox(BuiltTableRowBox):
         id_no = getattr(self._field_defs, declm.DB_id_no).textvar.get()
         ledger_statement = self.repo.get_ledger_statement_data(id_no, status)
         if ledger_statement:
-            if status == CREDIT:
-                title = ' '.join([BUTTON_CREDIT, STATEMENT.upper()])
+            if status == decl.CREDIT:
+                title = ' '.join([decl.BUTTON_CREDIT, declm.STATEMENT.upper()])
             else:
-                title = ' '.join([BUTTON_DEBIT, STATEMENT.upper()])
+                title = ' '.join([decl.BUTTON_DEBIT, declm.STATEMENT.upper()])
             statement = self.repo.get_statement(ledger_statement[declm.DB_iban], ledger_statement[declm.DB_entry_date], ledger_statement[declm.DB_counter])
             if statement:
-                statement = BuiltTableRowBox(STATEMENT, STATEMENT, statement,
-                                             protected=TABLE_FIELDS[STATEMENT],
+                statement = BuiltTableRowBox(declm.STATEMENT, declm.STATEMENT, statement,
+                                             protected=declm.TABLE_FIELDS[declm.STATEMENT],
                                              title=title,  button1_text=None, button2_text=None)
-                if statement.button_state == WM_DELETE_WINDOW:
+                if statement.button_state == decl.WM_DELETE_WINDOW:
                     return
         else:
-            self.message = msg.get_message(MESSAGE_TEXT, 'LEDGER_ROW')
+            self.message = msg.get_message(msg.MESSAGE_TEXT, 'LEDGER_ROW')
         self.quit_widget()
 
     def button_1_button3(self, event):
 
-        self.show_data(CREDIT)
+        self.show_data(decl.CREDIT)
 
     def button_1_button4(self, event):
 
-        self.show_data(DEBIT)
+        self.show_data(decl.DEBIT)
 
 
 class LedgerTableSearchRowBox(BuiltTableRowBox):
@@ -1064,8 +999,8 @@ class LedgerTableSearchRowBox(BuiltTableRowBox):
         """Adjust field definition for search input."""
 
         # allow partial date input
-        if field_def.typ == TYP_DATE:
-            field_def.typ = TYP_ALPHANUMERIC
+        if field_def.typ == decl.TYP_DATE:
+            field_def.typ = decl.TYP_ALPHANUMERIC
 
         reset_fields = {
             declm.DB_id_no,
@@ -1095,10 +1030,10 @@ class LedgerTableSearchRowBox(BuiltTableRowBox):
             )
 
             field_def.length = (
-                DATABASE_FIELDS_PROPERTIES[account_key].length +
-                DATABASE_FIELDS_PROPERTIES[name_key].length
+                declm.DATABASE_FIELDS_PROPERTIES[account_key].length +
+                declm.DATABASE_FIELDS_PROPERTIES[name_key].length
             )
-            field_def.lformat = FORMAT_VARIABLE
+            field_def.lformat = decl.FORMAT_VARIABLE
 
         return field_def
 
@@ -1113,7 +1048,7 @@ class LedgerTableSearchRowBox(BuiltTableRowBox):
             value = field.textvar.get()
 
             if value:
-                max_length = TABLE_FIELDS_PROPERTIES[LEDGER][target_length_key].length
+                max_length = declm.TABLE_FIELDS_PROPERTIES[declm.LEDGER][target_length_key].length
                 field.textvar.set(value[:max_length])
 
         BuiltEnterBox.button_1_button1(self, event)
@@ -1144,12 +1079,12 @@ class LedgerTableSearchRowBox(BuiltTableRowBox):
 class StatementTableSearchRowBox(BuiltTableRowBox):
 
     def set_field_def(self, field_def):
-        if field_def.typ in [TYP_DATE, TYP_DECIMAL]:
-            field_def.typ = TYP_ALPHANUMERIC   # enables the input of partial date strings
+        if field_def.typ in [decl.TYP_DATE, decl.TYP_DECIMAL]:
+            field_def.typ = decl.TYP_ALPHANUMERIC   # enables the input of partial date strings
             field_def.length = 10
 
         if field_def.definition == decl.CHECK:
-            field_def.typ = TYP_ALPHANUMERIC
+            field_def.typ = decl.TYP_ALPHANUMERIC
             field_def.length = 1  # enables the input of 0 or 1
 
         field_def.default = ''
@@ -1166,11 +1101,11 @@ class StatementTableSearchRowBox(BuiltTableRowBox):
 
             if field_def.name in mandatory_fields and not value:
                 self.footer.set(
-                    msg.get_message(MESSAGE_TEXT, 'MANDATORY', field_def.name.upper())
+                    msg.get_message(msg.MESSAGE_TEXT, 'MANDATORY', field_def.name.upper())
                 )
                 return
 
-            if field_def.typ == TYP_DATE:
+            if field_def.typ == decl.TYP_DATE:
                 field_def.textvar = value
 
             if value:
@@ -1195,11 +1130,11 @@ class SelectFields(BuiltCheckButton):
         self.field_list        contains selected check_fields
     """
 
-    def __init__(self,  title=MESSAGE_TITLE,
-                 button1_text=BUTTON_NEXT,
-                 button2_text=BUTTON_STANDARD, button3_text=BUTTON_SAVE_STANDARD,
-                 button4_text=BUTTON_SELECT_ALL,
-                 default_texts=[], standard=STANDARD,
+    def __init__(self,  title=msg.MESSAGE_TITLE,
+                 button1_text=decl.BUTTON_NEXT,
+                 button2_text=decl.BUTTON_STANDARD, button3_text=decl.BUTTON_SAVE_STANDARD,
+                 button4_text=decl.BUTTON_SELECT_ALL,
+                 default_texts=[], standard=decl.STANDARD,
                  checkbutton_texts=['Description of Checkbox1',
                                     'Description of Checkbox2',
                                     'Description of Checkbox3']
@@ -1207,7 +1142,7 @@ class SelectFields(BuiltCheckButton):
 
         self.standard = standard
         super().__init__(
-            title=title, header=msg.get_message(MESSAGE_TEXT, 'CHECKBOX'),
+            title=title, header=msg.get_message(msg.MESSAGE_TEXT, 'CHECKBOX'),
             button1_text=button1_text, button2_text=button2_text, button3_text=button3_text,
             button4_text=button4_text,
             default_texts=default_texts,
@@ -1285,15 +1220,15 @@ class SelectDownloadPrices(BuiltCheckButton):
         self.field_list        contains selected check_fields
     """
 
-    def __init__(self,  title=MESSAGE_TITLE,
-                 button1_text=BUTTON_APPEND, button2_text=BUTTON_REPLACE, button3_text=BUTTON_DELETE,
+    def __init__(self,  title=msg.MESSAGE_TITLE,
+                 button1_text=decl.BUTTON_APPEND, button2_text=decl.BUTTON_REPLACE, button3_text=decl.BUTTON_DELETE,
                  checkbutton_texts=['Description of Checkbox1',
                                     'Description of Checkbox2',
                                     'Description of Checkbox3']
                  ):
 
         super().__init__(
-            title=title, header=msg.get_message(MESSAGE_TEXT, 'CHECKBOX'),
+            title=title, header=msg.get_message(msg.MESSAGE_TEXT, 'CHECKBOX'),
             button1_text=button1_text,
             button2_text=button2_text, button3_text=button3_text,
             checkbutton_texts=checkbutton_texts
@@ -1329,9 +1264,9 @@ class PrintList(BuiltText):
 
     def set_tags(self, textline, line):
         if not line % 2:
-            self.text_widget.tag_add(LIGHTBLUE, str(line + 1) + '.0',
+            self.text_widget.tag_add(decl.LIGHTBLUE, str(line + 1) + '.0',
                                      str(line + 1) + '.' + str(len(textline)))
-            self.text_widget.tag_config(LIGHTBLUE, background='LIGHTBLUE')
+            self.text_widget.tag_config(decl.LIGHTBLUE, background=decl.LIGHTBLUE)
 
 
 class PandasBoxBalance(BuiltPandasBox):
@@ -1377,7 +1312,7 @@ class PandasBoxBalanceAll(BuiltPandasBox):
             
             for owner, owner_group in bank_group.groupby(decl.KEY_ACC_OWNER_NAME):
                 
-                # Detailzeilen (FN_DAILY_PERCENT bleibt wie vorhanden)
+                # Detailzeilen (decl.FN_DAILY_PERCENT bleibt wie vorhanden)
                 owner_group["level"] = "DETAIL"
                 result.append(owner_group)
                 
@@ -1472,7 +1407,7 @@ class PandasBoxHolding(BuiltPandasBox):
             (data, columns) = self.dataframe
             self.dataframe = DataFrame(data)[columns]
             if declm.DB_total_amount in columns and declm.DB_acquisition_amount in columns:
-                self.dataframe[FN_PROFIT] = self.dataframe[declm.DB_total_amount] - \
+                self.dataframe[decl.FN_PROFIT] = self.dataframe[declm.DB_total_amount] - \
                     self.dataframe[declm.DB_acquisition_amount]
         elif isinstance(self.dataframe, DataFrame):
             pass
@@ -1527,25 +1462,25 @@ class PandasBoxHoldingPercent(BuiltPandasBox):
         sum_row = {}
         sum_row[declm.DB_total_amount] = self.dataframe[declm.DB_total_amount].sum()
         sum_row[declm.DB_acquisition_amount] = self.dataframe[declm.DB_acquisition_amount].sum()
-        sum_row[declm.DB_amount_currency] = EURO
+        sum_row[declm.DB_amount_currency] = decl.EURO
         self.dataframe.loc[len(self.dataframe.index)] = sum_row
         sum_row[declm.DB_total_amount] = dataframe_from_date[declm.DB_total_amount].sum()
         sum_row[declm.DB_acquisition_amount] = dataframe_from_date[declm.DB_acquisition_amount].sum()
         dataframe_from_date.loc[len(dataframe_from_date.index)] = sum_row
 
         # compute percentages
-        self.dataframe[FN_PROFIT_LOSS] = self.dataframe[declm.DB_total_amount] - \
+        self.dataframe[decl.FN_PROFIT_LOSS] = self.dataframe[declm.DB_total_amount] - \
             self.dataframe[declm.DB_acquisition_amount]
-        self.dataframe[FN_TOTAL_PERCENT] = (
-            self.dataframe[FN_PROFIT_LOSS] / self.dataframe[declm.DB_acquisition_amount] * 100)
-        self.dataframe[FN_PERIOD_PERCENT] = (
+        self.dataframe[decl.FN_TOTAL_PERCENT] = (
+            self.dataframe[decl.FN_PROFIT_LOSS] / self.dataframe[declm.DB_acquisition_amount] * 100)
+        self.dataframe[decl.FN_PERIOD_PERCENT] = (
             self.dataframe[declm.DB_total_amount] /
             dataframe_from_date[declm.DB_total_amount]
             * 100 - 100)
         self.dataframe = self.dataframe.drop(
-            [FN_PROFIT_LOSS, declm.DB_acquisition_amount], axis=1)
+            [decl.FN_PROFIT_LOSS, declm.DB_acquisition_amount], axis=1)
         self.dataframe = self.dataframe[[declm.DB_name, declm.DB_total_amount, declm.DB_market_price, declm.DB_pieces,
-                                         FN_TOTAL_PERCENT, FN_PERIOD_PERCENT]]
+                                         decl.FN_TOTAL_PERCENT, decl.FN_PERIOD_PERCENT]]
 
 
 class PandasBoxHoldingPortfolios(PandasBoxHolding):
@@ -1573,17 +1508,17 @@ class PandasBoxHoldingPortfolios(PandasBoxHolding):
             self.dataframe[declm.DB_price_date]).dt.date
         self.dataframe.set_index(declm.DB_price_date, inplace=True)
         # compute percentages
-        self.dataframe[FN_PROFIT_LOSS] = (
+        self.dataframe[decl.FN_PROFIT_LOSS] = (
             self.dataframe[declm.DB_total_amount_portfolio] -
             self.dataframe[declm.DB_acquisition_amount]
         )
-        self.dataframe[FN_TOTAL_PERCENT] = (
-            self.dataframe[FN_PROFIT_LOSS] /
+        self.dataframe[decl.FN_TOTAL_PERCENT] = (
+            self.dataframe[decl.FN_PROFIT_LOSS] /
             self.dataframe[declm.DB_acquisition_amount]
             * 100)
         self.dataframe[declm.DB_total_amount_portfolio]
         price_date = self.dataframe.first_valid_index()
-        self.dataframe[FN_PERIOD_PERCENT] = (
+        self.dataframe[decl.FN_PERIOD_PERCENT] = (
             self.dataframe[declm.DB_total_amount_portfolio] /
             self.dataframe.loc[price_date, declm.DB_total_amount_portfolio]
             * 100 - 100)
@@ -1610,7 +1545,7 @@ class PandasBoxHoldingTransaction(PandasBoxHolding):
         else:
             self.dataframe = DataFrame(self.dataframe)
         if declm.DB_transaction_type in self.dataframe.columns and declm.DB_posted_amount in self.dataframe.columns:
-            deliveries = self.dataframe[declm.DB_transaction_type] == TRANSACTION_DELIVERY
+            deliveries = self.dataframe[declm.DB_transaction_type] == decl.TRANSACTION_DELIVERY
             self.dataframe[declm.DB_posted_amount] = self.dataframe[declm.DB_posted_amount].where(
                 deliveries, -self.dataframe[declm.DB_posted_amount])
 
@@ -1626,7 +1561,7 @@ class PandasBoxPrices(BuiltPandasBox):
     def create_dataframe(self):
 
         (selected_fields, data, self.origin, sign) = self.dataframe
-        if sign == PERCENT:
+        if sign == decl.PERCENT:
             dataframe = DataFrame(data)
             dataframe = dataframe.dropna(how='all', axis=1)
             self.dataframe = dataframe.pivot(
@@ -1650,7 +1585,7 @@ class PandasBoxPrices(BuiltPandasBox):
 
         for column in self.dataframe.columns:
             _, name_ = column
-            if self.origin[name_] == ALPHA_VANTAGE:
+            if self.origin[name_] == decl.ALPHA_VANTAGE:
                 # AlphaVamtageColumns are aqua
                 self.pandas_table.columncolors[column] = '#00FFFF'
             else:
@@ -1665,7 +1600,7 @@ class PandasBoxIsinTable(BuiltPandasBox):
                             Row Actions: Show, Delete, Update, New
     """
 
-    def __init__(self, title, data, message, mode=EDIT_ROW, selected_row=0):
+    def __init__(self, title, data, message, mode=decl.EDIT_ROW, selected_row=0):
 
         self.repo = Repository()
         self.title = title
@@ -1674,7 +1609,7 @@ class PandasBoxIsinTable(BuiltPandasBox):
         self.selected_row = selected_row
         if data:
             self.isins_exist = True
-            ToolbarSwitch.toolbar_switch = False
+            decl.ToolbarSwitch.toolbar_switch = False
             super().__init__(title=title, dataframe=data,
                              message=message, mode=mode, selected_row=self.selected_row)
         else:
@@ -1700,11 +1635,11 @@ class PandasBoxIsinTable(BuiltPandasBox):
     def show_row(self):
 
         row_dict = self.get_selected_row()
-        isin = BuiltTableRowBox(ISIN, ISIN, row_dict,
-                                protected=TABLE_FIELDS[ISIN],
+        isin = BuiltTableRowBox(declm.ISIN, declm.ISIN, row_dict,
+                                protected=declm.TABLE_FIELDS[declm.ISIN],
                                 title=self.title,  button1_text=None, button2_text=None)
         self.button_state = isin.button_state
-        if isin.button_state == WM_DELETE_WINDOW:
+        if isin.button_state == decl.WM_DELETE_WINDOW:
             return
         self.quit_widget()
 
@@ -1712,16 +1647,16 @@ class PandasBoxIsinTable(BuiltPandasBox):
 
         row_dict = self.get_selected_row()
         if row_dict:
-            isin = BuiltTableRowBox(ISIN, ISIN, row_dict,
-                                    protected=TABLE_FIELDS[ISIN],
-                                    title=self.title, button1_text=BUTTON_DELETE, button2_text=None)
+            isin = BuiltTableRowBox(declm.ISIN, declm.ISIN, row_dict,
+                                    protected=declm.TABLE_FIELDS[declm.ISIN],
+                                    title=self.title, button1_text=decl.BUTTON_DELETE, button2_text=None)
             self.button_state = isin.button_state
-            if isin.button_state == WM_DELETE_WINDOW:
+            if isin.button_state == decl.WM_DELETE_WINDOW:
                 return
-            elif isin.button_state == BUTTON_DELETE:
+            elif isin.button_state == decl.BUTTON_DELETE:
                 self.repo.delete_isin(isin.field_dict[declm.DB_ISIN])
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_DELETED',
                     ' '.join(
                         [
@@ -1740,34 +1675,34 @@ class PandasBoxIsinTable(BuiltPandasBox):
 
         row_dict = self.get_selected_row()
         if row_dict:
-            if row_dict[declm.DB_type] == FN_INDEX:
+            if row_dict[declm.DB_type] == decl.FN_INDEX:
                 protected = [declm.DB_ISIN, declm.DB_wkn, declm.DB_industry]
             else:
                 protected = [declm.DB_ISIN]
             mandatory = [declm.DB_name, declm.DB_type, declm.DB_validity, declm.DB_currency]
             focus_out = [declm.DB_ISIN, declm.DB_name, declm.DB_type, declm.DB_origin_symbol]
             upper = [declm.DB_symbol]
-            if row_dict[declm.DB_symbol] == NOT_ASSIGNED:
+            if row_dict[declm.DB_symbol] == decl.NOT_ASSIGNED:
                 button3_text = None
             else:
-                button3_text = BUTTON_PRICES_IMPORT  # symbol mandatory for import of prices
+                button3_text = decl.BUTTON_PRICES_IMPORT  # symbol mandatory for import of prices
             isin = IsinTableRowBox(
-                ISIN, ISIN, row_dict,
+                declm.ISIN, declm.ISIN, row_dict,
                 combo_dict=self._create_combo_dict(name=row_dict[declm.DB_name]), combo_insert_value=[declm.DB_industry, declm.DB_symbol],
                 protected=protected, mandatory=mandatory,
                 focus_out=focus_out, upper=upper,
-                title=self.title, button1_text=BUTTON_UPDATE,
+                title=self.title, button1_text=decl.BUTTON_UPDATE,
                 button3_text=button3_text)
             self.button_state = isin.button_state
-            if isin.button_state == WM_DELETE_WINDOW:
+            if isin.button_state == decl.WM_DELETE_WINDOW:
                 return
-            elif isin.button_state == BUTTON_UPDATE:
+            elif isin.button_state == decl.BUTTON_UPDATE:
                 isin.field_dict[declm.DB_symbol] = isin.field_dict[declm.DB_symbol].split(" ", 1)[0]
                 if not isin.field_dict[declm.DB_last_check]:
                     isin.field_dict[declm.DB_last_check] = date_days.today()
                 self.repo.replace_isin(isin.field_dict)
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_CHANGED',
                     ' '.join(
                         [
@@ -1778,7 +1713,7 @@ class PandasBoxIsinTable(BuiltPandasBox):
                             ]
                         )
                     )
-            elif isin.button_state == BUTTON_PRICES_IMPORT:
+            elif isin.button_state == decl.BUTTON_PRICES_IMPORT:
                 self.selected_row_dict = isin.field_dict
         self.quit_widget()
 
@@ -1788,28 +1723,28 @@ class PandasBoxIsinTable(BuiltPandasBox):
         focus_out = [declm.DB_ISIN, declm.DB_name, declm.DB_type, declm.DB_origin_symbol]
         upper = [declm.DB_symbol]
         row_dict = {}
-        row_dict[declm.DB_type] = FN_SHARE
-        row_dict[declm.DB_validity] = VALIDITY_DEFAULT
-        row_dict[declm.DB_wkn] = NOT_ASSIGNED
-        row_dict[declm.DB_origin_symbol] = NOT_ASSIGNED
-        row_dict[declm.DB_symbol] = NOT_ASSIGNED
-        row_dict[declm.DB_currency] = EURO
-        isin = IsinTableRowBox(ISIN, ISIN, row_dict,
+        row_dict[declm.DB_type] = decl.FN_SHARE
+        row_dict[declm.DB_validity] = decl.VALIDITY_DEFAULT
+        row_dict[declm.DB_wkn] = decl.NOT_ASSIGNED
+        row_dict[declm.DB_origin_symbol] = decl.NOT_ASSIGNED
+        row_dict[declm.DB_symbol] = decl.NOT_ASSIGNED
+        row_dict[declm.DB_currency] = decl.EURO
+        isin = IsinTableRowBox(declm.ISIN, declm.ISIN, row_dict,
                                combo_dict=self._create_combo_dict(), mandatory=mandatory,
                                combo_insert_value=[declm.DB_industry, declm.DB_symbol],
                                focus_out=focus_out, upper=upper,
-                               title=self.title, button1_text=BUTTON_NEW)
+                               title=self.title, button1_text=decl.BUTTON_NEW)
         self.button_state = isin.button_state
-        if isin.button_state == WM_DELETE_WINDOW:
+        if isin.button_state == decl.WM_DELETE_WINDOW:
             return isin.button_state
-        elif isin.button_state == BUTTON_NEW:
+        elif isin.button_state == decl.BUTTON_NEW:
             if self.repo.exist_isin_isin_code(isin.field_dict[declm.DB_ISIN]):
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_ROW_EXIST',
                     ' '.join(
                         [
-                            ISIN.upper(),
+                            declm.ISIN.upper(),
                             '\n',
                             declm.DB_ISIN.upper(),
                             isin.field_dict[declm.DB_ISIN]
@@ -1818,11 +1753,11 @@ class PandasBoxIsinTable(BuiltPandasBox):
                     )
             elif self.repo.exist_isin_name(isin.field_dict[declm.DB_name]):
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_ROW_EXIST',
                     ' '.join(
                         [
-                            ISIN.upper(),
+                            declm.ISIN.upper(),
                             '\n',
                             declm.DB_name.upper(),
                             isin.field_dict[declm.DB_name]
@@ -1834,7 +1769,7 @@ class PandasBoxIsinTable(BuiltPandasBox):
                     isin.field_dict[declm.DB_last_check] = date_days.today()
                 self.repo.insert_isin(isin.field_dict)
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_INSERTED',
                     ' '.join(
                         [
@@ -1853,9 +1788,9 @@ class PandasBoxIsinTable(BuiltPandasBox):
 
     def _create_combo_dict(self, name=None):
 
-        currency_dict = {declm.DB_currency: CURRENCIES}
+        currency_dict = {declm.DB_currency: decl.CURRENCIES}
         type_dict = {declm.DB_type: declm.DB_TYPES}
-        origin_symbol_dict = {declm.DB_origin_symbol: ORIGIN_SYMBOLS}
+        origin_symbol_dict = {declm.DB_origin_symbol: decl.ORIGIN_SYMBOLS}
         industry_list = self.repo.get_isin_industries()
         industry_dict = {declm.DB_industry: industry_list}
         if name:
@@ -1915,7 +1850,7 @@ class PandasBoxStatementBalances(BuiltPandasBox):
         root                >root=self< Caller must define new_row(), cHange_row(), delete_row() methods
     """
 
-    def _debit(self, amount, status=CREDIT, places=2):
+    def _debit(self, amount, status=decl.CREDIT, places=2):
 
         self.amount = str(amount)
         self.status = status
@@ -1924,7 +1859,7 @@ class PandasBoxStatementBalances(BuiltPandasBox):
             if m.group(0) == self.amount:
                 self.amount = Calculate(places=places).convert(
                     self.amount.replace(',', '.'))
-                if self.status == DEBIT or self.status == CreditDebit2.DEBIT:
+                if self.status == decl.DEBIT or self.status == CreditDebit2.DEBIT:
                     self.amount = -self.amount
         return self.amount
 
@@ -1962,7 +1897,7 @@ class PandasBoxHoldingTable(BuiltPandasBox):
                             Row Actions: Show, Delete, Update, New
     """
 
-    def __init__(self, title, data, message, iban, mode=EDIT_ROW):
+    def __init__(self, title, data, message, iban, mode=decl.EDIT_ROW):
 
         self.repo = Repository()
         self.title = title
@@ -1970,7 +1905,7 @@ class PandasBoxHoldingTable(BuiltPandasBox):
 
         self.message = message
         if data:
-            ToolbarSwitch.toolbar_switch = False
+            decl.ToolbarSwitch.toolbar_switch = False
             super().__init__(title=title, dataframe=data, message=message, mode=mode)
         else:
             holding = self.new_row_insert({declm.DB_iban: iban})
@@ -1987,11 +1922,11 @@ class PandasBoxHoldingTable(BuiltPandasBox):
     def show_row(self):
 
         row_dict = self.get_selected_row()
-        holding = BuiltTableRowBox(HOLDING, HOLDING_VIEW, row_dict,
-                                   protected=TABLE_FIELDS[HOLDING_VIEW],
+        holding = BuiltTableRowBox(declm.HOLDING, declm.HOLDING_VIEW, row_dict,
+                                   protected=declm.TABLE_FIELDS[declm.HOLDING_VIEW],
                                    title=self.title,  button1_text=None, button2_text=None)
         self.button_state = holding.button_state
-        if holding.button_state == WM_DELETE_WINDOW:
+        if holding.button_state == decl.WM_DELETE_WINDOW:
             return
         self.quit_widget()
 
@@ -1999,16 +1934,16 @@ class PandasBoxHoldingTable(BuiltPandasBox):
 
         row_dict = self.get_selected_row()
         if row_dict:
-            holding = BuiltTableRowBox(HOLDING, HOLDING_VIEW, row_dict,
-                                       protected=TABLE_FIELDS[HOLDING_VIEW],
-                                       title=self.title, button1_text=BUTTON_DELETE, button2_text=None)
+            holding = BuiltTableRowBox(declm.HOLDING, declm.HOLDING_VIEW, row_dict,
+                                       protected=declm.TABLE_FIELDS[declm.HOLDING_VIEW],
+                                       title=self.title, button1_text=decl.BUTTON_DELETE, button2_text=None)
             self.button_state = holding.button_state
-            if holding.button_state == WM_DELETE_WINDOW:
+            if holding.button_state == decl.WM_DELETE_WINDOW:
                 return
-            elif holding.button_state == BUTTON_DELETE:
+            elif holding.button_state == decl.BUTTON_DELETE:
                 self.repo.delete_holding_position(holding.field_dict[declm.DB_iban], holding.field_dict[declm.DB_price_date], holding.field_dict[declm.DB_ISIN])
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_DELETED',
                     ' '.join(
                         [
@@ -2031,25 +1966,25 @@ class PandasBoxHoldingTable(BuiltPandasBox):
         row_dict = self.get_selected_row()
         if row_dict:
             holding_dict = self.repo.select_holding_view_row(row_dict[declm.DB_iban], row_dict[declm.DB_price_date], row_dict[declm.DB_ISIN])
-            protected = TABLE_FIELDS[HOLDING_VIEW].copy()
+            protected = declm.TABLE_FIELDS[declm.HOLDING_VIEW].copy()
             protected.remove(declm.DB_market_price)
             protected.remove(declm.DB_pieces)
             protected.remove(declm.DB_acquisition_amount)
             protected.remove(declm.DB_acquisition_price)
             mandatory = [declm.DB_market_price, declm.DB_pieces,
                          declm.DB_acquisition_amount, declm.DB_acquisition_price]
-            holding = BuiltTableRowBox(HOLDING, HOLDING_VIEW, holding_dict,
+            holding = BuiltTableRowBox(declm.HOLDING, declm.HOLDING_VIEW, holding_dict,
                                        protected=protected, mandatory=mandatory,
-                                       title=self.title, button1_text=BUTTON_UPDATE)
+                                       title=self.title, button1_text=decl.BUTTON_UPDATE)
             self.button_state = holding.button_state
-            if holding.button_state == WM_DELETE_WINDOW:
+            if holding.button_state == decl.WM_DELETE_WINDOW:
                 return
-            elif holding.button_state == BUTTON_UPDATE:
+            elif holding.button_state == decl.BUTTON_UPDATE:
                 if holding.field_dict[declm.DB_market_price] != str(holding_dict[declm.DB_market_price]) or holding.field_dict[declm.DB_pieces] != str(holding_dict[declm.DB_pieces]):
                     holding.field_dict[declm.DB_total_amount] = dec2.multiply(
                         holding.field_dict[declm.DB_market_price], holding.field_dict[declm.DB_pieces])
 
-                    holding.field_dict[declm.DB_origin] = ORIGIN_BANKDATA_CHANGED
+                    holding.field_dict[declm.DB_origin] = decl.ORIGIN_BANKDATA_CHANGED
                 if holding.field_dict[declm.DB_acquisition_price] != str(holding_dict[declm.DB_acquisition_price]) or holding.field_dict[declm.DB_pieces] != str(holding_dict[declm.DB_pieces]):
                     holding.field_dict[declm.DB_acquisition_amount] = dec2.multiply(
                         holding.field_dict[declm.DB_acquisition_price], holding.field_dict[declm.DB_pieces])
@@ -2063,7 +1998,7 @@ class PandasBoxHoldingTable(BuiltPandasBox):
                     field_dict = {declm.DB_total_amount_portfolio: result[0][1]}
                     self.repo.update_holding_all_isin_codes(field_dict, row_dict[declm.DB_iban], row_dict[declm.DB_price_date]) # update all isin_codes
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_CHANGED',
                     ' '.join(
                         [
@@ -2088,21 +2023,21 @@ class PandasBoxHoldingTable(BuiltPandasBox):
     def new_row_insert(self, row_dict):
 
         combo_dict,  combo_positioning_dict, protected, mandatory = self.new_row_properties()
-        holding = BuiltTableRowBox(HOLDING, HOLDING_VIEW, row_dict,
+        holding = BuiltTableRowBox(declm.HOLDING, declm.HOLDING_VIEW, row_dict,
                                    combo_dict=combo_dict, combo_positioning_dict=combo_positioning_dict, protected=protected, mandatory=mandatory,
-                                   title=self.title, button1_text=BUTTON_NEW)
+                                   title=self.title, button1_text=decl.BUTTON_NEW)
         self.button_state = holding.button_state
-        if holding.button_state == WM_DELETE_WINDOW:
+        if holding.button_state == decl.WM_DELETE_WINDOW:
             return holding
-        elif holding.button_state == BUTTON_NEW:
+        elif holding.button_state == decl.BUTTON_NEW:
             name = holding.field_dict[declm.DB_name]
             if self.repo.exist_holding_position(holding.field_dict[declm.DB_iban], holding.field_dict[declm.DB_ISIN], holding.field_dict[declm.DB_price_date]):
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_ROW_EXIST',
                     ' '.join(
                         [
-                            HOLDING.upper(),
+                            declm.HOLDING.upper(),
                             '\n',
                             declm.DB_price_date.upper(),
                             holding.field_dict[declm.DB_price_date],
@@ -2114,12 +2049,12 @@ class PandasBoxHoldingTable(BuiltPandasBox):
                         )
                     )
             else:
-                holding.field_dict[declm.DB_origin] = ORIGIN_INSERTED
+                holding.field_dict[declm.DB_origin] = decl.ORIGIN_INSERTED
                 holding.field_dict.pop(declm.DB_name, None)
                 holding.field_dict.pop(declm.DB_symbol, None)
                 self.repo.insert_holding( holding.field_dict)
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_INSERTED',
                     ' '.join(
                         [
@@ -2139,16 +2074,16 @@ class PandasBoxHoldingTable(BuiltPandasBox):
     def new_row_properties(self):
 
         protected = [declm.DB_iban, declm.DB_name, declm.DB_symbol]
-        price_currency_dict = {declm.DB_price_currency: CURRENCIES}
-        amount_currency_dict = {declm.DB_amount_currency: CURRENCIES}
-        exchange_currency_1_dict = {declm.DB_exchange_currency_1: CURRENCIES}
-        exchange_currency_2_dict = {declm.DB_exchange_currency_2: CURRENCIES}
-        origin_dict = self.create_combo_list(HOLDING, declm.DB_origin)
+        price_currency_dict = {declm.DB_price_currency: decl.CURRENCIES}
+        amount_currency_dict = {declm.DB_amount_currency: decl.CURRENCIES}
+        exchange_currency_1_dict = {declm.DB_exchange_currency_1: decl.CURRENCIES}
+        exchange_currency_2_dict = {declm.DB_exchange_currency_2: decl.CURRENCIES}
+        origin_dict = self.create_combo_list(declm.HOLDING, declm.DB_origin)
         combo_dict = {**price_currency_dict, **amount_currency_dict, **
                       exchange_currency_1_dict, **exchange_currency_2_dict, **origin_dict}
-        isin_code_dict = self.create_combo_list(ISIN, declm.DB_ISIN, from_date=None)
+        isin_code_dict = self.create_combo_list(declm.ISIN, declm.DB_ISIN, from_date=None)
         combo_positioning_dict = isin_code_dict
-        mandatory = TABLE_FIELDS[HOLDING_VIEW].copy()
+        mandatory = declm.TABLE_FIELDS[declm.HOLDING_VIEW].copy()
         mandatory.remove(declm.DB_total_amount_portfolio)
         mandatory.remove(declm.DB_exchange_rate)
         mandatory.remove(declm.DB_exchange_currency_2)
@@ -2178,18 +2113,18 @@ class PandasBoxLedgerAccountCategory(BuiltPandasBox):
         result = DataFrame()
         for group, group_df in dataframe.groupby(declm.DB_category):
             group_df = group_df.copy()
-            group_df.loc[FN_TOTAL] = {
-                declm.DB_id_no: FN_TOTAL,  declm.DB_entry_date: group, declm.DB_amount: group_df[declm.DB_amount].sum()}
+            group_df.loc[decl.FN_TOTAL] = {
+                declm.DB_id_no: decl.FN_TOTAL,  declm.DB_entry_date: group, declm.DB_amount: group_df[declm.DB_amount].sum()}
             result = concat(
                 [result, group_df], ignore_index=True)
-        result.loc[FN_TOTAL] = {
-            declm.DB_entry_date: FN_TOTAL, declm.DB_amount: total_sum}
+        result.loc[decl.FN_TOTAL] = {
+            declm.DB_entry_date: decl.FN_TOTAL, declm.DB_amount: total_sum}
         self.dataframe = result
 
     def set_row_format(self):
 
         for i, row in self.pandas_table.model.df.iterrows():
-            if row[declm.DB_id_no] == FN_TOTAL:
+            if row[declm.DB_id_no] == decl.FN_TOTAL:
                 self.pandas_table.setRowColors(
                     rows=[i], clr='lightblue', cols='all')
 
@@ -2200,7 +2135,7 @@ class PandasBoxLedgerTable(BuiltPandasBox):
                             Row Actions: Show, Delete, Update, New
     """
 
-    def __init__(self, title, data, message, mode=EDIT_ROW, color_columns_dict={}, period=None, selected_row=0):
+    def __init__(self, title, data, message, mode=decl.EDIT_ROW, period=None, selected_row=0):
 
         self.repo = Repository()
         self.button_state = ''
@@ -2244,25 +2179,25 @@ class PandasBoxLedgerTable(BuiltPandasBox):
 
         if column == declm.DB_category:
             self.pandas_table.setColorByMask(
-                declm.DB_category, self.dataframe[declm.DB_category] == NOT_ASSIGNED, COLOR_NOT_ASSIGNED)
+                declm.DB_category, self.dataframe[declm.DB_category] == decl.NOT_ASSIGNED, decl.COLOR_NOT_ASSIGNED)
         if column == declm.DB_debit_account:
             self.pandas_table.setColorByMask(
-                declm.DB_debit_account, self.dataframe[declm.DB_debit_account] == NOT_ASSIGNED, COLOR_ERROR)
+                declm.DB_debit_account, self.dataframe[declm.DB_debit_account] == decl.NOT_ASSIGNED, decl.COLOR_ERROR)
         if column == declm.DB_credit_account:
             self.pandas_table.setColorByMask(
-                declm.DB_credit_account, self.dataframe[declm.DB_credit_account] == NOT_ASSIGNED, COLOR_ERROR)
+                declm.DB_credit_account, self.dataframe[declm.DB_credit_account] == decl.NOT_ASSIGNED, decl.COLOR_ERROR)
         if column == declm.DB_credit_account:
             mask = self.dataframe[declm.DB_id_no].apply(
                 lambda x: True if x in self.credit_statement_missed else False)
             self.pandas_table.setColorByMask(
-                declm.DB_credit_account, mask, COLOR_ERROR)
+                declm.DB_credit_account, mask, decl.COLOR_ERROR)
         if column == declm.DB_debit_account:
             mask = self.dataframe[declm.DB_id_no].apply(
                 lambda x: True if x in self.debit_statement_missed else False)
             self.pandas_table.setColorByMask(
-                declm.DB_debit_account, mask, COLOR_ERROR)
+                declm.DB_debit_account, mask, decl.COLOR_ERROR)
 
-    def _ledger_statement_missed(self, id_no, status=DEBIT):
+    def _ledger_statement_missed(self, id_no, status=decl.DEBIT):
         """
         Determines the bank accounts in the ledger table
         that have no assignment to a bank transaction
@@ -2276,11 +2211,11 @@ class PandasBoxLedgerTable(BuiltPandasBox):
     def show_row(self):
 
         row_dict = self.get_selected_row()
-        ledger = LedgerTableRowBox(LEDGER, LEDGER_VIEW, row_dict,
-                                   protected=TABLE_FIELDS[LEDGER_VIEW],
+        ledger = LedgerTableRowBox(declm.LEDGER, declm.LEDGER_VIEW, row_dict,
+                                   protected=declm.TABLE_FIELDS[declm.LEDGER_VIEW],
                                    title=self.title,  button1_text=None, button2_text=None)
         self.message = ''
-        if ledger.button_state == WM_DELETE_WINDOW:
+        if ledger.button_state == decl.WM_DELETE_WINDOW:
             return
         self.quit_widget()
 
@@ -2291,38 +2226,38 @@ class PandasBoxLedgerTable(BuiltPandasBox):
         if row_dict:
             result = self.repo.get_statement_of_ledger(row_dict[declm.DB_id_no], status)
             if result:
-                BuiltTableRowBox(STATEMENT, STATEMENT, result,
-                                 protected=TABLE_FIELDS[STATEMENT],
+                BuiltTableRowBox(declm.STATEMENT, declm.STATEMENT, result,
+                                 protected=declm.TABLE_FIELDS[declm.STATEMENT],
                                  title=title,  button1_text=None, button2_text=None)
                 self.message = ''
             else:
                 # self.repo.delete_ledger_statement_with_idno_status(row_dict[declm.DB_id_no], status)
                 # self.repo.delete_ledger(row_dict[declm.DB_id_no])                
-                self.message = msg.get_message(MESSAGE_TEXT, 'LEDGER_ROW')
+                self.message = msg.get_message(msg.MESSAGE_TEXT, 'LEDGER_ROW')
         self.quit_widget()
 
     def show_credit_data(self):
 
         title = ' '.join([self.title, get_popup_menu_text("Show credit data")])
-        self.show_data(title, CREDIT)
+        self.show_data(title, decl.CREDIT)
 
     def show_debit_data(self):
 
         title = ' '.join([self.title, get_popup_menu_text("Show debit data")])
-        self.show_data(title, DEBIT)
+        self.show_data(title, decl.DEBIT)
 
     def del_row(self):
 
         row_dict = self.get_selected_row()
         self.message = ''
         if row_dict:
-            ledger = LedgerTableRowBox(LEDGER, LEDGER_VIEW, row_dict,
-                                       protected=TABLE_FIELDS[LEDGER_VIEW],
-                                       title=self.title, button1_text=BUTTON_DELETE, button2_text=None)
-            if ledger.button_state == WM_DELETE_WINDOW:
+            ledger = LedgerTableRowBox(declm.LEDGER, declm.LEDGER_VIEW, row_dict,
+                                       protected=declm.TABLE_FIELDS[declm.LEDGER_VIEW],
+                                       title=self.title, button1_text=decl.BUTTON_DELETE, button2_text=None)
+            if ledger.button_state == decl.WM_DELETE_WINDOW:
                 return
-            elif ledger.button_state == BUTTON_DELETE:
-                for field_name in TABLE_FIELDS[LEDGER_DELETE]:
+            elif ledger.button_state == decl.BUTTON_DELETE:
+                for field_name in declm.TABLE_FIELDS[declm.LEDGER_DELETE]:
                     if not ledger.field_dict[field_name]:
                         ledger.field_dict.pop(field_name, None)
                 ledger.field_dict.pop(declm.DB_credit_name, None)
@@ -2331,7 +2266,7 @@ class PandasBoxLedgerTable(BuiltPandasBox):
                 self.repo.insert_ledger_delete(ledger.field_dict)
                 self.repo.delete_ledger(ledger.field_dict[declm.DB_id_no])
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_DELETED',
                     ' '.join([declm.DB_id_no.upper(), ledger.field_dict[declm.DB_id_no]])
                     )
@@ -2344,29 +2279,29 @@ class PandasBoxLedgerTable(BuiltPandasBox):
         if row_dict:
             row_dict = self.repo.get_ledger_view(row_dict[declm.DB_id_no])
             combo_dict,  combo_insert_value, combo_positioning_dict, protected, mandatory = self.new_row_properties()
-            if self.repo.exist_ledger_statement_with_id_no_and_status(row_dict[declm.DB_id_no], CREDIT):
-                button3_text = BUTTON_CREDIT
+            if self.repo.exist_ledger_statement_with_id_no_and_status(row_dict[declm.DB_id_no], decl.CREDIT):
+                button3_text = decl.BUTTON_CREDIT
             else:
                 button3_text = None
-            if self.repo.exist_ledger_statement_with_id_no_and_status(row_dict[declm.DB_id_no], DEBIT):
-                button4_text = BUTTON_DEBIT
+            if self.repo.exist_ledger_statement_with_id_no_and_status(row_dict[declm.DB_id_no], decl.DEBIT):
+                button4_text = decl.BUTTON_DEBIT
             else:
                 button4_text = None
-            ledger = LedgerTableRowBox(LEDGER, LEDGER_VIEW, row_dict,
+            ledger = LedgerTableRowBox(declm.LEDGER, declm.LEDGER_VIEW, row_dict,
                                        protected=protected, mandatory=mandatory, combo_insert_value=combo_insert_value, combo_dict=combo_dict, combo_positioning_dict=combo_positioning_dict,
-                                       title=self.title, button1_text=BUTTON_UPDATE, button3_text=button3_text, button4_text=button4_text)
-            if ledger.button_state == WM_DELETE_WINDOW:
+                                       title=self.title, button1_text=decl.BUTTON_UPDATE, button3_text=button3_text, button4_text=button4_text)
+            if ledger.button_state == decl.WM_DELETE_WINDOW:
                 return
-            elif ledger.button_state == BUTTON_UPDATE:
+            elif ledger.button_state == decl.BUTTON_UPDATE:
                 for field_name in protected:
                     if field_name != declm.DB_id_no:
                         ledger.field_dict.pop(field_name, None)
                 self.repo.update_ledger(ledger.field_dict, ledger.field_dict[declm.DB_id_no])
                 # Update LEDGER_STATEMENT connection
                 self._update_ledger_statement(
-                    CREDIT, ledger.field_dict, row_dict)
+                    decl.CREDIT, ledger.field_dict, row_dict)
                 self._update_ledger_statement(
-                    DEBIT, ledger.field_dict, row_dict)
+                    decl.DEBIT, ledger.field_dict, row_dict)
                 # Special for LEDGER Check Upload
                 if get_menu_text("Check Upload") in self.title:
                     self.repo.update_ledger_upload_check(ledger.field_dict[declm.DB_id_no])
@@ -2374,7 +2309,7 @@ class PandasBoxLedgerTable(BuiltPandasBox):
                 if get_menu_text("Check Bank Statement") in self.title:
                     self.repo.update_ledger({declm.DB_bank_statement_checked: 1}, ledger.field_dict[declm.DB_id_no])
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_CHANGED',
                     ' '.join([declm.DB_id_no.upper(), ledger.field_dict[declm.DB_id_no]])
                     )
@@ -2385,7 +2320,7 @@ class PandasBoxLedgerTable(BuiltPandasBox):
         Connect ledger row to credit or debit statement row
         """
 
-        if status == CREDIT:
+        if status == decl.CREDIT:
             ledger_account = ledger_dict[declm.DB_credit_account]
             row_account = row_dict[declm.DB_credit_account]
         else:
@@ -2396,7 +2331,7 @@ class PandasBoxLedgerTable(BuiltPandasBox):
             if self.repo.exist_ledger_statement_with_id_no_and_status(ledger_dict[declm.DB_id_no], status):
                 self.repo.delete_ledger_statement_id_no(ledger_dict[declm.DB_id_no])
         ledger_coa = self.repo.get_ledger_coa_of_account(ledger_account)
-        if not (ledger_coa and ledger_coa[declm.DB_iban] != NOT_ASSIGNED and not ledger_coa[declm.DB_portfolio]):
+        if not (ledger_coa and ledger_coa[declm.DB_iban] != decl.NOT_ASSIGNED and not ledger_coa[declm.DB_portfolio]):
             # its not a bank statement account
             return
         if row_account != ledger_account:
@@ -2419,35 +2354,35 @@ class PandasBoxLedgerTable(BuiltPandasBox):
 
         combo_dict, combo_insert_value, combo_positioning_dict, protected, mandatory = self.new_row_properties()
         # create ledger
-        ledger_dict = {declm.DB_currency: EURO}
+        ledger_dict = {declm.DB_currency: decl.EURO}
         while True:
-            ledger = LedgerTableRowBox(LEDGER, LEDGER_VIEW, ledger_dict,
+            ledger = LedgerTableRowBox(declm.LEDGER, declm.LEDGER_VIEW, ledger_dict,
                                        protected=protected, mandatory=mandatory, combo_insert_value=combo_insert_value,
                                        combo_dict=combo_dict, combo_positioning_dict=combo_positioning_dict,
-                                       title=self.title, button1_text=BUTTON_NEW, button2_text=BUTTON_COPY)
-            if ledger.button_state == BUTTON_COPY:
+                                       title=self.title, button1_text=decl.BUTTON_NEW, button2_text=decl.BUTTON_COPY)
+            if ledger.button_state == decl.BUTTON_COPY:
                 ledger_dict = row_dict
-                ledger_dict[declm.DB_currency] = EURO
+                ledger_dict[declm.DB_currency] = decl.EURO
                 ledger_dict.pop(declm.DB_id_no, None)
             else:
                 break
-        if ledger.button_state == WM_DELETE_WINDOW:
+        if ledger.button_state == decl.WM_DELETE_WINDOW:
             return ledger
-        elif ledger.button_state == BUTTON_NEW:
+        elif ledger.button_state == decl.BUTTON_NEW:
             for field_name in protected:
                 if field_name != declm.DB_id_no:
                     ledger.field_dict.pop(field_name, None)
-            ledger.field_dict[declm.DB_origin] = ORIGIN_LEDGER
+            ledger.field_dict[declm.DB_origin] = decl.ORIGIN_LEDGER
             if declm.DB_entry_date in ledger.field_dict:
                 id_no = self.repo.get_new_id_no_of_year(ledger.field_dict[declm.DB_entry_date])
                 ledger.field_dict[declm.DB_id_no] = id_no
                 self.repo.insert_ledger(ledger.field_dict)
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_INSERTED',
                     ' '.join(
                         [
-                            LEDGER.upper(),
+                            declm.LEDGER.upper(),
                             '\n',
                             declm.DB_id_no.upper(),
                             str(id_no)
@@ -2455,7 +2390,7 @@ class PandasBoxLedgerTable(BuiltPandasBox):
                         )
                     )
             else:
-                self.message = msg.get_message(MESSAGE_TEXT, 'ENTRY_DATE')
+                self.message = msg.get_message(msg.MESSAGE_TEXT, 'ENTRY_DATE')
         return ledger
 
     def new_row_properties(self):
@@ -2472,17 +2407,17 @@ class PandasBoxLedgerTable(BuiltPandasBox):
                     ' '.join([account_name[0], account_name[1]]))
         # create combo_dict
         origin_dict = self.create_combo_list(
-            LEDGER, declm.DB_origin, date_name=declm.DB_entry_date)
+            declm.LEDGER, declm.DB_origin, date_name=declm.DB_entry_date)
         if not origin_dict:
-            origin_dict = ORIGINS
+            origin_dict = decl.ORIGINS
         category_dict = self.create_combo_list(
-            LEDGER, declm.DB_category, date_name=declm.DB_entry_date)
+            declm.LEDGER, declm.DB_category, date_name=declm.DB_entry_date)
         applicant_name_dict = self.create_combo_list(
-            LEDGER, declm.DB_applicant_name, date_name=declm.DB_entry_date)
+            declm.LEDGER, declm.DB_applicant_name, date_name=declm.DB_entry_date)
         combo_dict = {**origin_dict}
         combo_insert_value = [declm.DB_category, declm.DB_applicant_name]
         combo_positioning_dict = {**category_dict, **applicant_name_dict}
-        combo_positioning_dict[declm.DB_currency] = CURRENCIES
+        combo_positioning_dict[declm.DB_currency] = decl.CURRENCIES
         combo_positioning_dict[declm.DB_credit_account] = accounts_list
         combo_positioning_dict[declm.DB_debit_account] = accounts_list
         return combo_dict,  combo_insert_value, combo_positioning_dict, protected, mandatory
@@ -2496,7 +2431,7 @@ class PandasBoxLedgerCoaTable(BuiltPandasBox):
     NOT_USED = [declm.DB_eur_accounting, declm.DB_tax_on_input, declm.DB_value_added_tax,
                 declm.DB_earnings, declm.DB_spendings, declm.DB_transfer_account, declm.DB_transfer_rate]
 
-    def __init__(self, title, data, message, mode=EDIT_ROW, selected_row=0):
+    def __init__(self, title, data, message, mode=decl.EDIT_ROW, selected_row=0):
 
         self.repo = Repository()
         self.title = title
@@ -2518,11 +2453,11 @@ class PandasBoxLedgerCoaTable(BuiltPandasBox):
     def show_row(self):
 
         row_dict = self.get_selected_row()
-        ledger_coa = LedgerCoaTableRowBox(LEDGER_COA, LEDGER_COA, row_dict,
-                                          protected=TABLE_FIELDS[LEDGER_COA],
+        ledger_coa = LedgerCoaTableRowBox(declm.LEDGER_COA, declm.LEDGER_COA, row_dict,
+                                          protected=declm.TABLE_FIELDS[declm.LEDGER_COA],
                                           title=self.title,  button1_text=None, button2_text=None)
         self.button_state = ledger_coa.button_state
-        if ledger_coa.button_state == WM_DELETE_WINDOW:
+        if ledger_coa.button_state == decl.WM_DELETE_WINDOW:
             return
         self.quit_widget()
 
@@ -2531,16 +2466,16 @@ class PandasBoxLedgerCoaTable(BuiltPandasBox):
         row_dict = self.get_selected_row()
         if row_dict:
             ledger_coa = LedgerCoaTableRowBox(
-                LEDGER_COA, LEDGER_COA, row_dict, protected=TABLE_FIELDS[LEDGER_COA],
-                title=self.title, button1_text=BUTTON_DELETE, button2_text=None
+                declm.LEDGER_COA, declm.LEDGER_COA, row_dict, protected=declm.TABLE_FIELDS[declm.LEDGER_COA],
+                title=self.title, button1_text=decl.BUTTON_DELETE, button2_text=None
                 )
             self.button_state = ledger_coa.button_state
-            if ledger_coa.button_state == WM_DELETE_WINDOW:
+            if ledger_coa.button_state == decl.WM_DELETE_WINDOW:
                 return
-            elif ledger_coa.button_state == BUTTON_DELETE:
+            elif ledger_coa.button_state == decl.BUTTON_DELETE:
                 self.repo.delete_ledger_coa(ledger_coa.field_dict[declm.DB_account])
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_DELETED',
                     ' '.join([self.title, '\n', declm.DB_account.upper(), ledger_coa.field_dict[declm.DB_account]])
                     )
@@ -2552,19 +2487,19 @@ class PandasBoxLedgerCoaTable(BuiltPandasBox):
         if row_dict:
             protected = [declm.DB_account] + PandasBoxLedgerCoaTable.NOT_USED
             mandatory = [declm.DB_name]
-            ledger_coa = LedgerCoaTableRowBox(LEDGER_COA, LEDGER_COA, row_dict,
+            ledger_coa = LedgerCoaTableRowBox(declm.LEDGER_COA, declm.LEDGER_COA, row_dict,
                                               protected=protected, mandatory=mandatory,
                                               combo_positioning_dict={declm.DB_iban: self.get_all_ibans()},
                                               combo_insert_value=[declm.DB_iban], 
-                                              title=self.title, button1_text=BUTTON_UPDATE)
+                                              title=self.title, button1_text=decl.BUTTON_UPDATE)
 
             self.button_state = ledger_coa.button_state
-            if ledger_coa.button_state == WM_DELETE_WINDOW:
+            if ledger_coa.button_state == decl.WM_DELETE_WINDOW:
                 return
-            elif ledger_coa.button_state == BUTTON_UPDATE:
+            elif ledger_coa.button_state == decl.BUTTON_UPDATE:
                 self.repo.replace_ledger_coa(ledger_coa.field_dict)
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_CHANGED',
                     ' '.join(
                         [
@@ -2586,20 +2521,20 @@ class PandasBoxLedgerCoaTable(BuiltPandasBox):
     def new_row_insert(self, row_dict):
 
         mandatory = [declm.DB_account, declm.DB_name]
-        ledger_coa = LedgerCoaTableRowBox(LEDGER_COA, LEDGER_COA, row_dict,
+        ledger_coa = LedgerCoaTableRowBox(declm.LEDGER_COA, declm.LEDGER_COA, row_dict,
                                           mandatory=mandatory, protected=PandasBoxLedgerCoaTable.NOT_USED,
-                                          title=self.title, button1_text=BUTTON_NEW)
+                                          title=self.title, button1_text=decl.BUTTON_NEW)
         self.button_state = ledger_coa.button_state
-        if ledger_coa.button_state == WM_DELETE_WINDOW:
+        if ledger_coa.button_state == decl.WM_DELETE_WINDOW:
             return ledger_coa
-        elif ledger_coa.button_state == BUTTON_NEW:
+        elif ledger_coa.button_state == decl.BUTTON_NEW:
             if self.repo.exist_ledger_coa_with_account(ledger_coa.field_dict[declm.DB_account]):
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_ROW_EXIST',
                     ' '.join(
                         [
-                            LEDGER_COA.upper(),
+                            declm.LEDGER_COA.upper(),
                             '\n',
                             declm.DB_account.upper(),
                             ledger_coa.field_dict[declm.DB_account]
@@ -2609,7 +2544,7 @@ class PandasBoxLedgerCoaTable(BuiltPandasBox):
             else:
                 self.repo.insert_ledger_coa(ledger_coa.field_dict)
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_INSERTED',
                     ' '.join(
                         [
@@ -2643,11 +2578,11 @@ class PandasBoxLedgerStatement(BuiltPandasBox):
         self.status = status
         self.iban = iban
         self.ledger_dict = ledger_dict
-        if status == CREDIT:
+        if status == decl.CREDIT:
             # Credit always 2nd account transaction (after debit) , therefore 5 days back
             self.from_date = self.ledger_dict[declm.DB_entry_date]
             self.to_date = date_days.add(self.ledger_dict[declm.DB_entry_date], 5)
-        if status == DEBIT:
+        if status == decl.DEBIT:
             # Debit always 1st account transaction (before credit), therefore 5 days in advance
             self.from_date = date_days.subtract(self.ledger_dict[declm.DB_entry_date], 5)
             self.to_date = self.ledger_dict[declm.DB_entry_date]            
@@ -2655,7 +2590,7 @@ class PandasBoxLedgerStatement(BuiltPandasBox):
             [
                 self.title,
                 msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'ASSINGNABLE_STATEMENTS',
                     self.from_date,
                     self.to_date
@@ -2663,7 +2598,7 @@ class PandasBoxLedgerStatement(BuiltPandasBox):
                 ]
             )
         super().__init__(title=title,
-                         message=msg.get_message(MESSAGE_TEXT, 'SELECT_ROW'), mode=CURRENCY_SIGN)
+                         message=msg.get_message(msg.MESSAGE_TEXT, 'SELECT_ROW'), mode=decl.CURRENCY_SIGN)
 
     def create_dataframe(self):
 
@@ -2676,19 +2611,19 @@ class PandasBoxLedgerStatement(BuiltPandasBox):
         if new_statement_list:
             self.dataframe = DataFrame(new_statement_list)
         else:
-            if self.status == CREDIT:
-                MessageBoxInfo(
+            if self.status == decl.CREDIT:
+                msg.MessageBoxInfo(
                     msg.get_message(
-                        MESSAGE_TEXT,
+                        msg.MESSAGE_TEXT,
                         'LEDGER_STATEMENT_ASSIGMENT_EMPTY',
                         self.ledger_dict[declm.DB_id_no],
                         self.ledger_dict[declm.DB_credit_account]
                         )
                     )
             else:
-                MessageBoxInfo(
+                msg.MessageBoxInfo(
                     msg.get_message(
-                        MESSAGE_TEXT,
+                        msg.MESSAGE_TEXT,
                         'LEDGER_STATEMENT_ASSIGMENT_EMPTY',
                         self.ledger_dict[declm.DB_id_no],
                         self.ledger_dict[declm.DB_debit_account]
@@ -2717,7 +2652,7 @@ class PandasBoxStatementTable(BuiltPandasBox):
                             Row Actions: Show
     """
 
-    def __init__(self, title, data, message, mode=EDIT_ROW):
+    def __init__(self, title, data, message, mode=decl.EDIT_ROW):
 
         self.title = title
         self.data = data
@@ -2725,7 +2660,7 @@ class PandasBoxStatementTable(BuiltPandasBox):
         super().__init__(title=title, dataframe=data,
                          message=message, mode=mode)
 
-    def _debit(self, amount, status=CREDIT, places=2):
+    def _debit(self, amount, status=decl.CREDIT, places=2):
 
         self.amount = str(amount)
         self.status = status
@@ -2734,7 +2669,7 @@ class PandasBoxStatementTable(BuiltPandasBox):
             if m.group(0) == self.amount:
                 self.amount = Calculate(places=places).convert(
                     self.amount.replace(',', '.'))
-                if self.status == DEBIT or self.status == CreditDebit2.DEBIT:
+                if self.status == decl.DEBIT or self.status == CreditDebit2.DEBIT:
                     self.amount = -self.amount
         return self.amount
 
@@ -2771,11 +2706,11 @@ class PandasBoxStatementTable(BuiltPandasBox):
             if not row_dict:
                 return
             statement = BuiltTableRowBox(
-                STATEMENT, STATEMENT, row_dict, title=self.title,
-                protected=TABLE_FIELDS[STATEMENT],
+                declm.STATEMENT, declm.STATEMENT, row_dict, title=self.title,
+                protected=declm.TABLE_FIELDS[declm.STATEMENT],
                 button1_text=None, button2_text=None)
             self.button_state = statement.button_state
-            if statement.button_state == WM_DELETE_WINDOW:
+            if statement.button_state == decl.WM_DELETE_WINDOW:
                 return
         self.quit_widget()
 
@@ -2786,7 +2721,7 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
                             Row Actions: Show
     """
 
-    def __init__(self, title, data, message, mode=EDIT_ROW):
+    def __init__(self, title, data, message, mode=decl.EDIT_ROW):
 
         self.title = title
         self.data = data
@@ -2794,7 +2729,7 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
         super().__init__(title=title, dataframe=data,
                          message=message, mode=mode)
 
-    def _debit(self, amount, status=CREDIT, places=2):
+    def _debit(self, amount, status=decl.CREDIT, places=2):
 
         self.amount = str(amount)
         self.status = status
@@ -2803,7 +2738,7 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
             if m.group(0) == self.amount:
                 self.amount = Calculate(places=places).convert(
                     self.amount.replace(',', '.'))
-                if self.status == DEBIT or self.status == CreditDebit2.DEBIT:
+                if self.status == decl.DEBIT or self.status == CreditDebit2.DEBIT:
                     self.amount = -self.amount
         return self.amount
 
@@ -2851,7 +2786,7 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
             row_dict[declm.DB_counter]
             )
         if ledger_row:
-            self.message = msg.get_message(MESSAGE_TEXT, 'LEDGER_ALREADY_ASSIGNED',  str(ledger_row[declm.DB_id_no]))
+            self.message = msg.get_message(msg.MESSAGE_TEXT, 'LEDGER_ALREADY_ASSIGNED',  str(ledger_row[declm.DB_id_no]))
             return
         statement_row = self.repo.get_statement_copy_to_ledger(
             row_dict[declm.DB_iban],
@@ -2873,9 +2808,9 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
         if account:
             name = self.repo.get_name_of_account(account)
         else:
-            self.message = msg.get_message(MESSAGE_TEXT, 'IBAN_MISSED',  row_dict[declm.DB_iban])
+            self.message = msg.get_message(msg.MESSAGE_TEXT, 'IBAN_MISSED',  row_dict[declm.DB_iban])
             return
-        protected = TABLE_FIELDS[LEDGER].copy()
+        protected = declm.TABLE_FIELDS[declm.LEDGER].copy()
         if statement_row[declm.DB_status]==decl.CREDIT:
             ledger_dict[declm.DB_credit_account] = account
             protected.remove(declm.DB_debit_account)            
@@ -2885,15 +2820,15 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
             protected.remove(declm.DB_credit_account)            
             ledger_dict[declm.DB_debit_name] = name
         ledger_dict[declm.DB_applicant_name] = statement_row[declm.DB_applicant_name]
-        ledger_dict[declm.DB_currency] = EURO
-        ledger_dict[declm.DB_origin] = ORIGIN_INSERTED
-        ledger = LedgerTableRowBox(LEDGER, LEDGER_VIEW, ledger_dict,
+        ledger_dict[declm.DB_currency] = decl.EURO
+        ledger_dict[declm.DB_origin] = decl.ORIGIN_INSERTED
+        ledger = LedgerTableRowBox(declm.LEDGER, declm.LEDGER_VIEW, ledger_dict,
                                    protected=protected, mandatory=mandatory,
                                    combo_positioning_dict=combo_positioning_dict,
-                                   title=msg.get_message(MESSAGE_TEXT, 'LEDGER_CREATE', LEDGER), button1_text=BUTTON_NEW)
-        if ledger.button_state == WM_DELETE_WINDOW:
+                                   title=msg.get_message(msg.MESSAGE_TEXT, 'LEDGER_CREATE', declm.LEDGER), button1_text=decl.BUTTON_NEW)
+        if ledger.button_state == decl.WM_DELETE_WINDOW:
             return
-        elif ledger.button_state == BUTTON_NEW:
+        elif ledger.button_state == decl.BUTTON_NEW:
             id_no = self.repo.get_new_id_no_of_year(row_dict[declm.DB_entry_date])
             ledger.field_dict[declm.DB_id_no] = id_no
             ledger.field_dict.pop(declm.DB_credit_name, None)
@@ -2908,11 +2843,11 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
             ledger_statement_dict[declm.DB_id_no] = id_no
             self.repo.insert_ledger_statement(ledger_statement_dict)            
             self.message = msg.get_message(
-                MESSAGE_TEXT,
+                msg.MESSAGE_TEXT,
                 'DATA_INSERTED',
                 ' '.join(
                     [
-                        LEDGER.upper(),
+                        declm.LEDGER.upper(),
                         '\n',
                         declm.DB_id_no.upper(),
                         str(id_no)
@@ -2950,7 +2885,7 @@ class PandasBoxTotals(BuiltPandasBox):
 
         self.title = title
         self.data = data
-        super().__init__(title=title, dataframe=data, mode=NUMERIC)
+        super().__init__(title=title, dataframe=data, mode=decl.NUMERIC)
 
     def create_dataframe(self):
 
@@ -2958,8 +2893,8 @@ class PandasBoxTotals(BuiltPandasBox):
         self.dataframe[declm.DB_account] = self.dataframe[declm.DB_account].astype(str) + "/" + self.dataframe[declm.DB_name].astype(str)
         self.dataframe = self.dataframe.sort_values([declm.DB_account, declm.DB_entry_date])
         self.dataframe = self.dataframe.pivot_table(index=[declm.DB_entry_date], columns=[
-            declm.DB_account], values=[FN_BALANCE])
-        self.dataframe[FN_TOTAL] = self.dataframe.sum(
+            declm.DB_account], values=[decl.FN_BALANCE])
+        self.dataframe[decl.FN_TOTAL] = self.dataframe.sum(
             axis=1).apply(lambda x: dec2.convert(x))
 
 
@@ -2975,10 +2910,10 @@ class PandasBoxTransactionProfit(BuiltPandasBox):
 
         self.dataframe = DataFrame(
             self.dataframe,
-            columns=[declm.DB_ISIN, declm.DB_name, FN_PROFIT, declm.DB_amount_currency, declm.DB_pieces])
+            columns=[declm.DB_ISIN, declm.DB_name, decl.FN_PROFIT, declm.DB_amount_currency, declm.DB_pieces])
         self.dataframe.drop(columns=[declm.DB_pieces], inplace=True, axis=1)
         sum_row = {declm.DB_ISIN: '',  declm.DB_name: 'TOTAL: ',
-                   FN_PROFIT: self.dataframe[FN_PROFIT].sum(), declm.DB_amount_currency: EURO}
+                   decl.FN_PROFIT: self.dataframe[decl.FN_PROFIT].sum(), declm.DB_amount_currency: decl.EURO}
         self.dataframe.loc[len(self.dataframe.index)] = sum_row
 
 
@@ -2995,7 +2930,7 @@ class PandasBoxTransactionDetail(BuiltPandasBox):
         self.dataframe = DataFrame(
             self.dataframe,
             columns=[declm.DB_price_date, declm.DB_counter, declm.DB_transaction_type,
-                     declm.DB_price, declm.DB_pieces, FN_PIECES_CUM, declm.DB_posted_amount, FN_PROFIT_LOSS, declm.DB_iban])
+                     declm.DB_price, declm.DB_pieces, decl.FN_PIECES_CUM, declm.DB_posted_amount, decl.FN_PROFIT_LOSS, declm.DB_iban])
         """
         deliveries = self.dataframe[declm.DB_transaction_type] == TRANSACTION_RECEIPT
         # Replace values where the condition is False.
@@ -3004,13 +2939,13 @@ class PandasBoxTransactionDetail(BuiltPandasBox):
         receipts = self.dataframe[declm.DB_transaction_type] == TRANSACTION_DELIVERY
         self.dataframe[declm.DB_posted_amount] = self.dataframe[declm.DB_posted_amount].where(receipts, -self.dataframe[declm.DB_posted_amount])
         """
-        self.dataframe[FN_PROFIT_CUM] = self.dataframe[FN_PROFIT_LOSS].cumsum()
-        closed_postion = self.dataframe[FN_PIECES_CUM] == 0
-        self.dataframe[FN_PROFIT_CUM] = self.dataframe[FN_PROFIT_CUM].where(closed_postion, other=0)
+        self.dataframe[decl.FN_PROFIT_CUM] = self.dataframe[decl.FN_PROFIT_LOSS].cumsum()
+        closed_postion = self.dataframe[decl.FN_PIECES_CUM] == 0
+        self.dataframe[decl.FN_PROFIT_CUM] = self.dataframe[decl.FN_PROFIT_CUM].where(closed_postion, other=0)
         print
-        if FN_ALL_BANKS in self.title:
+        if decl.FN_ALL_BANKS in self.title:
             account_names = self.repo.get_ledger_coa_names_with_iban()
-            self.dataframe[FN_BANK_NAME] = self.dataframe[declm.DB_iban].apply(lambda x: account_names[x])
+            self.dataframe[decl.FN_BANK_NAME] = self.dataframe[declm.DB_iban].apply(lambda x: account_names[x])
             self.dataframe.sort_values(
                 by=[declm.DB_price_date, declm.DB_counter, declm.DB_transaction_type],
                 ascending=[True, True, False],
@@ -3023,7 +2958,7 @@ class PandasBoxTransactionDetail(BuiltPandasBox):
             if row[declm.DB_transaction_type] == 'CLOSE':
                 self.pandas_table.setRowColors(
                     rows=[i], clr='lightblue', cols='all')
-            elif row[FN_PIECES_CUM] == 0:
+            elif row[decl.FN_PIECES_CUM] == 0:
                 self.pandas_table.setRowColors(
                     rows=[i], clr='yellow', cols='all')
 
@@ -3034,7 +2969,7 @@ class PandasBoxTransactionTableShow (BuiltPandasBox):
                             Row Actions: Show
     """
 
-    def __init__(self, title, data, message, iban, isin='', isin_name='', mode=EDIT_ROW):
+    def __init__(self, title, data, message, iban, isin='', isin_name='', mode=decl.EDIT_ROW):
 
         self.title = title
         self.data = data
@@ -3055,11 +2990,11 @@ class PandasBoxTransactionTableShow (BuiltPandasBox):
 
         row_dict = self.get_selected_row()
         transaction = BuiltTableRowBox(
-            TRANSACTION, TRANSACTION_VIEW, row_dict, title=self.title,
-            protected=TABLE_FIELDS[TRANSACTION_VIEW],
+            declm.TRANSACTION, declm.TRANSACTION_VIEW, row_dict, title=self.title,
+            protected=declm.TABLE_FIELDS[declm.TRANSACTION_VIEW],
             button1_text=None, button2_text=None)
         self.button_state = transaction.button_state
-        if transaction.button_state == WM_DELETE_WINDOW:
+        if transaction.button_state == decl.WM_DELETE_WINDOW:
             return
         self.quit_widget()
 
@@ -3075,19 +3010,19 @@ class PandasBoxTransactionTable(PandasBoxTransactionTableShow):
         row_dict = self.get_selected_row()
         if row_dict:
             transaction = BuiltTableRowBox(
-                TRANSACTION, TRANSACTION_VIEW, row_dict, title=self.title,
-                protected=TABLE_FIELDS[TRANSACTION_VIEW],
-                button1_text=BUTTON_DELETE, button2_text=None)
+                declm.TRANSACTION, declm.TRANSACTION_VIEW, row_dict, title=self.title,
+                protected=declm.TABLE_FIELDS[declm.TRANSACTION_VIEW],
+                button1_text=decl.BUTTON_DELETE, button2_text=None)
             self.button_state = transaction.button_state
-            if transaction.button_state == WM_DELETE_WINDOW:
+            if transaction.button_state == decl.WM_DELETE_WINDOW:
                 return
-            elif transaction.button_state == BUTTON_DELETE:
+            elif transaction.button_state == decl.BUTTON_DELETE:
                 self.repo.delete_transaction(
                     transaction.field_dict[declm.DB_iban], transaction.field_dict[declm.DB_ISIN],
                     transaction.field_dict[declm.DB_price_date], transaction.field_dict[declm.DB_counter]
                     )
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_DELETED',
                     ' '.join(
                         [
@@ -3113,24 +3048,24 @@ class PandasBoxTransactionTable(PandasBoxTransactionTableShow):
             protected = [declm.DB_iban, declm.DB_ISIN, declm.DB_price_date, declm.DB_counter, declm.DB_name]
             mandatory = [declm.DB_transaction_type, declm.DB_price_currency,
                          declm.DB_price, declm.DB_pieces, declm.DB_amount_currency]
-            transaction_type_dict = {declm.DB_transaction_type: TRANSACTION_TYPES}
-            price_currency_dict = {declm.DB_price_currency: CURRENCIES}
-            amount_currency_dict = {declm.DB_amount_currency: CURRENCIES}
-            origin_dict = self.create_combo_list(TRANSACTION, declm.DB_origin)
+            transaction_type_dict = {declm.DB_transaction_type: decl.TRANSACTION_TYPES}
+            price_currency_dict = {declm.DB_price_currency: decl.CURRENCIES}
+            amount_currency_dict = {declm.DB_amount_currency: decl.CURRENCIES}
+            origin_dict = self.create_combo_list(declm.TRANSACTION, declm.DB_origin)
             combo_dict = origin_dict
             combo_positioning_dict = {**transaction_type_dict,
                                       **price_currency_dict, **amount_currency_dict}
-            transaction = BuiltTableRowBox(TRANSACTION, TRANSACTION_VIEW, row_dict,
+            transaction = BuiltTableRowBox(declm.TRANSACTION, declm.TRANSACTION_VIEW, row_dict,
                                            protected=protected, mandatory=mandatory, combo_dict=combo_dict, combo_positioning_dict=combo_positioning_dict,
                                            title=self.title)
             self.button_state = transaction.button_state
-            if transaction.button_state == WM_DELETE_WINDOW:
+            if transaction.button_state == decl.WM_DELETE_WINDOW:
                 return
-            elif transaction.button_state == BUTTON_SAVE:
+            elif transaction.button_state == decl.BUTTON_SAVE:
                 transaction.field_dict.pop(declm.DB_name, None)
                 self.repo.replace_transaction(transaction.field_dict)
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_CHANGED',
                     ' '.join(
                         [
@@ -3157,22 +3092,22 @@ class PandasBoxTransactionTable(PandasBoxTransactionTableShow):
     def new_row_insert(self, row_dict):
 
         combo_dict,  combo_positioning_dict, protected, mandatory = self.new_row_properties()
-        row_dict[declm.DB_price_currency] = EURO
-        row_dict[declm.DB_amount_currency] = EURO
-        transaction = BuiltTableRowBox(TRANSACTION, TRANSACTION_VIEW, row_dict,
+        row_dict[declm.DB_price_currency] = decl.EURO
+        row_dict[declm.DB_amount_currency] = decl.EURO
+        transaction = BuiltTableRowBox(declm.TRANSACTION, declm.TRANSACTION_VIEW, row_dict,
                                        combo_dict=combo_dict, combo_positioning_dict=combo_positioning_dict, protected=protected, mandatory=mandatory,
-                                       title=self.title, button1_text=BUTTON_NEW)
+                                       title=self.title, button1_text=decl.BUTTON_NEW)
         self.button_state = transaction.button_state
-        if transaction.button_state == WM_DELETE_WINDOW:
+        if transaction.button_state == decl.WM_DELETE_WINDOW:
             return transaction
-        elif transaction.button_state == BUTTON_NEW:
+        elif transaction.button_state == decl.BUTTON_NEW:
             if self.repo.exist_transaction(transaction.field_dict[declm.DB_iban], transaction.field_dict[declm.DB_ISIN], transaction.field_dict[declm.DB_price_date], transaction.field_dict[declm.DB_counter]):
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_ROW_EXIST',
                     ' '.join(
                         [
-                            TRANSACTION.upper(),
+                            declm.TRANSACTION.upper(),
                             '\n',
                             declm.DB_price_date.upper(),
                             transaction.field_dict[declm.DB_price_date],
@@ -3195,7 +3130,7 @@ class PandasBoxTransactionTable(PandasBoxTransactionTableShow):
                 transaction.field_dict.pop(declm.DB_name, None)
                 self.repo.insert_transaction(transaction.field_dict)
                 self.message = msg.get_message(
-                    MESSAGE_TEXT,
+                    msg.MESSAGE_TEXT,
                     'DATA_INSERTED',
                     ' '.join(
                         [
@@ -3219,10 +3154,10 @@ class PandasBoxTransactionTable(PandasBoxTransactionTableShow):
         protected = [declm.DB_iban, declm.DB_ISIN, declm.DB_name]
         mandatory = [declm.DB_ISIN, declm.DB_price_date, declm.DB_counter, declm.DB_transaction_type, declm.DB_price_currency,
                      declm.DB_price, declm.DB_pieces, declm.DB_amount_currency]
-        transaction_type_dict = {declm.DB_transaction_type: TRANSACTION_TYPES}
-        price_currency_dict = {declm.DB_price_currency: CURRENCIES}
-        amount_currency_dict = {declm.DB_amount_currency: CURRENCIES}
-        origin_dict = self.create_combo_list(TRANSACTION, declm.DB_origin)
+        transaction_type_dict = {declm.DB_transaction_type: decl.TRANSACTION_TYPES}
+        price_currency_dict = {declm.DB_price_currency: decl.CURRENCIES}
+        amount_currency_dict = {declm.DB_amount_currency: decl.CURRENCIES}
+        origin_dict = self.create_combo_list(declm.TRANSACTION, declm.DB_origin)
         combo_dict = origin_dict
         combo_positioning_dict = {**transaction_type_dict,
                                   **price_currency_dict, **amount_currency_dict}
@@ -3249,7 +3184,7 @@ class PandasBoxPiecesConsistency(BuiltPandasBox):
 
 class TechnicalIndicator(InputISIN):
     """
-    Paraameter
+    Parameter
      selection_name --> Storage name for last used selection values
      data_dict --> default values of select_data
 
@@ -3269,13 +3204,13 @@ class TechnicalIndicator(InputISIN):
         'Others': 'Others'
         }
 
-    def __init__(self, title=MESSAGE_TITLE, data_dict={}, container=[], selection_name=None):
+    def __init__(self, title=msg.MESSAGE_TITLE, data_dict={}, container=[], selection_name=None):
         
         self.repo = Repository()
         self.srv = Services(self.repo)        
 
         super().__init__(title=title, header=None, table=None,
-                         button1_text=BUTTON_INDICATOR, button2_text=None,
+                         button1_text=decl.BUTTON_INDICATOR, button2_text=None,
                          button3_text=None, button4_text=None,
                          selection_name=selection_name,
                          data_dict=data_dict,
@@ -3293,10 +3228,10 @@ class TechnicalIndicator(InputISIN):
         self.button_state = self._button1_text
         self.validation()
         if not self.footer.get():
-            self.srv.import_prices_and_corporate_actions(self.title, [self.field_dict[declm.DB_name]], state=BUTTON_APPEND)
+            self.srv.import_prices_and_corporate_actions(self.title, [self.field_dict[declm.DB_name]], state=decl.BUTTON_APPEND)
             data = self.repo.get_prices_of_period(
                 self.repo.get_isin_of_name(self.field_dict[declm.DB_name]),
-                (self.field_dict[FN_FROM_DATE], self.field_dict[FN_TO_DATE])
+                (self.field_dict[decl.FN_FROM_DATE], self.field_dict[decl.FN_TO_DATE])
                 )
             if data:
                 dataframe = self._convert_decimals_to_float(DataFrame(data))
@@ -3314,7 +3249,7 @@ class TechnicalIndicator(InputISIN):
                 dataframe = dataframe.set_index(dataframe.columns[0])
                 self._set_menu(dataframe)
             else:
-                self.footer.set(msg.get_message(MESSAGE_TEXT, 'DATA_NO', PRICES.upper(), self.data_dict[declm.DB_name]))
+                self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', declm.PRICES.upper(), self.field_dict[declm.DB_name]))
 
     def quit_widget(self):
 
@@ -3336,34 +3271,34 @@ class TechnicalIndicator(InputISIN):
         try:
             menubar = Menu(self._box_window_top)
             volume_menu = Menu(menubar, tearoff=0)
-            for indicator in TechnicalIndicatorData.TA_VOLUME.keys():
+            for indicator in decl.TechnicalIndicatorData.TA_VOLUME.keys():
                 volume_menu.add_command(
                     label=indicator,
-                    command=lambda x=dataframe, y=TechnicalIndicatorData.TA_VOLUME[indicator], z=indicator: self._show_indicator(x, y, z))
+                    command=lambda x=dataframe, y=decl.TechnicalIndicatorData.TA_VOLUME[indicator], z=indicator: self._show_indicator(x, y, z))
             menubar.add_cascade(label=self.TA_MENU_TEXT.get("Volume"), menu=volume_menu)
             volatility_menu = Menu(menubar, tearoff=0)
-            for indicator in TechnicalIndicatorData.TA_VOLATILITY.keys():
+            for indicator in decl.TechnicalIndicatorData.TA_VOLATILITY.keys():
                 volatility_menu.add_command(
                     label=indicator,
-                    command=lambda x=dataframe, y=TechnicalIndicatorData.TA_VOLATILITY[indicator], z=indicator: self._show_indicator(x, y, z))
+                    command=lambda x=dataframe, y=decl.TechnicalIndicatorData.TA_VOLATILITY[indicator], z=indicator: self._show_indicator(x, y, z))
             menubar.add_cascade(label=self.TA_MENU_TEXT.get("Volatility"), menu=volatility_menu)
             trend_menu = Menu(menubar, tearoff=0)
-            for indicator in TechnicalIndicatorData.TA_TREND.keys():
+            for indicator in decl.TechnicalIndicatorData.TA_TREND.keys():
                 trend_menu.add_command(
                     label=indicator,
-                    command=lambda x=dataframe, y=TechnicalIndicatorData.TA_TREND[indicator], z=indicator: self._show_indicator(x, y, z))
+                    command=lambda x=dataframe, y=decl.TechnicalIndicatorData.TA_TREND[indicator], z=indicator: self._show_indicator(x, y, z))
             menubar.add_cascade(label=self.TA_MENU_TEXT.get("Trend"), menu=trend_menu)
             momentum_menu = Menu(menubar, tearoff=0)
-            for indicator in TechnicalIndicatorData.TA_MOMENTUM.keys():
+            for indicator in decl.TechnicalIndicatorData.TA_MOMENTUM.keys():
                 momentum_menu.add_command(
                     label=indicator,
-                    command=lambda x=dataframe, y=TechnicalIndicatorData.TA_MOMENTUM[indicator], z=indicator: self._show_indicator(x, y, z))
+                    command=lambda x=dataframe, y=decl.TechnicalIndicatorData.TA_MOMENTUM[indicator], z=indicator: self._show_indicator(x, y, z))
             menubar.add_cascade(label=self.TA_MENU_TEXT.get("Momentum"), menu=momentum_menu)
             others_menu = Menu(menubar, tearoff=0)
-            for indicator in TechnicalIndicatorData.TA_OTHERS.keys():
+            for indicator in decl.TechnicalIndicatorData.TA_OTHERS.keys():
                 others_menu.add_command(
                     label=indicator,
-                    command=lambda x=dataframe, y=TechnicalIndicatorData.TA_OTHERS[indicator], z=indicator: self._show_indicator(x, y, z))
+                    command=lambda x=dataframe, y=decl.TechnicalIndicatorData.TA_OTHERS[indicator], z=indicator: self._show_indicator(x, y, z))
             menubar.add_cascade(label=self.TA_MENU_TEXT.get("Others"), menu=others_menu)
             self._box_window_top.config(menu=menubar)
         except Exception as e:
@@ -3375,18 +3310,18 @@ class TechnicalIndicator(InputISIN):
 
         title = ' '.join([indicator, self.field_dict[declm.DB_name]])
         line_columns = []
-        if indicator in TechnicalIndicatorData.TA_LINES.keys():
-            for line_column in TechnicalIndicatorData.TA_LINES[indicator]:
+        if indicator in decl.TechnicalIndicatorData.TA_LINES.keys():
+            for line_column in decl.TechnicalIndicatorData.TA_LINES[indicator]:
                 line_column_name, line_column_value = line_column
                 dataframe[line_column_name] = line_column_value
                 line_columns.append(line_column_name)
-        TechnicalIndicatorData.TA_CLOSE = []
+        decl.TechnicalIndicatorData.TA_CLOSE = []
         BuiltPandasBox(title=title, dataframe=dataframe[indicator_columns + line_columns],
-                       mode=NUMERIC, instant_plotting=True)
-        if self.button_state == WM_DELETE_WINDOW:
+                       mode=decl.NUMERIC, instant_plotting=True)
+        if self.button_state == decl.WM_DELETE_WINDOW:
             return
-        BuiltPandasBox(title=title, dataframe=dataframe[indicator_columns + TechnicalIndicatorData.TA_CLOSE + line_columns],
-                       mode=NUMERIC, instant_plotting=True)
+        BuiltPandasBox(title=title, dataframe=dataframe[indicator_columns + decl.TechnicalIndicatorData.TA_CLOSE + line_columns],
+                       mode=decl.NUMERIC, instant_plotting=True)
 
 
 class SelectCloseVolume(BuiltCheckButton):
@@ -3407,10 +3342,10 @@ class SelectCloseVolume(BuiltCheckButton):
     def __init__(self):
 
         super().__init__(
-            title=msg.get_message(MESSAGE_TEXT, 'TA_ADD_CHART'), header=msg.get_message(MESSAGE_TEXT, 'CHECKBOX'),
-            button1_text=BUTTON_ADD_CHART, button2_text=None,
+            title=msg.get_message(msg.MESSAGE_TEXT, 'TA_ADD_CHART'), header=msg.get_message(msg.MESSAGE_TEXT, 'CHECKBOX'),
+            button1_text=decl.BUTTON_ADD_CHART, button2_text=None,
             checkbutton_texts=[declm.DB_close, declm.DB_volume],
-            default_texts=TechnicalIndicatorData.TA_CLOSE
+            default_texts=decl.TechnicalIndicatorData.TA_CLOSE
         )
 
     def button_1_button2(self, event):
@@ -3449,109 +3384,31 @@ class PrintMessageCode(BuiltText):
 
     def set_tags(self, textline, line):
         if len(textline) > 13:
-            if textline[0:12] == ERROR:
-                self.text_widget.tag_add(ERROR, str(line + 1) + '.0',
+            if textline[0:12] == decl.ERROR:
+                self.text_widget.tag_add(decl.ERROR, str(line + 1) + '.0',
                                          str(line + 1) + '.' + str(len(textline)))
-                self.text_widget.tag_config(ERROR, foreground='RED')
-            elif textline[0:12] == WARNING:
-                self.text_widget.tag_add(WARNING, str(line + 1) + '.0',
+                self.text_widget.tag_config(decl.ERROR, foreground='RED')
+            elif textline[0:12] == decl.WARNING:
+                self.text_widget.tag_add(decl.WARNING, str(line + 1) + '.0',
                                          str(line + 1) + '.' + str(len(textline)))
-                self.text_widget.tag_config(WARNING, foreground='BLUE')
-            elif textline[0:12] == INFORMATION:
-                self.text_widget.tag_add(INFORMATION, str(line + 1) + '.0',
+                self.text_widget.tag_config(decl.WARNING, foreground='BLUE')
+            elif textline[0:12] == decl.INFORMATION:
+                self.text_widget.tag_add(decl.INFORMATION, str(line + 1) + '.0',
                                          str(line + 1) + '.' + str(len(textline)))
-                self.text_widget.tag_config(INFORMATION, foreground='GREEN')
+                self.text_widget.tag_config(decl.INFORMATION, foreground='GREEN')
 
     def destroy_widget(self, text):
 
-        info = re.compile(INFORMATION)
+        info = re.compile(decl.INFORMATION)
         if info.search(text):
             return False
-        warn = re.compile(WARNING)
+        warn = re.compile(decl.WARNING)
         if warn.search(text):
             return False
-        err = re.compile(ERROR)
+        err = re.compile(decl.ERROR)
         if err.search(text):
             return False
         return True
-
-
-class _VersionTransaction(BuiltEnterBox):
-    """
-    TOP-LEVEL-WINDOW        EnterBox Version of HKKAZ, HKSAL, HKWPD to use
-
-    PARAMETER:
-        field_defs          List of Field Definitions (see Class FieldDefintion)
-                            Transactions HKAKZ, HKSAL, HKWPD
-    INSTANCE ATTRIBUTES:
-        button_state        Text of selected Button
-        field_dict          Dictionary Of Version of Used Transactions
-    """
-
-    def __init__(self, title, bank_code, transaction_versions):
-
-        self.bank_code = bank_code
-
-        self.transaction_version_allowed = Repository().shelve_get_version_transaction_allowed(self.bank_code)
-        if self.transaction_version_allowed:
-            field_defs = self._create_field_defs()
-            field_defs = self._set_defaults(field_defs, self.transaction_version_allowed)
-            super().__init__(title=title,
-                             header='Transaction Versions ({})'.format(
-                                 self.bank_code),
-                             field_defs=field_defs)
-        else:
-            MessageBoxTermination()
-
-
-
-    def _create_field_defs(self):
-
-        def label(key: str) -> str:
-            return "statements" if key.endswith("AZ") else "holdings"
-
-        field_defs = [
-            FieldDefinition(
-                definition=COMBO,
-                name=f"HK{key} {label(key)}",
-                length=1,
-                combo_values=value
-            )
-            for key, value in self.transaction_version_allowed.items()
-            ]
-        return field_defs
-
-    def _set_defaults(self, field_defs, defaults_dict):
-        name_to_default = {
-            f"HK{key}": (values[0] if values else None)
-            for key, values in defaults_dict.items()
-        }
-    
-        new_fields = []
-    
-        for field in field_defs:
-            new_field = copy(field)
-            field_key = new_field.name.split()[0]
-    
-            if field_key in name_to_default:
-                new_field.default_value = name_to_default[field_key]
-    
-            new_fields.append(new_field)
-    
-        return new_fields  
-
-    def button_1_button1(self, event):
-
-        self.button_state = self._button1_text
-        self.validation()
-        if not self.footer.get():
-            for key in self.field_dict.keys():
-                self.field_dict[key] = int(self.field_dict[key])
-            self.quit_widget()
-
-
-from copy import copy
-from typing import Dict, List, Any
 
 
 class VersionTransaction(BuiltEnterBox):
@@ -3579,7 +3436,7 @@ class VersionTransaction(BuiltEnterBox):
         )
 
         if not self.transaction_version_allowed:
-            MessageBoxTermination()
+            msg.MessageBoxTermination()
             return
 
         field_defs = self._create_field_defs()
@@ -3605,7 +3462,7 @@ class VersionTransaction(BuiltEnterBox):
 
         return [
             FieldDefinition(
-                definition=COMBO,
+                definition=decl.COMBO,
                 name=f"HK{key} {label(key)}",
                 length=1,
                 combo_values=values

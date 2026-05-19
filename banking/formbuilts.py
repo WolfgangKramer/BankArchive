@@ -1,13 +1,9 @@
 """
 Created on 28.01.2020
-__updated__ = "2026-05-17"
+__updated__ = "2026-05-19"
 @author: Wolfgang Kramer
 """
-
-
 import re
-
-import banking.declarations_mariadb as declm
 
 from inspect import stack
 from pathlib import Path
@@ -25,67 +21,26 @@ from pandas import to_numeric, ExcelWriter, DataFrame
 from pandastable import config
 from tkcalendar import DateEntry
 
-from banking.declarations_mariadb import (
-    HOLDING, HOLDING_VIEW, PRICES, PRICES_ISIN_VIEW, STATEMENT, TRANSACTION, TRANSACTION_VIEW,
-    TABLE_FIELDS, TABLE_FIELDS_PROPERTIES, DATABASE_FIELDS_PROPERTIES,
-    TINYINT, INTEGER, DATABASE_TYP_DECIMAL,
-)
-from banking.declarations import (
+import banking.declarations as decl
+import banking.declarations_mariadb as declm
+import banking.message_handler as msg
 
-    ToolbarSwitch,
-    EURO, EDIT_ROW,
-    FN_COLUMNS_EURO, FN_COLUMNS_PERCENT, FN_FROM_DATE, FN_TO_DATE,
-    HEIGHT_TEXT,
-    NO_CURRENCY_SIGN, NUMERIC, NOT_ASSIGNED,
-    # form declaratives
-    ENTRY,
-    COMBO,
-    CHECK,
-    BUTTON_NEXT,
-    BUTTON_OK,
-    BUTTON_DELETE_ALL,
-    BUTTON_RESTORE,
-    BUTTON_SAVE,
-    BUTTON_SELECT_ALL,
-    COLOR_NEGATIVE,
-    FORMAT_FIXED,
-    FORMAT_VARIABLE,
-    TYP_ALPHANUMERIC,
-    TYP_DECIMAL,
-    TYP_DATE,
-    )
 from banking.pandastable_extension import Table, TableRowEdit, MyPlotViewer
 from banking.utils import (
     application_store,
     Amount, dec2, list_positioning
     )
-from banking.message_handler import (
-    MESSAGE_TITLE, MESSAGE_TEXT,
-    is_main_thread, get_message,
-    Informations,
-    MessageBoxInfo, MessageBoxTermination
-    )
 from banking.repository import Repository
 from banking.connect_data import connectionresult
 from banking.trading_calendar import xetra_cls
 
-
-# package pandastable: standard values  (see class table self.font and self.fontsize
-ROOT_WINDOW_POSITION = '+100+100'
 BUILTBOX_WINDOW_POSITION = '+200+200'
 BUILTPANDASBOX_WINDOW_POSITION = '+1+1'
 BUILTEXT_WINDOW_POSITION = '+400+0'
 WIDTH_WIDGET = 70
 WIDTH_CANVAS = 700
 HEIGHT_CANVAS = 800
-PANDAS_NAME_SHOW = 'SHOW'
-PANDAS_NAME_ROW = 'ROW'
-
-WM_DELETE_WINDOW = 'WM_DELETE_WINDOW'
-LIGHTBLUE = 'LIGHTBLUE'
-UNDEFINED = 'UNDEFINED'
 FONTSIZE = 8
-MAX_FIELD_LENGTH = 65
 
 re_amount = re.compile(r"\d+\.\d+")
 re_amount_int = re.compile(r"\d+")
@@ -152,7 +107,7 @@ def extend_message_len(title, message):
 
 class FileDialogue():
 
-    def __init__(self, title=MESSAGE_TITLE, initialdir="/", create_file=False,
+    def __init__(self, title=msg.MESSAGE_TITLE, initialdir="/", create_file=False,
                  filetypes=None):
 
         window = Tk()
@@ -235,8 +190,8 @@ class FieldDefinition(object):
     >separator<           Boolean     True: insert separator Line after Widget
     """
 
-    def __init__(self, definition=ENTRY,
-                 name=UNDEFINED, lformat=FORMAT_VARIABLE, length=0, typ=TYP_ALPHANUMERIC,
+    def __init__(self, definition=decl.ENTRY,
+                 name=decl.NOT_ASSIGNED, lformat=decl.FORMAT_VARIABLE, length=0, typ=decl.TYP_ALPHANUMERIC,
                  min_length=0, mandatory=True, protected=False, readonly=False,
                  default_value='', combo_values=[],
                  combo_positioning=True, combo_insert_value=False,
@@ -274,8 +229,8 @@ class FieldDefinition(object):
     @definition.setter
     def definition(self, value):
         self._definition = value
-        if self._definition not in [ENTRY, COMBO, CHECK]:
-            MessageBoxTermination(
+        if self._definition not in [decl.ENTRY, decl.COMBO, decl.CHECK]:
+            msg.MessageBoxTermination(
                 info='Field Definition Definiton not ENTRY (EntryField), COMBO (ComboBoxField), CHECK(CheckButtonField)')
 
     @property
@@ -285,8 +240,8 @@ class FieldDefinition(object):
     @lformat.setter
     def lformat(self, value):
         self._lformat = value
-        if self._lformat not in [FORMAT_FIXED, FORMAT_VARIABLE]:
-            MessageBoxTermination(
+        if self._lformat not in [decl.FORMAT_FIXED, decl.FORMAT_VARIABLE]:
+            msg.MessageBoxTermination(
                 info='Field Definition Format not F (fixed length) or V (variable Length)')
 
     @property
@@ -299,7 +254,7 @@ class FieldDefinition(object):
             self._length = value
             int(self._length)
         except (ValueError, TypeError):
-            MessageBoxTermination(info='Field Definition Length no Integer')
+            msg.MessageBoxTermination(info='Field Definition Length no Integer')
 
     @property
     def typ(self):
@@ -308,8 +263,8 @@ class FieldDefinition(object):
     @typ.setter
     def typ(self, value):
         self._typ = value
-        if self._typ not in [TYP_ALPHANUMERIC, TYP_DECIMAL, TYP_DATE]:
-            MessageBoxTermination(
+        if self._typ not in [decl.TYP_ALPHANUMERIC, decl.TYP_DECIMAL, decl.TYP_DATE]:
+            msg.MessageBoxTermination(
                 info='Field Definition Typ not X or D (decimal), DAT (date)')
 
     @property
@@ -322,10 +277,10 @@ class FieldDefinition(object):
             self._min_length = value
             int(self._min_length)
             if value > int(self.length):
-                MessageBoxTermination(
+                msg.MessageBoxTermination(
                     info='Field Definition min. Length greater Length')
         except (ValueError, TypeError):
-            MessageBoxTermination(
+            msg.MessageBoxTermination(
                 info='Field Definition min. Length no Integer')
 
     @property
@@ -336,7 +291,7 @@ class FieldDefinition(object):
     def mandatory(self, value):
         self._mandatory = value
         if self._mandatory not in [True, False]:
-            MessageBoxTermination(
+            msg.MessageBoxTermination(
                 info='Field Definition Mandatory not True or False')
 
     @property
@@ -347,7 +302,7 @@ class FieldDefinition(object):
     def readonly(self, value):
         self._readonly = value
         if self._readonly not in [True, False]:
-            MessageBoxTermination(
+            msg.MessageBoxTermination(
                 info='Field Definition Readonly not True or False')
 
     @property
@@ -358,7 +313,7 @@ class FieldDefinition(object):
     def selected(self, value):
         self._selected = value
         if self._selected not in [True, False]:
-            MessageBoxTermination(
+            msg.MessageBoxTermination(
                 info='Field Definition Selected not True or False')
 
     @property
@@ -369,7 +324,7 @@ class FieldDefinition(object):
     def protected(self, value):
         self._protected = value
         if self._protected not in [True, False]:
-            MessageBoxTermination(
+            msg.MessageBoxTermination(
                 info='Field Definition Protected not True or False')
 
     @property
@@ -380,7 +335,7 @@ class FieldDefinition(object):
     def combo_positioning(self, value):
         self._combo_positioning = value
         if self._combo_positioning not in [True, False]:
-            MessageBoxTermination(
+            msg.MessageBoxTermination(
                 info='Field Definition ComboPositioning not True or False')
 
     @property
@@ -391,7 +346,7 @@ class FieldDefinition(object):
     def combo_insert_value(self, value):
         self._combo_insert_value = value
         if self._combo_insert_value not in [True, False]:
-            MessageBoxTermination(
+            msg.MessageBoxTermination(
                 info='Field Definition ComboInsertValue not True or False')
 
     @property
@@ -402,7 +357,7 @@ class FieldDefinition(object):
     def focus_out(self, value):
         self._focus_out = value
         if self._focus_out not in [True, False]:
-            MessageBoxTermination(
+            msg.MessageBoxTermination(
                 info='Field Definition FocusOut not True or False')
 
     @property
@@ -413,7 +368,7 @@ class FieldDefinition(object):
     def focus_in(self, value):
         self._focus_in = value
         if self._focus_in not in [True, False]:
-            MessageBoxTermination(
+            msg.MessageBoxTermination(
                 info='Field Definition FocusIn not True or False')
 
     @property
@@ -424,7 +379,7 @@ class FieldDefinition(object):
     def upper(self, value):
         self._upper = value
         if self._upper not in [True, False]:
-            MessageBoxTermination(
+            msg.MessageBoxTermination(
                 info='Field Definition UpperCase not True or False')
 
 
@@ -438,17 +393,16 @@ class BuiltBox(object):
 
     def __init__(
         self,
-        title=MESSAGE_TITLE,
-        header=get_message(MESSAGE_TEXT, 'ENTRY'),
+        title=msg.MESSAGE_TITLE,
+        header=msg.get_message(msg.MESSAGE_TEXT, 'ENTRY'),
         columnspan=2,
-        button1_text=BUTTON_OK,
+        button1_text=decl.BUTTON_OK,
         button2_text=None,
         button3_text=None,
         button4_text=None,
         button5_text=None,
         button6_text=None,
         width=WIDTH_WIDGET,
-        width_canvas=WIDTH_CANVAS,
         height_canvas=HEIGHT_CANVAS,
         grab=True,
         scrollable=False
@@ -456,10 +410,10 @@ class BuiltBox(object):
         # --- Thread safety check (must happen BEFORE any UI creation) ---
         self.window_id = self.__class__.__name__
     
-        if not is_main_thread():
-            MessageBoxInfo(
+        if not msg.is_main_thread():
+            msg.MessageBoxInfo(
                 title=title,
-                message=get_message(MESSAGE_TEXT, 'THREAD', self.window_id)
+                message=msg.get_message(msg.MESSAGE_TEXT, 'THREAD', self.window_id)
             )
             return
     
@@ -557,7 +511,7 @@ class BuiltBox(object):
             canvas.configure(width=self.calculate_width_canvas())
     
         self._box_window_top.protocol(
-            WM_DELETE_WINDOW,
+            decl.WM_DELETE_WINDOW,
             self._wm_deletion_window
         )
     
@@ -601,7 +555,7 @@ class BuiltBox(object):
         self._focus_first_input()
 
         # Ensure parent regains focus when dialog closes
-        win.protocol(WM_DELETE_WINDOW, self._safe_close)
+        win.protocol(decl.WM_DELETE_WINDOW, self._safe_close)
 
     def _focus_first_input(self):
         """
@@ -633,7 +587,7 @@ class BuiltBox(object):
             pass
 
         self._geometry_put(win)
-        self.button_state = WM_DELETE_WINDOW
+        self.button_state = decl.WM_DELETE_WINDOW
 
         win.destroy()
 
@@ -770,7 +724,7 @@ class BuiltBox(object):
                 pass
         # Normal close
         self._geometry_put(win)
-        self.button_state = WM_DELETE_WINDOW
+        self.button_state = decl.WM_DELETE_WINDOW
         if win.winfo_exists():
             win.update_idletasks()
 
@@ -861,8 +815,8 @@ class BuiltRadioButtons(BuiltBox):
     """
 
     def __init__(
-            self, header=get_message(MESSAGE_TEXT, 'RADIOBUTTON'), title=MESSAGE_TITLE,
-            button1_text=BUTTON_SAVE, button2_text=BUTTON_RESTORE,
+            self, header=msg.get_message(msg.MESSAGE_TEXT, 'RADIOBUTTON'), title=msg.MESSAGE_TITLE,
+            button1_text=decl.BUTTON_SAVE, button2_text=decl.BUTTON_RESTORE,
             button3_text=None, button4_text=None, button5_text=None,
             default_value=None,
             radiobutton_dict={'123': 'Description of RadioButton1',
@@ -903,7 +857,7 @@ class BuiltRadioButtons(BuiltBox):
         self.button_state = self._button1_text
         self.field = self._radiobutton_value.get()
         if self.field == '':
-            self.footer.set(get_message(MESSAGE_TEXT, 'SELECT_DATA'))
+            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'SELECT_DATA'))
         else:
             self.quit_widget()
 
@@ -934,10 +888,10 @@ class BuiltCheckButton(BuiltBox):
     """
 
     def __init__(
-            self, header=get_message(MESSAGE_TEXT, 'CHECKBOX'), title=MESSAGE_TITLE, width_widget=WIDTH_WIDGET,
-            button1_text=BUTTON_NEXT, button2_text=None,
-            button3_text=None, button4_text=BUTTON_SELECT_ALL,
-            button5_text=BUTTON_DELETE_ALL,
+            self, header=msg.get_message(msg.MESSAGE_TEXT, 'CHECKBOX'), title=msg.MESSAGE_TITLE,
+            button1_text=decl.BUTTON_NEXT, button2_text=None,
+            button3_text=None, button4_text=decl.BUTTON_SELECT_ALL,
+            button5_text=decl.BUTTON_DELETE_ALL,
             default_texts=[],
             checkbutton_texts=['Description of Checkbox1', 'Description of Checkbox2',
                                'Description of Checkbox3']):
@@ -1026,13 +980,13 @@ class BuiltEnterBox(BuiltBox):
     Field_Names = namedtuple('Field_Names', ['Feld1', 'Feld2'])
 
     def __init__(self,
-                 title=MESSAGE_TITLE, header=get_message(MESSAGE_TEXT, 'ENTRY'),
-                 button1_text=BUTTON_SAVE, button2_text=BUTTON_RESTORE, button3_text=None,
+                 title=msg.MESSAGE_TITLE, header=msg.get_message(msg.MESSAGE_TEXT, 'ENTRY'),
+                 button1_text=decl.BUTTON_SAVE, button2_text=decl.BUTTON_RESTORE, button3_text=None,
                  button4_text=None, button5_text=None, button6_text=None,
-                 width=WIDTH_WIDGET, width_canvas=WIDTH_CANVAS, height_canvas=HEIGHT_CANVAS,
+                 width=WIDTH_WIDGET,
                  grab=False, scrollable=False,
                  field_defs=Field_Names(
-                     FieldDefinition(definition=COMBO, name='Feld1', length=8, lformat=FORMAT_FIXED,
+                     FieldDefinition(definition=decl.COMBO, name='Feld1', length=8, lformat=decl.FORMAT_FIXED,
                                      selected=True, combo_values=['Wert1', 'Wert2']),
                      FieldDefinition(name='Feld2', length=70,
                                      default_value='Default Wert fuer Feld211111111111111111111111111111111111111111111111111')
@@ -1044,13 +998,13 @@ class BuiltEnterBox(BuiltBox):
                          button1_text=button1_text, button2_text=button2_text,
                          button3_text=button3_text, button4_text=button4_text,
                          button5_text=button5_text, button6_text=button6_text,
-                         width_canvas=width_canvas, height_canvas=HEIGHT_CANVAS,
+                         height_canvas=HEIGHT_CANVAS,
                          scrollable=scrollable, columnspan=2)
 
     def create_fields(self):
 
         for field_def in self._field_defs:
-            if field_def.definition == CHECK:
+            if field_def.definition == decl.CHECK:
                 field_def.textvar = IntVar()
                 field_def.textvar.set('0')
             else:
@@ -1066,21 +1020,21 @@ class BuiltEnterBox(BuiltBox):
                 widget_lab = Label(self._box_window, width=len(field_def.name) + 5,
                                    text=field_def.name, anchor=W, style='OPT.TLabel')
             widget_lab.grid(row=self._row, sticky=W, padx='3m', pady='1m')
-            if field_def.definition == ENTRY:
-                if field_def.typ == TYP_DATE:
+            if field_def.definition == decl.ENTRY:
+                if field_def.typ == decl.TYP_DATE:
                     widget_entry = DateEntry(self._box_window, width=16, background="magenta3",
                                              textvariable=field_def.textvar,
                                              foreground="white", bd=2, locale='de_de',
                                              date_pattern='yyyy-mm-dd')
                     widget_entry.myId = field_def.name
                 else:
-                    if field_def.length < MAX_FIELD_LENGTH:
+                    if field_def.length < decl.MAX_FIELD_LENGTH:
                         widget_entry = Entry(self._box_window, width=field_def.length + 2,
                                              textvariable=field_def.textvar)
                     else:
-                        widget_entry = Entry(self._box_window, width=MAX_FIELD_LENGTH,
+                        widget_entry = Entry(self._box_window, width=decl.MAX_FIELD_LENGTH,
                                              textvariable=field_def.textvar)
-                        if field_def.protected and field_def.default_value is not None and len(field_def.default_value) > MAX_FIELD_LENGTH:
+                        if field_def.protected and field_def.default_value is not None and len(field_def.default_value) > decl.MAX_FIELD_LENGTH:
                             # Create a frame to hold the Entry and Scrollbar
                             frame = Frame(self._box_window)
                             frame.grid(row=self._row, column=5,
@@ -1094,7 +1048,7 @@ class BuiltEnterBox(BuiltBox):
                             widget_entry.configure(
                                 xscrollcommand=scrollbar.set)
                     widget_entry.myId = field_def.name
-            elif field_def.definition == CHECK:
+            elif field_def.definition == decl.CHECK:
                 if check_text_length < len(field_def.checkbutton_text):
                     check_text_length = len(field_def.checkbutton_text)
                 widget_entry = Checkbutton(self._box_window, text=field_def.checkbutton_text,
@@ -1120,7 +1074,7 @@ class BuiltEnterBox(BuiltBox):
                 widget_entry.config(state=DISABLED)
             # if field_def.name in [KEY_PIN]:
             #    widget_entry.config(show='*')
-            if field_def.definition == CHECK:
+            if field_def.definition == decl.CHECK:
                 if field_def.default_value:
                     field_def.textvar.set(1)
                 else:
@@ -1129,9 +1083,9 @@ class BuiltEnterBox(BuiltBox):
                 if field_def.default_value:
                     field_def.textvar.set(field_def.default_value)
                 else:
-                    if field_def.typ == TYP_DECIMAL:
+                    if field_def.typ == decl.TYP_DECIMAL:
                         field_def.textvar.set('0')
-                    elif field_def.name in DATABASE_FIELDS_PROPERTIES and DATABASE_FIELDS_PROPERTIES[field_def.name].data_type in INTEGER:
+                    elif field_def.name in declm.DATABASE_FIELDS_PROPERTIES and declm.DATABASE_FIELDS_PROPERTIES[field_def.name].data_type in declm.INTEGER:
                         field_def.textvar.set('0')
                     else:
                         field_def.textvar.set('')
@@ -1157,7 +1111,7 @@ class BuiltEnterBox(BuiltBox):
 
         self.button_state = self._button2_text
         for field_def in self._field_defs:
-            if field_def.definition == CHECK:
+            if field_def.definition == decl.CHECK:
                 if field_def.default_value:
                     field_def.textvar.set(1)
                 else:
@@ -1179,7 +1133,7 @@ class BuiltEnterBox(BuiltBox):
                 self.validation_addon(field_def)
                 if self.footer.get():
                     break
-            if field_def.definition == CHECK:
+            if field_def.definition == decl.CHECK:
                 self.field_dict[field_def.name] = field_def.textvar.get()
             else:
                 self.field_dict[field_def.name] = field_def.widget.get()
@@ -1193,35 +1147,35 @@ class BuiltEnterBox(BuiltBox):
         
     def field_dict_adjust_period(self):
         # adjusts period using trading_calendar XETRA
-        if all(key in self.field_dict for key in [FN_FROM_DATE, FN_TO_DATE]):
-            self.field_dict[FN_FROM_DATE], self.field_dict[FN_TO_DATE] = xetra_cls.adjust_period(
-                self.field_dict[FN_FROM_DATE],
-                self.field_dict[FN_TO_DATE]
+        if all(key in self.field_dict for key in [decl.FN_FROM_DATE, decl.FN_TO_DATE]):
+            self.field_dict[decl.FN_FROM_DATE], self.field_dict[decl.FN_TO_DATE] = xetra_cls.adjust_period(
+                self.field_dict[decl.FN_FROM_DATE],
+                self.field_dict[decl.FN_TO_DATE]
                 )
 
     def field_validation(self, name, field_def):
         """
             Returns footer text
         """
-        if field_def.definition == CHECK:
+        if field_def.definition == decl.CHECK:
             return ''
         field_value = field_def.widget.get()
         if field_def.mandatory and field_value == '':
-            footer = get_message(MESSAGE_TEXT, 'MANDATORY', name)
+            footer = msg.get_message(msg.MESSAGE_TEXT, 'MANDATORY', name)
             return footer
-        if name in DATABASE_FIELDS_PROPERTIES:
-            if DATABASE_FIELDS_PROPERTIES[name].data_type in INTEGER and not field_value.isdigit():
-                return get_message(MESSAGE_TEXT, 'ISDIGIT', name)
+        if name in declm.DATABASE_FIELDS_PROPERTIES:
+            if declm.DATABASE_FIELDS_PROPERTIES[name].data_type in declm.INTEGER and not field_value.isdigit():
+                return msg.get_message(msg.MESSAGE_TEXT, 'ISDIGIT', name)
         if field_value:
-            if field_def.lformat == FORMAT_FIXED:
-                if len(field_value) != field_def.length and field_value != NOT_ASSIGNED:
-                    return get_message(MESSAGE_TEXT, 'FIXED', name, field_def.length)
+            if field_def.lformat == decl.FORMAT_FIXED:
+                if len(field_value) != field_def.length and field_value != decl.NOT_ASSIGNED:
+                    return msg.get_message(msg.MESSAGE_TEXT, 'FIXED', name, field_def.length)
             else:
                 if len(field_value) > field_def.length:
-                    return get_message(MESSAGE_TEXT, 'LENGTH', name, field_def.length)
+                    return msg.get_message(msg.MESSAGE_TEXT, 'LENGTH', name, field_def.length)
                 elif len(field_value) < field_def.min_length:
-                    return get_message(MESSAGE_TEXT, 'MIN_LENGTH', name, field_def.min_length)
-            if field_def.typ == TYP_DECIMAL:
+                    return msg.get_message(msg.MESSAGE_TEXT, 'MIN_LENGTH', name, field_def.min_length)
+            if field_def.typ == decl.TYP_DECIMAL:
                 field_value = field_value.strip()
                 if ',' in field_value:
                     # German format
@@ -1230,8 +1184,8 @@ class BuiltEnterBox(BuiltBox):
                 field_def.widget.insert(0, field_value)
                 if (re_amount.fullmatch(field_value) is None and
                         re_amount_int.fullmatch(field_value) is None):
-                    return get_message(MESSAGE_TEXT, 'DECIMAL', name)
-            if field_def.typ == TYP_DATE:
+                    return msg.get_message(msg.MESSAGE_TEXT, 'DECIMAL', name)
+            if field_def.typ == decl.TYP_DATE:
                 if len(field_value) == 10:
                     date_ = field_value[0:10]
                     try:
@@ -1240,15 +1194,15 @@ class BuiltEnterBox(BuiltBox):
                         year = int(date_.split('-')[0])
                         date_ = date(year, month, day)
                     except (ValueError, EOFError, IndexError):
-                        return get_message(MESSAGE_TEXT, 'DATE', name)
+                        return msg.get_message(msg.MESSAGE_TEXT, 'DATE', name)
                 else:
-                    return get_message(MESSAGE_TEXT, 'DATE', name)
+                    return msg.get_message(msg.MESSAGE_TEXT, 'DATE', name)
             # if combo_list contains extended values e.g. declm.DB_credit_account in class BuitlTableBoxRow Ledger
             combo_values = [
                 field_value for item in field_def.combo_values if item.startswith(field_value)]
-            if (field_def.definition == COMBO and not field_def.combo_insert_value  # means insert not allowed
+            if (field_def.definition == decl.COMBO and not field_def.combo_insert_value  # means insert not allowed
                     and not combo_values):
-                return get_message(MESSAGE_TEXT, 'NOTALLOWED', name, field_def.combo_values)
+                return msg.get_message(msg.MESSAGE_TEXT, 'NOTALLOWED', name, field_def.combo_values)
         return ''
 
     def validation_addon(self, field_def):
@@ -1277,7 +1231,7 @@ class BuiltEnterBox(BuiltBox):
             field_attr = getattr(self._field_defs, event.widget.myId)
             combo_positioning = field_attr.combo_positioning
             definition = field_attr.definition
-            if definition == COMBO and combo_positioning:
+            if definition == decl.COMBO and combo_positioning:
                 field_attr.widget.delete(
                     field_attr.widget.index(INSERT), END)
                 get = field_attr.widget.get()
@@ -1313,8 +1267,8 @@ class BuiltSelectBox(BuiltEnterBox):
     Field_Row = namedtuple(
         'FieldRow', ['name', 'definition', 'length', 'typ', 'comment'])
 
-    def __init__(self, title=MESSAGE_TITLE, header=None, table=None,
-                 button1_text=BUTTON_OK, button2_text=BUTTON_RESTORE,
+    def __init__(self, title=msg.MESSAGE_TITLE, header=None, table=None,
+                 button1_text=decl.BUTTON_OK, button2_text=decl.BUTTON_RESTORE,
                  button3_text=None, button4_text=None,
                  selection_name=None,
                  data_dict={},
@@ -1345,8 +1299,8 @@ class BuiltSelectBox(BuiltEnterBox):
         else:
             scrollable = False
         if self.check_button_exist:
-            button3_text = BUTTON_SELECT_ALL
-            button4_text = BUTTON_DELETE_ALL
+            button3_text = decl.BUTTON_SELECT_ALL
+            button4_text = decl.BUTTON_DELETE_ALL
         super().__init__(title=title, header=header, field_defs=field_defs,
                          button1_text=button1_text, button2_text=button2_text,
                          button3_text=button3_text, button4_text=button4_text,
@@ -1366,35 +1320,35 @@ class BuiltSelectBox(BuiltEnterBox):
 
     def create_check_field(self, name, comment):
 
-        if ((self.table == STATEMENT and name in [declm.DB_iban, declm.DB_entry_date, declm.DB_counter])
+        if ((self.table == declm.STATEMENT and name in [declm.DB_iban, declm.DB_entry_date, declm.DB_counter])
                 or
-                (self.table in [HOLDING, HOLDING_VIEW] and name in [declm.DB_iban, declm.DB_price_date, declm.DB_ISIN])
+                (self.table in [declm.HOLDING, declm.HOLDING_VIEW] and name in [declm.DB_iban, declm.DB_price_date, declm.DB_ISIN])
                 or
-                (self.table in [PRICES, PRICES_ISIN_VIEW] and name in [declm.DB_symbol, declm.DB_price_date])
+                (self.table in [declm.PRICES, declm.PRICES_ISIN_VIEW] and name in [declm.DB_symbol, declm.DB_price_date])
                 or
-                (self.table in [TRANSACTION, TRANSACTION_VIEW] in [declm.DB_iban, declm.DB_ISIN, declm.DB_price_date, declm.DB_counter])
+                (self.table in [declm.TRANSACTION, declm.TRANSACTION_VIEW] in [declm.DB_iban, declm.DB_ISIN, declm.DB_price_date, declm.DB_counter])
                 or
                 name == declm.DB_id_no):
             # Mandatory fields are always selected and cannot be removed from the selection
             self.data_dict[name] = 1
-            field_def = FieldDefinition(definition=CHECK, name=name,
+            field_def = FieldDefinition(definition=decl.CHECK, name=name,
                                         checkbutton_text=comment, protected=True)
         else:
-            field_def = FieldDefinition(definition=CHECK, name=name,
+            field_def = FieldDefinition(definition=decl.CHECK, name=name,
                                         checkbutton_text=comment)
         self.check_button_exist = True
         return field_def
 
     def create_date_field(self, name):
 
-        field_def = FieldDefinition(definition=ENTRY, name=name,
+        field_def = FieldDefinition(definition=decl.ENTRY, name=name,
                                     length=16,
-                                    typ=TYP_DATE)
+                                    typ=decl.TYP_DATE)
         return field_def
 
     def create_combo_field(self, name, length, typ, combo_list):
 
-        field_def = FieldDefinition(definition=COMBO, name=name,
+        field_def = FieldDefinition(definition=decl.COMBO, name=name,
                                     length=length,
                                     typ=typ,
                                     combo_values=combo_list)
@@ -1404,7 +1358,7 @@ class BuiltSelectBox(BuiltEnterBox):
 
     def create_entry_field(self, name, length, typ):
 
-        field_def = FieldDefinition(definition=ENTRY, name=name,
+        field_def = FieldDefinition(definition=decl.ENTRY, name=name,
                                     length=length,
                                     typ=typ,
                                     )
@@ -1431,7 +1385,7 @@ class BuiltSelectBox(BuiltEnterBox):
             if field_def.name in self.data_dict.keys():
                 field_def.default_value = self.data_dict[field_def.name]
             else:
-                if field_def.typ == TYP_DECIMAL:
+                if field_def.typ == decl.TYP_DECIMAL:
                     field_def.default_value = 0
                 else:
                     field_def.default_value = ''
@@ -1452,27 +1406,27 @@ class BuiltSelectBox(BuiltEnterBox):
 
         self.button_state = self._button3_text
         for field_def in self._field_defs:
-            if field_def.definition == CHECK:
+            if field_def.definition == decl.CHECK:
                 getattr(self._field_defs, field_def.name).textvar.set('1')
 
     def button_1_button4(self, event):
 
         self.button_state = self._button3_text
         for field_def in self._field_defs:
-            if field_def.definition == CHECK:
+            if field_def.definition == decl.CHECK:
                 getattr(self._field_defs, field_def.name).textvar.set('0')
 
     def validation_all_addon(self, field_defs):
 
-        if hasattr(field_defs, FN_FROM_DATE) and hasattr(field_defs, FN_TO_DATE):
-            from_date = getattr(field_defs, FN_FROM_DATE).widget.get()
-            to_date = getattr(field_defs, FN_TO_DATE).widget.get()
+        if hasattr(field_defs, decl.FN_FROM_DATE) and hasattr(field_defs, decl.FN_TO_DATE):
+            from_date = getattr(field_defs, decl.FN_FROM_DATE).widget.get()
+            to_date = getattr(field_defs, decl.FN_TO_DATE).widget.get()
             if (from_date > to_date):
                 self.footer.set(
-                    get_message(
-                        MESSAGE_TEXT, 'DATE', getattr(field_defs, FN_FROM_DATE).name)
+                    msg.get_message(
+                        msg.MESSAGE_TEXT, 'DATE', getattr(field_defs, decl.FN_FROM_DATE).name)
                     )
-                getattr(self._field_defs, FN_TO_DATE).textvar.set(
+                getattr(self._field_defs, decl.FN_TO_DATE).textvar.set(
                     from_date)  # adjusted date returned
 
 
@@ -1498,8 +1452,8 @@ class BuiltTableRowBox(BuiltEnterBox):
     def __init__(self, table, table_view, data_row_dict,
                  combo_dict={}, combo_positioning_dict={}, combo_insert_value=[],
                  protected=[], mandatory=[], focus_in=[], focus_out=[], upper=[],
-                 title=MESSAGE_TITLE, header=None,
-                 button1_text=BUTTON_SAVE, button2_text=BUTTON_RESTORE,
+                 title=msg.MESSAGE_TITLE, header=None,
+                 button1_text=decl.BUTTON_SAVE, button2_text=decl.BUTTON_RESTORE,
                  button3_text=None, button4_text=None):
 
         self.title = title
@@ -1519,7 +1473,7 @@ class BuiltTableRowBox(BuiltEnterBox):
             self.field_name_list = table_view
         else:
             self.repo = Repository()
-            self.field_name_list = TABLE_FIELDS[table_view]
+            self.field_name_list = declm.TABLE_FIELDS[table_view]
 
         # create form field definitions
         field_defs = self.create_field_defs()
@@ -1538,11 +1492,11 @@ class BuiltTableRowBox(BuiltEnterBox):
         """
         check_fields = []
         if isinstance(self.table_view, list):
-            fields_properties = TABLE_FIELDS_PROPERTIES[self.table]
+            fields_properties = declm.TABLE_FIELDS_PROPERTIES[self.table]
         else:
-            fields_properties = TABLE_FIELDS_PROPERTIES[self.table_view]
+            fields_properties = declm.TABLE_FIELDS_PROPERTIES[self.table_view]
         for column in fields_properties.keys():
-            if fields_properties[column].data_type == TINYINT:
+            if fields_properties[column].data_type == declm.TINYINT:
                 check_fields.append(column)
         field_defs = []
         for field_name in self.field_name_list:
@@ -1552,35 +1506,35 @@ class BuiltTableRowBox(BuiltEnterBox):
                 combo_insert_value = False
             # create field_defs
             if field_name in check_fields:
-                field_def = FieldDefinition(definition=CHECK, name=field_name,
+                field_def = FieldDefinition(definition=decl.CHECK, name=field_name,
                                             checkbutton_text=fields_properties[field_name].comment)
             elif field_name in self.combo_dict.keys():
                 # combo field without positioning, new items allowed if fieldname in self.combo_insert_value
-                field_def = FieldDefinition(definition=COMBO, name=field_name,
+                field_def = FieldDefinition(definition=decl.COMBO, name=field_name,
                                             length=fields_properties[field_name].length,
                                             typ=fields_properties[field_name].typ,
                                             combo_insert_value=combo_insert_value,
                                             combo_positioning=False,
                                             combo_values=self.combo_dict[field_name])
                 if fields_properties[field_name].data_type == 'char':
-                    field_def.lformat = FORMAT_FIXED
+                    field_def.lformat = decl.FORMAT_FIXED
             elif field_name in self.combo_positioning_dict.keys():
                 # combo field with positioning, new items allowed if fieldname in self.combo_insert_value
-                field_def = FieldDefinition(definition=COMBO, name=field_name,
+                field_def = FieldDefinition(definition=decl.COMBO, name=field_name,
                                             length=fields_properties[field_name].length,
                                             typ=fields_properties[field_name].typ,
                                             combo_insert_value=combo_insert_value,
                                             combo_positioning=True,
                                             combo_values=self.combo_positioning_dict[field_name])
                 if fields_properties[field_name].data_type == 'char':
-                    field_def.lformat = FORMAT_FIXED
+                    field_def.lformat = decl.FORMAT_FIXED
             else:
-                field_def = FieldDefinition(definition=ENTRY, name=field_name,
+                field_def = FieldDefinition(definition=decl.ENTRY, name=field_name,
                                             length=fields_properties[field_name].length,
                                             typ=fields_properties[field_name].typ,
                                             )
                 if fields_properties[field_name].data_type == 'char':
-                    field_def.lformat = FORMAT_FIXED
+                    field_def.lformat = decl.FORMAT_FIXED
             if field_name in self.protected:
                 field_def.protected = True
             if field_name not in self.mandatory:
@@ -1594,7 +1548,7 @@ class BuiltTableRowBox(BuiltEnterBox):
             if field_name in self.data_row_dict:
                 field_def.default_value = self.data_row_dict[field_name]
             else:
-                if fields_properties[field_name].typ == TYP_DECIMAL:
+                if fields_properties[field_name].typ == decl.TYP_DECIMAL:
                     field_def.default_value = 0
                 else:
                     field_def.default_value = ''
@@ -1618,16 +1572,16 @@ class BuiltText(object):
         text                String of Text Lines
     """
 
-    def __init__(self, title=MESSAGE_TITLE, header='', text='', fullscreen=False):
+    def __init__(self, title=msg.MESSAGE_TITLE, header='', text=''):
 
         self.window_id = self.__class__.__name__
-        if is_main_thread():
-            if header == Informations.PRICES_INFORMATIONS:
-                Informations.prices_informations = ''
-            elif header == Informations.BANKDATA_INFORMATIONS:
-                Informations.bankdata_informations = ''
-            elif header == Informations.HOLDING_INFORMATIONS:
-                Informations.holding_informations = ''
+        if msg.is_main_thread():
+            if header == msg.Informations.PRICES_INFORMATIONS:
+                msg.Informations.prices_informations = ''
+            elif header == msg.Informations.BANKDATA_INFORMATIONS:
+                msg.Informations.bankdata_informations = ''
+            elif header == msg.Informations.HOLDING_INFORMATIONS:
+                msg.Informations.holding_informations = ''
             header = ''
             self._builttext_window = Toplevel()
             self._builttext_window.title(title)
@@ -1637,8 +1591,8 @@ class BuiltText(object):
                 return
             # --------------------------------------------------------------
             height = len(list(enumerate(text.splitlines()))) + 5
-            if height > HEIGHT_TEXT:
-                height = HEIGHT_TEXT
+            if height > decl.HEIGHT_TEXT:
+                height = decl.HEIGHT_TEXT
             self.text_widget = Text(
                 self._builttext_window, font=('Courier', 8), wrap='none')
             self.text_widget.grid(sticky=W)
@@ -1660,19 +1614,19 @@ class BuiltText(object):
                 self.text_widget.insert(END, textline + '\n')
                 self.set_tags(textline, line)
             self.text_widget.configure(
-                height=HEIGHT_TEXT, width=line_length+10)
+                height=decl.HEIGHT_TEXT, width=line_length+10)
             # self.text_widget.config(state=DISABLED)
             # --------------------------------------------------------------
             self._builttext_window.protocol(
-                WM_DELETE_WINDOW, self._wm_deletion_window)
+                decl.WM_DELETE_WINDOW, self._wm_deletion_window)
             self._builttext_window.lift
             self._builttext_window.mainloop()
             destroy_widget(self._builttext_window)
         else:
-            MessageBoxInfo(
+            msg.MessageBoxInfo(
                 title=title,
-                message=get_message(
-                    MESSAGE_TEXT, 'THREAD', self.window_id
+                message=msg.get_message(
+                    msg.MESSAGE_TEXT, 'THREAD', self.window_id
                     )
                 )
 
@@ -1709,7 +1663,7 @@ class BuiltPandasBox(Frame):
         dataframe_sum       total sum column_names
         name                Name of Data Rows of PandasTable (e.g. Pandas.>column<)
         message             shown in header of pandastable
-        root                >root=self< Caller must define new_row(), cHange_row(), delete_row() methods
+        root                >root=self< Caller must define new_row(), change_row(), delete_row() methods
         mode                EDIT_ROW:    banking left_side menu(edit rows),
                                          standard column menu.
                                          no right side toolbar,
@@ -1739,7 +1693,7 @@ class BuiltPandasBox(Frame):
         instant_plotting    True:        Shows instant plotting of table of the whole dataframe
         cellwidth_resizeable     True:    F1-, F2, F3 keys change cellwidth (standard)
     """
-    RIGHT = ['int', 'smallint', 'decimal', 'bigint', TYP_DECIMAL]
+    RIGHT = ['int', 'smallint', 'decimal', 'bigint', decl.TYP_DECIMAL]
     COLUMN_CURRENCY = {declm.DB_amount: declm.DB_amount_currency,
                        declm.DB_closing_balance: declm.DB_closing_currency,
                        declm.DB_opening_balance: declm.DB_opening_currency,
@@ -1756,9 +1710,9 @@ class BuiltPandasBox(Frame):
     re_decimal = re.compile(r'(?<![.,])[-]{0,1}\d+[,.]{0,1}\d*')
     re_negative = re.compile('-')
 
-    def __init__(self, title='MESSAGE_TITLE', root=None,
-                 dataframe=None, dataframe_sum=[], dataframe_typ=TYP_ALPHANUMERIC,
-                 message=None, mode=NO_CURRENCY_SIGN, instant_plotting=False,
+    def __init__(self, title=msg.MESSAGE_TITLE, root=None,
+                 dataframe=None, dataframe_sum=[], dataframe_typ=decl.TYP_ALPHANUMERIC,
+                 message=None, mode=decl.NO_CURRENCY_SIGN, instant_plotting=False,
                  cellwidth_resizeable=True, selected_row=0
                  ):
 
@@ -1772,7 +1726,7 @@ class BuiltPandasBox(Frame):
         # because Pandastable saves changes in the passed original
         # e.g. added summary rows would be added to the DataFrame with each run
         # Only the NUMERIC mode switches between decimals with or without currency symbols
-        if isinstance(dataframe, DataFrame) and mode == NUMERIC:
+        if isinstance(dataframe, DataFrame) and mode == decl.NUMERIC:
             self.dataframe = dataframe.copy(deep=True)
         else:
             self.dataframe = dataframe
@@ -1801,7 +1755,7 @@ class BuiltPandasBox(Frame):
             if not isinstance(self.dataframe, DataFrame):
                 quit_widget(self.dataframe_window)
                 return
-            if mode == EDIT_ROW:
+            if mode == decl.EDIT_ROW:
                 self.pandas_table = TableRowEdit(
                     title=self.title, root=self, parent=self.frame_widget, dataframe=self.dataframe)
             else:
@@ -1835,7 +1789,7 @@ class BuiltPandasBox(Frame):
                 self.pandas_table.rowheader.bind('<Configure>', self._on_scroll)
             # --------------------------------------------------------------
             self.dataframe_window.protocol(
-                WM_DELETE_WINDOW, self._wm_deletion_window)
+                decl.WM_DELETE_WINDOW, self._wm_deletion_window)
             self.dataframe_window.mainloop()
         destroy_widget(self.dataframe_window)
 
@@ -1969,7 +1923,7 @@ class BuiltPandasBox(Frame):
         screenheight = self.dataframe_window.winfo_screenheight()
         if height > screenheight:
             height = screenheight - 150
-        if self.mode == NUMERIC and ToolbarSwitch.toolbar_switch:
+        if self.mode == decl.NUMERIC and decl.ToolbarSwitch.toolbar_switch:
             if height < 300:
                 height = 300
         return height
@@ -1977,7 +1931,7 @@ class BuiltPandasBox(Frame):
     def _wm_deletion_window(self):
 
         self._geometry_put(self.dataframe_window)
-        self.button_state = WM_DELETE_WINDOW
+        self.button_state = decl.WM_DELETE_WINDOW
         self.quit_widget()
 
     def quit_widget(self):
@@ -2032,9 +1986,9 @@ class BuiltPandasBox(Frame):
                     self.dataframe[column]).sum()
                 sum_row[column] = dec2.convert(sum_row[column])
         if sum_row != {}:
-            sum_row[declm.DB_price_currency] = EURO
-            sum_row[declm.DB_amount_currency] = EURO
-            sum_row[declm.DB_currency] = EURO
+            sum_row[declm.DB_price_currency] = decl.EURO
+            sum_row[declm.DB_amount_currency] = decl.EURO
+            sum_row[declm.DB_currency] = decl.EURO
             self.dataframe.loc[len(self.dataframe.index)] = sum_row
 
     def processing(self):
@@ -2083,51 +2037,51 @@ class BuiltPandasBox(Frame):
             if isinstance(dataframe_column, tuple):  # multi level column_name
                 column = dataframe_column[0]
             # create format tuple of pandastable column
-            if (column in FN_COLUMNS_EURO):
+            if (column in decl.FN_COLUMNS_EURO):
                 align = E
-                currency = EURO
+                currency = decl.EURO
                 places = 2
-                color = COLOR_NEGATIVE
-                typ = TYP_DECIMAL
-            elif (column in FN_COLUMNS_PERCENT):
+                color = decl.COLOR_NEGATIVE
+                typ = decl.TYP_DECIMAL
+            elif (column in decl.FN_COLUMNS_PERCENT):
                 align = E
                 currency = '%'
                 places = 2
-                color = COLOR_NEGATIVE
-                typ = TYP_DECIMAL
-            elif column in DATABASE_FIELDS_PROPERTIES:
-                _, places, typ,  _, _ = DATABASE_FIELDS_PROPERTIES[column]
+                color = decl.COLOR_NEGATIVE
+                typ = decl.TYP_DECIMAL
+            elif column in declm.DATABASE_FIELDS_PROPERTIES:
+                _, places, typ,  _, _ = declm.DATABASE_FIELDS_PROPERTIES[column]
                 if typ in BuiltPandasBox.RIGHT:
                     align = E
                 else:
                     align = W
                 if column in BuiltPandasBox.COLUMN_CURRENCY:
                     if column_levels:
-                        currency = EURO
+                        currency = decl.EURO
                     else:
                         currency = BuiltPandasBox.COLUMN_CURRENCY[column]
-                    color = COLOR_NEGATIVE
+                    color = decl.COLOR_NEGATIVE
                 else:
                     currency = ''
                     color = ''
-                if typ == DATABASE_TYP_DECIMAL:
-                    typ = TYP_DECIMAL
-            elif self.dataframe_typ == TYP_DECIMAL:
+                if typ == declm.DATABASE_TYP_DECIMAL:
+                    typ = decl.TYP_DECIMAL
+            elif self.dataframe_typ == decl.TYP_DECIMAL:
                 align = E
-                currency = EURO
+                currency = decl.EURO
                 places = 2
-                color = COLOR_NEGATIVE
-                typ = TYP_DECIMAL
+                color = decl.COLOR_NEGATIVE
+                typ = decl.TYP_DECIMAL
             else:
                 align = W
                 currency = ''
                 places = ''
                 color = ''
-                typ = TYP_ALPHANUMERIC
+                typ = decl.TYP_ALPHANUMERIC
             # format dataframe column
             column = dataframe_column  # in case of multi-level column name
             self.color_columns(column)
-            if typ == TYP_DECIMAL:
+            if typ == decl.TYP_DECIMAL:
                 if color:
                     self.dataframe[column]
                     self.dataframe[column] = self.dataframe[column].apply(
@@ -2136,7 +2090,7 @@ class BuiltPandasBox(Frame):
                         self.dataframe[column], errors='coerce')
                     self.pandas_table.setColorByMask(
                         column, self.dataframe[column] < 0, color)
-                if self.mode == NUMERIC and ToolbarSwitch.toolbar_switch or self.mode in [NO_CURRENCY_SIGN, EDIT_ROW]:
+                if self.mode == decl.NUMERIC and decl.ToolbarSwitch.toolbar_switch or self.mode in [decl.NO_CURRENCY_SIGN, decl.EDIT_ROW]:
                     if places:
                         self.dataframe[column] = self.dataframe[column].apply(
                             lambda x: x if isinstance(x, str) else dec2.convert(x))
@@ -2145,7 +2099,7 @@ class BuiltPandasBox(Frame):
                     if currency in self.dataframe.columns.tolist():
                         self.dataframe[column] = self.dataframe[[column, currency]].apply(
                             lambda x: Amount(*x, places), axis=1)
-                    elif currency in [EURO, '%']:
+                    elif currency in [decl.EURO, '%']:
                         if places:
                             self.dataframe[column] = self.dataframe[column].apply(
                                 lambda x: Amount(x, currency, places))
@@ -2200,17 +2154,17 @@ class BuiltPandasBox(Frame):
         if sheet_name is None:
             sheet_name = self.title
         for column in self.dataframe.columns:
-            if column in DATABASE_FIELDS_PROPERTIES.keys() and DATABASE_FIELDS_PROPERTIES[column].typ == TYP_DECIMAL:
+            if column in declm.DATABASE_FIELDS_PROPERTIES.keys() and declm.DATABASE_FIELDS_PROPERTIES[column].typ == decl.TYP_DECIMAL:
                 self.dataframe[column] = to_numeric(
                     self.dataframe[column], errors='ignore')
         file_dialogue = FileDialogue(title=self.title, create_file=True)
         filename = file_dialogue.filename.removesuffix('.xlsx')
         with ExcelWriter(filename + ".xlsx", mode='w') as writer:
             self.dataframe.to_excel(writer, sheet_name=sheet_name[:30])
-        MessageBoxInfo(
+        msg.MessageBoxInfo(
             title=self.title,
-            message=get_message(
-                MESSAGE_TEXT, 'EXCEL', file_dialogue.filename
+            message=msg.get_message(
+                msg.MESSAGE_TEXT, 'EXCEL', file_dialogue.filename
                 )
             )
 

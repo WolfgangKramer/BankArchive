@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-05-02"
+__updated__ = "2026-05-19"
 @author: Wolfgang Kramer
 """
 
@@ -15,7 +15,7 @@ import banking.message_handler as msg
 
 from banking.repository import Repository
 
-from banking.dialog import Dialogs
+from banking.fints_dialog import Dialogs
 from banking.forms import InputPIN
 from banking.utils import application_store, http_error_code
 

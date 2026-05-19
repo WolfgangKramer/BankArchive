@@ -575,11 +575,6 @@ class HoldingRepository(BaseRepository):
             return result[0]
         return result
 
-    def get_holding_to_update_acquisition_amount(self, iban, isin_code, price_date):
-
-        result = self._select_holding_data(iban=iban, price_date=price_date)
-        return result
-
     def get_holding_of_iban_date(self, iban, price_date):
 
         result = self._select_holding_data(iban=iban, price_date=price_date)

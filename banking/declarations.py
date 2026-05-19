@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2026-05-17"
+__updated__ = "2026-05-19"
 @author: Wolfgang Kramer
 """
 
@@ -10,10 +10,8 @@ from _datetime import date
 from collections import namedtuple
 from dataclasses import dataclass, field
 from decimal import Decimal
-from banking.declarations_mariadb import (
-    DB_entry_date, DB_closing_status, DB_closing_balance, DB_closing_currency,
-    DB_opening_status, DB_opening_balance, DB_opening_currency,
-)
+
+import banking.declarations_mariadb as declm
 
 """
 ------------------------- Globals ---------------------------------------------------
@@ -375,23 +373,9 @@ FORMAT_FIXED = 'F'
 FORMAT_VARIABLE = 'V'
 TYP_ALPHANUMERIC = 'X'
 TYP_DECIMAL = 'D'
-
 TYP_DATE = 'DAT'
 
-# package pandastable: standard values  (see class table self.font and self.fontsize
-ROOT_WINDOW_POSITION = '+100+100'
-BUILTBOX_WINDOW_POSITION = '+200+200'
-BUILTPANDASBOX_WINDOW_POSITION = '+1+1'
-BUILTEXT_WINDOW_POSITION = '+400+0'
-WIDTH_WIDGET = 70
-WIDTH_CANVAS = 700
-HEIGHT_CANVAS = 800
-PANDAS_NAME_SHOW = 'SHOW'
-PANDAS_NAME_ROW = 'ROW'
-
 LIGHTBLUE = 'LIGHTBLUE'
-UNDEFINED = 'UNDEFINED'
-FONTSIZE = 8
 MAX_FIELD_LENGTH = 65
 
 """
@@ -406,7 +390,6 @@ HEADER = 'HEADER'
 INFORMATION = 'INFORMATION '
 WARNING = 'WARNING     '
 ERROR = 'ERROR       '
-LIGHTBLUE = 'LIGHTBLUE'
 SHOW_MESSAGE = [INFORMATION, WARNING, ERROR]
 FN_ACCOUNT_NAME = 'ACCOUNT_NAME'
 FN_ACCOUNT_NUMBER = 'ACCOUNT_NUMBER_'
@@ -504,9 +487,9 @@ SCRAPER_BANKDATA = {BMW_BANK_CODE: [
 ----------------------------- Named Tuples ------------
 """
 Balance = namedtuple(
-    'Balance', ' '.join([KEY_ACC_BANK_CODE, KEY_ACC_ACCOUNT_NUMBER, KEY_ACC_PRODUCT_NAME, DB_entry_date.upper(),
-                         DB_closing_status, DB_closing_balance, DB_closing_currency,
-                         DB_opening_status, DB_opening_balance, DB_opening_currency]))
+    'Balance', ' '.join([KEY_ACC_BANK_CODE, KEY_ACC_ACCOUNT_NUMBER, KEY_ACC_PRODUCT_NAME, declm.DB_entry_date.upper(),
+                         declm.DB_closing_status, declm.DB_closing_balance, declm.DB_closing_currency,
+                         declm.DB_opening_status, declm.DB_opening_balance, declm.DB_opening_currency]))
 """
 ----------------------------- DataClasses ------------
 """

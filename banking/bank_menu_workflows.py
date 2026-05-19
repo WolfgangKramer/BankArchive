@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-05-17"
+__updated__ = "2026-05-19"
 Author: Wolfang Kramer
 """
 import requests
@@ -297,7 +297,7 @@ class DownloadWorkFlow(BaseWorkflow):
                 msg.get_message(msg.MESSAGE_TEXT, 'DOWNLOAD_DONE', bank.bank_name, 10 * '!'))
 
     @_wrapper(before="_delete_footer", after="_show_informations")
-    def import_prices(self, isin_code=None):
+    def import_prices(self):
 
         title = ' '.join([get_menu_text("Download"), get_menu_text("Prices")])
         names = self.repo.isin_names_with_ticker()
@@ -898,7 +898,7 @@ class DatabaseWorkFlow(BaseWorkflow):
                     self.repo.insert_holding(holding_dict)
 
                     msg.holding_informations_append(
-                        msg.INFORMATION,
+                        decl.INFORMATION,
                         ' '.join(
                             ['\n',
                              bank_name,
@@ -931,7 +931,7 @@ class DatabaseWorkFlow(BaseWorkflow):
                 if not result:
                     origin_symbol = self.repo.select_isin_scalar(declm.DB_origin_symbol, isin_code=holding_dict[declm.DB_ISIN])
                     msg.holding_informations_append(
-                        msg.WARNING,
+                        decl.WARNING,
                         msg.get_message(
                             msg.MESSAGE_TEXT, 'PRICES_NO',
                             ' '.join(
@@ -968,7 +968,7 @@ class DatabaseWorkFlow(BaseWorkflow):
                 field_dict[declm.DB_market_price], holding_dict[declm.DB_pieces])
             field_dict[declm.DB_origin] =decl.ORIGIN_PRICES
             self.repo.update_holding(iban, holding_dict[declm.DB_price_date], holding_dict[declm.DB_ISIN], field_dict)
-            msg.holding_informations_append(msg.INFORMATION, ' '.join(['\n', bank_name, declm.DB_ISIN.upper(), holding_dict[declm.DB_ISIN], holding_dict[declm.DB_name], '\n          ',
+            msg.holding_informations_append(decl.INFORMATION, ' '.join(['\n', bank_name, declm.DB_ISIN.upper(), holding_dict[declm.DB_ISIN], holding_dict[declm.DB_name], '\n          ',
                                                                declm.DB_price_date.upper(), date_days.convert_to_str(holding_dict[declm.DB_price_date]), '\n']))
             return True
         return False
@@ -1112,7 +1112,7 @@ class DatabaseWorkFlow(BaseWorkflow):
             else:
                 msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', ', '.join(selected_isins), ''))
     @_wrapper(before="_delete_footer", after="_show_informations")
-    def import_transaction(self, bank_name, iban):
+    def import_transaction(self, iban):
         """
         import transactions from CSV_File.
         CSV File Columns ((price_date, ISIN, name, pieces, transaction_type, price)

@@ -1,6 +1,6 @@
 '''
 Created on 02.01.2026
-__updated__ = "2026-05-17"
+__updated__ = "2026-05-18"
 @author: Wolfgang Kramer
 '''
 from tkinter import (
@@ -12,8 +12,8 @@ from mariadb import connect, Error
 
 import banking.declarations as decl
 import banking.declarations_mariadb as declm
+import banking.message_handler as msg
 
-from banking.message_handler import  get_message, MESSAGE_TITLE, MESSAGE_TEXT
 from banking.connect_data import ConnectionResult, connectionresult
 
 class ConnectController:
@@ -24,7 +24,7 @@ class ConnectController:
 
 class ConnectView:
 
-    def __init__(self, title=MESSAGE_TITLE):
+    def __init__(self, title=msg.MESSAGE_TITLE):
 
         self.directory = ""
         self.logging = False
@@ -42,7 +42,7 @@ class ConnectView:
             self.bg_photo = ImageTk.PhotoImage(file="background.gif")
             self.canvas.create_image(0, 0, image=self.bg_photo, anchor="nw")
         except Exception as e:
-            print(get_message(MESSAGE_TEXT, "CONNECT_IMAGE_ERROR", e))
+            print(msg.get_message(msg.MESSAGE_TEXT, "CONNECT_IMAGE_ERROR", e))
 
         self._build_ui()
 
@@ -165,7 +165,7 @@ class ConnectView:
     def _connect_to_db(self):
         connectionresult.database = self.db_combo.get()
 
-        self.footer.set(get_message(MESSAGE_TEXT, "CONNECT_MARIADB", connectionresult.database))
+        self.footer.set(msg.get_message(msg.MESSAGE_TEXT, "CONNECT_MARIADB", connectionresult.database))
         connectionresult.connected = True
 
         self.window.destroy()

@@ -1,6 +1,6 @@
 """0
 Created on 09.12.2019
-__updated__ = "2026-05-17"
+__updated__ = "2026-05-19"
 Author: Wolfang Kramer
 """
 import sys
@@ -67,7 +67,7 @@ class BankMenu:
                 'Arial', 20, 'bold'), text=msg.get_message(msg.MESSAGE_TEXT, 'DATABASE', self.repo.get_database_name()))
             self._def_styles()
            
-            self.men.create_menu(connectionresult.database, self.window)
+            self.men.create_menu(self.window)
             self.window.config(menu=self.men.menu, borderwidth=10, relief=GROOVE)
             self.message_widget = Label(self.window,
                                         textvariable=self.footer, foreground='RED', justify='center')
@@ -159,7 +159,7 @@ class Menue:
                 self.wm_deletion_window()
         return wrapper
 
-    def create_menu(self, MariaDBname, window):
+    def create_menu(self, window):
 
         menu_font = font.Font(family='Arial', size=11)
         self.menu = Menu(window)
@@ -174,7 +174,7 @@ class Menue:
         if application_store.get(None):  # application customizing is done
             self._create_menu_database(
                 self.menu, menu_font, self.bank_owner_account)
-        self._create_menu_customizing(self.menu, menu_font, MariaDBname)
+        self._create_menu_customizing(self.menu, menu_font)
 
     def _create_menu_ledger(self, menu, menu_font):
         """
@@ -322,7 +322,7 @@ class Menue:
                 label=get_menu_text("Prices ISINs") + '%',
                 command=(lambda x=decl.PERCENT: self.w_db.data_prices(x)))
 
-    def _create_menu_customizing(self, menu, menu_font, MariaDBname):
+    def _create_menu_customizing(self, menu, menu_font):
         """
         CUSTOMIZE Menu
         """
@@ -394,7 +394,7 @@ class Menue:
             if menu_text == get_menu_text("Show"):
                 return self._create_menu_show_accounts(accounts, parent_menu, bank_code, bank_name, owner_name)
             elif menu_text == get_menu_text("Database"):
-                return self._create_menu_database_accounts(accounts, parent_menu, bank_name, menu_font)
+                return self._create_menu_database_accounts(accounts, parent_menu, bank_name)
             return False
     
         for bank_code, bank_name in self.bank_names.items():
@@ -483,7 +483,7 @@ class Menue:
     
         return True
 
-    def _create_menu_database_accounts(self, accounts, account_menu, bank_name, menu_font):
+    def _create_menu_database_accounts(self, accounts, account_menu, bank_name):
 
         accounts_exist = False
         if accounts:
@@ -542,8 +542,7 @@ class Menue:
                     account_menu.add_separator()
                     account_menu.add_command(
                         label=get_menu_text("Import Transactions"),
-                        command=(lambda x=bank_name,
-                                 y=acc[decl.KEY_ACC_IBAN]: self.w_db.import_transaction(x, y)))
+                        command=(lambda y=acc[decl.KEY_ACC_IBAN]: self.w_db.import_transaction(y)))
                     account_menu.add_command(
                         label=get_menu_text("Check Transactions Pieces"),
                         command=(lambda x=bank_name,
