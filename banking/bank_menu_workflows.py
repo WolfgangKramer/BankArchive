@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-05-19"
+__updated__ = "2026-05-20"
 Author: Wolfang Kramer
 """
 import requests
@@ -131,11 +131,12 @@ class BaseWorkflow:
             acc[decl.KEY_ACC_PRODUCT_NAME] = account_product_name
             acc[decl.KEY_ACC_ALLOWED_TRANSACTIONS] = ['HKKAZ']
             accounts.append(acc)
-        data = [(decl.KEY_ACCOUNTS, accounts),
-                (decl.KEY_STORAGE_PERIOD, bank.storage_period),
-                (decl.KEY_MIN_PIN_LENGTH, 6),
-                (decl.KEY_MAX_PIN_LENGTH, 16)]
-        self.repo.shelve_put_key(bank_code, data)
+        if get_accounts:    
+            data = [(decl.KEY_ACCOUNTS, accounts),
+                    (decl.KEY_STORAGE_PERIOD, bank.storage_period),
+                    (decl.KEY_MIN_PIN_LENGTH, 6),
+                    (decl.KEY_MAX_PIN_LENGTH, 16)]
+            self.repo.shelve_put_key(bank_code, data)
 
     def _bank_name(self, bank_code):
 
@@ -1143,17 +1144,17 @@ class DatabaseWorkFlow(BaseWorkflow):
         title = ' '.join([bank_name, get_menu_text("Check Transactions Pieces")])
         data_dict = {}
         while True:
-            input_period = InputPeriod(title=title, data_dict=data_dict)
-            if input_period.button_state == decl.WM_DELETE_WINDOW:
+            input_date = InputDate(title=title)
+            if input_date.button_state == decl.WM_DELETE_WINDOW:
                 return
-            data_dict = input_period.field_dict
+            data_dict = input_date.field_dict
             result = self.repo.check_pieces_consistency_for_iban(
-                iban, data_dict[decl.FN_FROM_DATE], data_dict[decl.FN_TO_DATE])
+                iban, data_dict[decl.FN_DATE])
             if result:
                 title_period = ' '.join(
-                    [title, msg.get_message(msg.MESSAGE_TEXT, 'PERIOD', data_dict[decl.FN_FROM_DATE], data_dict[decl.FN_TO_DATE])])
+                    [title, msg.get_message(msg.MESSAGE_TEXT, 'PERIOD', decl.START_DATE_TRANSACTIONS, data_dict[decl.FN_DATE])])
                 table = PandasBoxPiecesConsistency(
-                    dataframe=result, title=title_period, cellwidth_resizeable=False)
+                    dataframe=result, title=title_period, cellwidth_resizeable=False, mode=decl.EDIT_ROW)
                 if table.button_state == decl.WM_DELETE_WINDOW:
                     break
             else:

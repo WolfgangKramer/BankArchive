@@ -2883,7 +2883,7 @@ class TransactionRepository(BaseRepository):
             order=[("price_date", "ASC"), ("counter", "ASC")]
         )
 
-    def check_pieces_consistency_for_iban(self, iban, start_date, end_date):
+    def check_pieces_consistency_for_iban(self, iban, holding_date):
         """
         For a specific IBAN within a given period, checks
         whether the accumulated pieces from TRANSACTION table
@@ -2897,7 +2897,6 @@ class TransactionRepository(BaseRepository):
                 h.iban,
                 h.name,
                 h.isin_code,
-                h.price_date,
                 h.pieces AS holding_pieces,
 
                 COALESCE((
@@ -2930,11 +2929,11 @@ class TransactionRepository(BaseRepository):
 
             FROM holding_view h
             WHERE h.iban = %s
-              AND h.price_date BETWEEN %s AND %s
+              AND h.price_date = %s
             HAVING difference != 0
             ORDER BY h.isin_code, h.price_date
         """
-        return self.db.execute(sql, (iban, start_date, end_date), result_dict=True)
+        return self.db.execute(sql, (iban, holding_date), result_dict=True)
 
     def get_transactions_of_iban_isin_code(self, iban, isin_code, period):
 

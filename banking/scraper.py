@@ -376,14 +376,14 @@ class BmwBank(object):
         get account data for all accounts (list of tuples):
             account_product_name, account_owner_name, iban, account_number
         """
+        accounts = []
         if not self.credentials():
-            return []
+            return accounts
         # find down arrow to view account details
         locator = "//a[contains(@class, 'accordion-container__header collapsed')]"
         self.wait.until(EC.presence_of_element_located((By.XPATH, locator)))
         result = self.driver.find_elements(By.XPATH, locator)
         if result:
-            accounts = []
             for item in result:
                 item.click()  # open account_details display
                 class_text_list = item.text.split("\n")

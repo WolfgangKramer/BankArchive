@@ -3179,8 +3179,23 @@ class PandasBoxPiecesConsistency(BuiltPandasBox):
         self.dataframe = DataFrame(self.dataframe)
         cols_to_check = [declm.DB_ISIN, "holding_pieces", "transaction_cum_pieces"]
         self.dataframe = self.dataframe.loc[~self.dataframe[cols_to_check].eq(self.dataframe[cols_to_check].shift()).all(axis=1)]
-        self.dataframe = self.dataframe.sort_values(by=declm.DB_price_date)
+        #self.dataframe = self.dataframe.sort_values(by=declm.DB_price_date)
 
+    def show_row(self):
+
+        row_dict = self.get_selected_row()
+        iban = row_dict[declm.DB_iban]
+        isin_code = row_dict[declm.DB_ISIN]
+        name = row_dict[declm.DB_name]
+        period = (decl.START_DATE_TRANSACTIONS, date_days.today())
+        message = msg.get_message(msg.MESSAGE_TEXT, 'HELP_PANDASTABLE')
+        while True:
+            data = self.repo.get_transactions_of_iban_isin_code(iban, isin_code, period)
+            transaction_table = PandasBoxTransactionTable(
+                self.title, data, message, iban, isin_code, name, mode=decl.EDIT_ROW)
+            message = transaction_table.message
+            if transaction_table.button_state == decl.WM_DELETE_WINDOW:
+                break
 
 class TechnicalIndicator(InputISIN):
     """
