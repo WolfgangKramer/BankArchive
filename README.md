@@ -385,7 +385,7 @@ GUI, business logic, bank dialogue, services, repository, MariaDB database are s
 
 - GUI: `bank_menu_ui.py`
 - Business Logic: `bank_menu_workflows.py`
-- Bank dialogue: `dialog.py`
-- Services: `services.py`
+- Bank dialogue: `fints_xxxxxx.py`
+- Services: `services_xxxxx.py`
 - Repository: `repository.py`
 - MariaDB database: `mariadb.py`
