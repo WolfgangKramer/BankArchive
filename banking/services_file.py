@@ -14,7 +14,6 @@ from fpdf import FPDF
 
 class FileService:
 
-
     @staticmethod
     def spreadsheet_zip_to_csv(
         zip_file: str,
@@ -28,87 +27,68 @@ class FileService:
         """
         Extract a spreadsheet from a ZIP archive
         and convert it to CSV.
-    
         Supported spreadsheet formats
         -----------------------------
         - .xlsx
         - .xls
         - .ods
-    
         Parameters
         ----------
         zip_file : str
             Path to the ZIP archive.
-    
         target_file : str, optional
             Output CSV filename.
             If omitted, the filename is generated automatically.
-    
         sheet_name : str | int, optional
             Worksheet name or index.
             Default is first sheet.
-    
         separator : str, optional
             CSV field separator.
             Default is ','.
-    
         encoding : str, optional
             CSV encoding.
             Default is 'utf-8'.
-    
         index : bool, optional
             Export DataFrame index.
             Default is False.
-    
         Returns
         -------
         str
             Path to the generated CSV file.
-    
         Raises
         ------
         FileNotFoundError
             If no spreadsheet file exists in the ZIP archive.
         """
-    
         supported_extensions = {
             ".xlsx",
             ".xls",
             ".ods",
         }
-    
         with tempfile.TemporaryDirectory() as temp_dir:
-    
             # Extract ZIP archive
             with zipfile.ZipFile(zip_file, "r") as archive:
                 archive.extractall(temp_dir)
-    
             # Search for spreadsheet file
             spreadsheet_file = None
-    
             for path in Path(temp_dir).rglob("*"):
-    
                 if path.suffix.lower() in supported_extensions:
                     spreadsheet_file = path
                     break
-    
             if spreadsheet_file is None:
                 raise FileNotFoundError(
                     "No spreadsheet file found in ZIP archive."
                 )
-    
             # Generate target filename
             if target_file is None:
                 target_file = (
                     Path(zip_file).with_suffix(".csv")
                 )
-    
             # Read spreadsheet
             dataframe = read_excel(
                 spreadsheet_file,
                 sheet_name=sheet_name,
             )
-    
             # Export CSV
             dataframe.to_csv(
                 target_file,
@@ -116,35 +96,28 @@ class FileService:
                 encoding=encoding,
                 index=index,
             )
-    
         return str(target_file)
 
 
 class PDFService:
     """
-    Framework: 
+    Framework:
         with headings (H1–H3),
         body text,
         logs (INFO/WARN/ERROR),
         tables and clean styling
-        
     Example:
-    
                     pdf = PDFService("report.pdf")
                     pdf.add_page()
-                    
                     # Titel
                     pdf.add_heading("System Report", level=1)
                     pdf.add_heading("Zusammenfassung", level=2)
-                    
                     # Text
                     pdf.add_text("Das ist ein Beispieltext.\nMit Zeilenumbruch.")
-                    
                     # Logs
                     pdf.add_log("System gestartet", "INFO")
                     pdf.add_log("Speicher fast voll", "WARN")
                     pdf.add_log("Fehler beim Laden!", "ERROR")
-                    
                     # Tabelle
                     headers = ["Name", "Status", "Wert"]
                     rows = [
@@ -152,16 +125,12 @@ class PDFService:
                         ["RAM", "WARN", "85%"],
                         ["Disk", "ERROR", "95%"]
                     ]
-                    
                     pdf.add_heading("Systemwerte", level=2)
                     pdf.add_table(headers, rows)
-                    
                     # Seitenumbruch testen
                     pdf.add_text("Neue Seite\fHier geht es weiter")
-                    
                     pdf.save()
-                    pdf.show()    
-        
+                    pdf.show()
     """
     PDF_FILE_NAME = "report.pdf"
 
@@ -169,7 +138,6 @@ class PDFService:
         self.pdf = FPDF()
         self.filename = filename
         self.pdf.set_auto_page_break(auto=True, margin=15)
-
         # 🔹 Stylesystem
         self.styles = {
             "H1": {"size": 12, "color": (0, 0, 0), "style": "B"},
@@ -233,5 +201,3 @@ class PDFService:
 
     def show(self):
         os.startfile(self.filename)
-
-

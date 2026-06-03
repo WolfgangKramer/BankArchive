@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-05-19"
+__updated__ = "2026-06-02"
 @author: Wolfgang Kramer
 """
 from __future__ import annotations
@@ -13,11 +13,13 @@ import re
 import sys
 import requests
 
+from pandas import Timestamp
 from typing import Dict, List 
 from collections import Counter
 from tkinter import Tk, messagebox, TclError
 from datetime import date, timedelta, datetime
 from decimal import Decimal, getcontext, ROUND_HALF_EVEN, DivisionByZero
+from collections import defaultdict
 
 import banking.declarations as decl
 import banking.message_handler as msg
@@ -561,8 +563,28 @@ class Datulate(object):
         else:
             return x
 
-    def add(self, x, y, ignore_weekend=True):
+    def is_valid_date(self, date_str: str) -> bool:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_str):
+            return False
+        try:
+            datetime.strptime(date_str, "%Y-%m-%d")
+            return True
+        except ValueError:
+            return False
 
+    def mariadb_date(self, x, csv_date_format="%d.%m.%Y"):
+        """
+            Converts CSV date strings or pandas Timestamps into MariaDB date format (YYYY-MM-DD)
+        """    
+        if isinstance(x, str):
+            x = datetime.strptime(x[:10], csv_date_format).strftime(self.date_format)
+            return x
+        elif isinstance(x, Timestamp):
+            x = x.strftime("%Y-%m-%d")
+            return x        
+        return x
+
+    def add(self, x, y, ignore_weekend=True):
 
         x = self.convert_to_date(x)
         if self.date_unit == Datulate.DAYS:
@@ -612,7 +634,7 @@ class Datulate(object):
         """
         x = self.convert_to_date(x)
         return int(x.year)
-    
+
     def yyyy_01_01(self, x):
         """
         Returns January 1st of the year x
@@ -804,9 +826,6 @@ class ApplicationStore:
 application_store = ApplicationStore()
 
 
-
-from collections import defaultdict
-
 def check_mixin_method_uniqueness(cls):
     """
     Prüft, ob Methodennamen in Mixins eindeutig sind.
@@ -823,7 +842,7 @@ def check_mixin_method_uniqueness(cls):
     conflicts = {
         method: classes
         for method, classes in method_map.items()
-        if len(classes) > 1 and method!='__init__'
+        if len(classes) > 1 and method != '__init__'
     }
 
     return conflicts

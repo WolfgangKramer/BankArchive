@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2026-04-22"
+__updated__ = "2026-05-26"
 @author: Wolfgang Kramer
 """
 from collections import namedtuple
@@ -147,7 +147,7 @@ CREATE_HOLDING = "CREATE TABLE IF NOT EXISTS `holding` (\
     `total_amount` DECIMAL(14,2) NOT NULL DEFAULT '0.00' COMMENT ':19A:: Depotwert',\
     `total_amount_portfolio` DECIMAL(14,2) NOT NULL DEFAULT '0.00' COMMENT 'Deportwert Gesamt',\
     `acquisition_amount` DECIMAL(14,2) NOT NULL DEFAULT '0.00' COMMENT 'Einstandswert',\
-    `exchange_rate` DECIMAL(14,6) NULL DEFAULT '0.000000' COMMENT ':92B:: Kurs/Satz',\
+    `exchange_rate` DECIMAL(14,6) NULL DEFAULT '1.000000' COMMENT ':92B:: Kurs/Satz',\
     `exchange_currency_1` CHAR(3) NULL DEFAULT NULL COMMENT ':92B:: Erste Währung' COLLATE 'latin1_swedish_ci',\
     `exchange_currency_2` CHAR(3) NULL DEFAULT NULL COMMENT ':92B:: Zweite Wöhrung' COLLATE 'latin1_swedish_ci',\
     `origin` VARCHAR(50) NULL DEFAULT '_BANKDATA_' COMMENT 'Datensatz Herkunft:  _BANKDATA_  Download Bank' COLLATE 'latin1_swedish_ci',\
@@ -434,8 +434,10 @@ CREATE_TRANSACTION = "CREATE TABLE IF NOT EXISTS `transaction` (\
     `pieces` DECIMAL(14,2) NOT NULL DEFAULT '0.00' COMMENT ':36B:: Gebuchte Stueckzahl',\
     `amount_currency` CHAR(3) NOT NULL DEFAULT 'EUR' COMMENT ':19A:: Gebuchter Betrag,  ISO 4217-Waehrungscode' COLLATE 'latin1_swedish_ci',\
     `posted_amount` DECIMAL(14,2) NOT NULL DEFAULT '0.00' COMMENT ':19A:: Gebuchter Betrag, Kurswert',\
-    `origin` VARCHAR(50) NULL DEFAULT '_BANKDATA_' COMMENT 'Datensatz Herkunft:  _BANKDATA_  Download Bank' COLLATE 'latin1_swedish_ci',\
+    `exchange_rate` DECIMAL(14,6) NOT NULL DEFAULT '1.000000' COMMENT 'Exchange rate',\
+    `origin` VARCHAR(50) NULL DEFAULT '_BANKDATA_' COMMENT 'Row Origin:  _BANKDATA_  Download Bank' COLLATE 'latin1_swedish_ci',\
     `comments` VARCHAR(200) NULL DEFAULT NULL COMMENT 'Comments' COLLATE 'latin1_swedish_ci',\
+    `transaction_no` VARCHAR(50) NULL DEFAULT NULL COMMENT 'Transaction number' COLLATE 'latin1_swedish_ci',\
     PRIMARY KEY (`iban`, `isin_code`, `price_date`, `counter`) USING BTREE\
 )\
 COMMENT='Statement of Transactions based on S.W.I.F.T Standard Release Guide 1998\r\nMT 536 fields '\
@@ -443,7 +445,7 @@ COLLATE='latin1_swedish_ci'\
 ENGINE=InnoDB\
 ;"
 
-CREATE_TRANSACTION_VIEW = "CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `transaction_view` AS SELECT t1.iban, t1.isin_code, t2.name, t1.price_date, t1.counter, t1.transaction_type, t1.price_currency, t1.price, t1.pieces, t1.amount_currency, t1.posted_amount, t1.origin, t1.comments  FROM transaction AS t1 INNER JOIN isin AS t2 USING(isin_code);"
+CREATE_TRANSACTION_VIEW = "CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `transaction_view` AS SELECT t1.iban, t1.isin_code, t2.name, t1.price_date, t1.counter, t1.transaction_type, t1.price_currency, t1.price, t1.pieces, t1.amount_currency, t1.posted_amount, t1.exchange_rate, t1.origin, t1.comments, t1.transaction_no  FROM transaction AS t1 INNER JOIN isin AS t2 USING(isin_code);"
 
 CREATE_SHELVES = "CREATE TABLE IF NOT EXISTS `shelves` (\
     `code` CHAR(8) NOT NULL COMMENT 'Bank_Code (BLZ)' COLLATE 'latin1_swedish_ci',\
@@ -499,9 +501,9 @@ BEGIN
     DECLARE sql_text LONGTEXT DEFAULT '
         SELECT DISTINCT l.*
         FROM ledger l
-        JOIN ledger_statement ls 
+        JOIN ledger_statement ls
             ON l.id_no = ls.id_no
-        JOIN statement s 
+        JOIN statement s
             ON s.iban = ls.iban
            AND s.entry_date = ls.entry_date
            AND s.counter = ls.counter
@@ -719,6 +721,7 @@ DB_threading = 'threading'
 DB_total_amount = 'total_amount'
 DB_total_amount_portfolio = 'total_amount_portfolio'
 DB_transaction_code = 'transaction_code'
+DB_transaction_no = 'transaction_no'
 DB_transaction_type = 'transaction_type'
 DB_type = 'type'
 DB_ultimate_creditor = 'ultimate_creditor'

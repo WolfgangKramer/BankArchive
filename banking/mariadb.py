@@ -1,17 +1,18 @@
 """
 Created on 26.11.2019
-__updated__ = "2026-05-16"
+__updated__ = "2026-05-31"
 @author: Wolfgang Kramer
 """
 import sqlalchemy
 import json
 import re
 import threading
+import csv
 
 from pathlib import Path
 from collections.abc import Sequence
 from inspect import stack
-from typing import Iterable, Any
+from typing import Iterable, Any, List
 from mariadb import connect, Error
 from itertools import chain
 from datetime import date
@@ -22,7 +23,7 @@ import banking.declarations_mariadb as declm
 import banking.declarations as decl
 import banking.message_handler as msg
 
-from banking.utils import date_days,  Termination
+from banking.utils import date_days,  Termination, dec2, dec3, dec6, dec10
 from banking.connect_data import connectionresult
 
 NAMED_PARAM_RE = re.compile(r":([a-zA-Z_][a-zA-Z0-9_]*)")
@@ -55,13 +56,10 @@ class MariaDBInitializer(metaclass=SingletonMeta):
         Initialize the MariaDB singleton.
         Contains only domain-level initialization.
         """
-
         self.connection = MariaDBConnection()
         self.connection.connect()
-        
         self.executor = MariaDBExecutor()
         self.table_names: list[str] = []
-
         self._initialize_database()
         self._init_database_info()
 
@@ -92,7 +90,7 @@ class MariaDBInitializer(metaclass=SingletonMeta):
         for procedure in declm.PROCEDURES:
             sql = "DROP PROCEDURE IF EXISTS " + procedure
             connectionresult.cursor.execute(sql)
-        for sql in declm.CREATE_PROCEDURE:    
+        for sql in declm.CREATE_PROCEDURE:
             connectionresult.cursor.execute(sql)
 
     def _create_trigger(self):
@@ -209,7 +207,6 @@ class MariaDBInitializer(metaclass=SingletonMeta):
             connectionresult.cursor.close()
 
 
-
 class MariaDBConnection:
 
     def __init__(self):
@@ -224,36 +221,27 @@ class MariaDBConnection:
         Connects user to database.
         Creates an empty database if it does not exist.
         """
-        # 1. Admin-Verbindung (ohne DB)
         with connect(
             host=connectionresult.host,
             user=connectionresult.user,
             password=connectionresult.password
         ) as admin_conn:
-
             admin_cur = admin_conn.cursor()
-            # 2. Existenz prüfen
             admin_cur.execute(
                 "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA "
                 "WHERE SCHEMA_NAME = ?",
                 (connectionresult.database,)
             )
-
             exists = admin_cur.fetchone() is not None
-
-            # 3. Falls nicht vorhanden → leere DB anlegen
             if not exists:
                 admin_cur.execute(
                     f"CREATE DATABASE {connectionresult.database} "
                 )
-
-        # 4. Jetzt mit der (neuen oder bestehenden) DB verbinden
         self._connect_to_database()
 
     def _connect_to_database(self):
 
         self._create_engine()
-
         connectionresult.conn = connect(
             host=connectionresult.host,
             user=connectionresult.user,
@@ -261,7 +249,6 @@ class MariaDBConnection:
             database=connectionresult.database,
             local_infile=True
         )
-
         connectionresult.conn.autocommit = True
         connectionresult.cursor = connectionresult.conn.cursor()
         connectionresult.cursor.execute("SELECT DATABASE()")
@@ -317,17 +304,13 @@ class MariaDBExecutor:
             otherwise    -> None
         """
         sql = self._prepare_sql(sql, compress)
-
         try:
             # print(sql, vars_)
             self._execute(sql, vars_)
-
             if self._is_select(sql):
                 return self._fetch(result_dict)
-
             if self._is_modify(sql):
                 return self._row_count()
-
             return None
 
         except Exception as exc:
@@ -336,8 +319,8 @@ class MariaDBExecutor:
             exc.params = vars_
             raise
 
-    # ---------- helpers ----------
     def _prepare_sql(self, sql: str, compress: bool) -> str:
+
         if not compress:
             return sql
         return re.sub(r'\s+', ' ', sql.replace('\n', ' ')).strip()
@@ -355,21 +338,25 @@ class MariaDBExecutor:
         else:
             print(sql)
             self._cursor.callproc(sql)
-        return self._fetch(result_dict)            
-    
+        return self._fetch(result_dict)
+
     def _execute(self, sql: str, params):
+
         if params:
             self._cursor.execute(sql, params)
         else:
             self._cursor.execute(sql)
 
     def _is_select(self, sql: str) -> bool:
+
         return bool(self.SELECT_RE.match(sql))
 
     def _is_modify(self, sql: str) -> bool:
+
         return bool(self.MODIFY_RE.match(sql))
 
     def _fetch(self, result_dict: bool):
+
         rows = self._cursor.fetchall()
         if not result_dict:
             return rows
@@ -377,6 +364,7 @@ class MariaDBExecutor:
         return [dict(zip(columns, row)) for row in rows]
 
     def _row_count(self) -> int:
+
         self._cursor.execute('SELECT ROW_COUNT()')
         return self._cursor.fetchone()[0]
 
@@ -389,6 +377,7 @@ class DatabaseErrorHandler:
 
     @staticmethod
     def handle_error(
+
         title: str,
         storage,
         exc: Exception,
@@ -398,7 +387,6 @@ class DatabaseErrorHandler:
         duplicate: bool = False
     ):
         messages: list[str] = []
-
         # --- Base SQL error message -------------------------------------
         if sql is not None:
             messages.append(
@@ -409,11 +397,9 @@ class DatabaseErrorHandler:
                     params
                 )
             )
-
         # --- DB error details (errno / errmsg) --------------------------
         errno = getattr(exc, 'errno', None)
         errmsg = getattr(exc, 'errmsg', None)
-
         if errno is not None and errmsg is not None:
             messages.append(
                 msg.get_message(
@@ -423,7 +409,6 @@ class DatabaseErrorHandler:
                     errmsg
                 )
             )
-
         # --- Duplicate key handling ------------------------------------
         if duplicate and errno == 1062:
             msg.MessageBoxInfo(
@@ -433,7 +418,6 @@ class DatabaseErrorHandler:
                 message="\n\n".join(messages)
             )
             return errno
-
         # --- LOAD statement handling -----------------------------------
         if sql and sql.upper().startswith('LOAD'):
             msg.MessageBoxInfo(
@@ -443,7 +427,6 @@ class DatabaseErrorHandler:
                 message="\n\n".join(messages)
             )
             return False
-
         # --- Stack trace (legacy behavior) -----------------------------
         try:
             frame = stack()[2]
@@ -462,7 +445,6 @@ class DatabaseErrorHandler:
             )
         except Exception:
             pass
-
         # --- Fatal error ------------------------------------------------
         msg.MessageBoxError(
             title=title,
@@ -480,9 +462,7 @@ class MariaDBTables:
         """Build ORDER BY clause"""
         if not order:
             return ''
-
         sort = sort.upper()
-
         if isinstance(order, list) and isinstance(order[0], str):
             clause = ', '.join(f"{o} {sort}" for o in order)
         elif isinstance(order, tuple):
@@ -491,7 +471,6 @@ class MariaDBTables:
             clause = ', '.join(f"{o[0]} {o[1]}" for o in order)
         else:
             clause = f"{order} {sort}"
-
         return f" ORDER BY {clause} "
 
     def _where_clause(
@@ -510,7 +489,6 @@ class MariaDBTables:
         """
         sql_parts: list[str] = []
         vars_: list[Any] = []
-
         for key, value in kwargs.items():
             if isinstance(value, date):
                 value = date_days.convert_to_str(value)
@@ -526,14 +504,11 @@ class MariaDBTables:
             else:
                 sql_parts.append(f"{key} = ?")
                 vars_.append(value)
-
         if clause:
             sql_parts.append(f"({clause})")
             vars_.extend(clause_vars)
-
         if not sql_parts:
             return "", ()
-
         return "WHERE " + " AND ".join(sql_parts) + " ", tuple(vars_)
 
     def _normalize_fields(
@@ -543,10 +518,8 @@ class MariaDBTables:
         """
         Normalize the field list to a SQL-compatible string.
         """
-
         if isinstance(fields, (list, tuple, set)):
             return ', '.join(fields)
-
         return fields
 
     def _normalize_vars(self, vars_):
@@ -580,7 +553,6 @@ class MariaDBTables:
         """
         if not vars_:
             return sql, ()
-
         order = []
 
         def repl(match):
@@ -594,9 +566,6 @@ class MariaDBTables:
         values = tuple(vars_[k] for k in order)
         return sql, values
 
-    # ------------------------------------------------------------------
-    # Generic SELECT methods
-    # ------------------------------------------------------------------
     def _select(
         self,
         *,
@@ -666,24 +635,11 @@ class MariaDBTables:
             Query result rows. Each row is returned either as a tuple or
             as a dictionary depending on `result_dict`.
         """
-
         if not fields:
             return []
-
-        # ------------------------------------------------------------
-        # Normalize SELECT fields
-        # ------------------------------------------------------------
         fields = self._normalize_fields(fields)
-
-        # ------------------------------------------------------------
-        # Base SELECT clause
-        # ------------------------------------------------------------
         select_kw = "SELECT DISTINCT" if distinct else "SELECT"
         sql = f"{select_kw} {fields} FROM {table} "
-
-        # ------------------------------------------------------------
-        # WHERE clause and bind variables
-        # ------------------------------------------------------------
         where_sql, vars_ = self._where_clause(
             clause=clause,
             clause_vars=clause_vars,
@@ -691,10 +647,6 @@ class MariaDBTables:
             **kwargs
         )
         sql += where_sql
-
-        # ------------------------------------------------------------
-        # GROUP BY clause
-        # ------------------------------------------------------------
         if group_by:
             group_sql = (
                 ", ".join(group_by)
@@ -702,29 +654,13 @@ class MariaDBTables:
                 else group_by
             )
             sql += f" GROUP BY {group_sql} "
-
-        # ------------------------------------------------------------
-        # HAVING clause
-        # ------------------------------------------------------------
         if having:
             sql += f" HAVING {having} "
             vars_ += having_vars
-
-        # ------------------------------------------------------------
-        # ORDER BY clause
-        # ------------------------------------------------------------
         if order:
             sql += self._order_clause(order=order, sort=sort)
-
-        # ------------------------------------------------------------
-        # LIMIT clause
-        # ------------------------------------------------------------
         if limit is not None:
             sql += f" LIMIT {limit} "
-
-        # ------------------------------------------------------------
-        # Execute query
-        # ------------------------------------------------------------
         return self.executor.execute(
             sql,
             vars_=vars_,
@@ -769,7 +705,6 @@ class MariaDBTables:
         Any
             The scalar result value, or `default` if no row was returned.
         """
-
         rows = self._select(
             table=table,
             fields=expression,
@@ -779,10 +714,8 @@ class MariaDBTables:
             limit=1,
             **kwargs
         )
-
         if not rows:
             return default
-
         value = rows[0][0]
         return default if value is None else value
 
@@ -814,7 +747,6 @@ class MariaDBTables:
         bool
             True if at least one matching row exists, otherwise False.
         """
-
         rows = self._select(
             table=table,
             fields="1",
@@ -824,7 +756,6 @@ class MariaDBTables:
             limit=1,
             **kwargs
         )
-
         return bool(rows)
 
     def _select_cte(
@@ -863,9 +794,7 @@ class MariaDBTables:
             sql, vars_ = self._normalize_named_sql(sql, vars_)
         else:
             vars_ = self._normalize_vars(vars_)
-
         fields_sql = self._normalize_fields(fields)
-
         final_sql = f"""
             SELECT {fields_sql}
             FROM (
@@ -989,7 +918,7 @@ class MariaDBTables:
             **kwargs
         )
         if not rows:
-            return None        
+            return None
         if isinstance(fields, str):
             if fields == '*':
                 return rows[0] if rows else None  # returns list or dict
@@ -1012,7 +941,6 @@ class MariaDBTables:
         """
         Select grouped rows with optional HAVING conditions.
         """
-
         return self._select(
             table=table,
             fields=fields,
@@ -1056,7 +984,6 @@ class MariaDBTables:
             Dictionary mapping key_name -> value_name.
             Returns an empty dict if no rows match.
         """
-
         rows = self._select(
             table=table,
             fields=[key_name, value_name],
@@ -1065,7 +992,6 @@ class MariaDBTables:
             clause_vars=clause_vars,
             **kwargs
         )
-
         return dict(rows) if rows else {}
 
     def select_rows(
@@ -1090,7 +1016,6 @@ class MariaDBTables:
 
         This is the primary public entry point for row-based SELECT queries.
         """
-
         return self._select(
             table=table,
             fields=fields,
@@ -1121,7 +1046,6 @@ class MariaDBTables:
         """
         Execute a SELECT query returning a single scalar value.
         """
-
         return self._select_scalar(
             table=table,
             expression=expression,
@@ -1143,7 +1067,6 @@ class MariaDBTables:
         """
         Return True if at least one matching row exists.
         """
-
         return self._select_exists(
             table=table,
             clause=clause,
@@ -1196,7 +1119,6 @@ class MariaDBTables:
         # ------------------------------------------------------------
         if not fields:
             return []
-
         return self._select_cte(
             sql=sql,
             fields=fields,
@@ -1231,10 +1153,8 @@ class MariaDBTables:
             }
 
         exec_args = _normalize_execute_args(args, kwargs)
-
         try:
             return self.executor.execute(*args, **kwargs)
-
         except Exception as exc:
             return DatabaseErrorHandler.handle_error(
                 title="Database error",
@@ -1351,14 +1271,12 @@ class MariaDBShelves:
             Termination(
                 info=msg.get_message(msg.MESSAGE_TEXT, "SHELVE_NAME_MISSED", shelve_name)
             ).terminate()
-
         bankdata = json.loads(_bankdata)
-
         if isinstance(key, list):
             res_dict = dict.fromkeys(key, None) if none else {}
             res_dict.update(bankdata)
             return res_dict
-        result =  bankdata.get(key, {} if not none else None)
+        result = bankdata.get(key, {} if not none else None)
         return result
 
     def shelve_put_key(self, shelve_name: str, data: tuple | list[tuple]) -> None:
@@ -1374,10 +1292,8 @@ class MariaDBShelves:
         """
         _bankdata = self.select_scalar(declm.SHELVES, declm.DB_bankdata, code=shelve_name)
         bankdata = json.loads(_bankdata) if _bankdata else {}
-
         if isinstance(data, tuple):
             data = [data]
-
         bankdata.update(dict(data))
         bankdata_json = json.dumps(bankdata, default=self.shelve_serialize)
         self.execute_replace(declm.SHELVES, {declm.DB_code: shelve_name, declm.DB_bankdata: bankdata_json})
@@ -1399,12 +1315,12 @@ class MariaDBShelves:
             bankdata.pop(key, None)
             self.execute_replace(declm.SHELVES, {declm.DB_code: shelve_name, declm.DB_bankdata: json.dumps(bankdata)})
 
+
 class MariaDBImporter:
     """
     Class to import bank identifiers, servers, transactions, and prices, tickers
     into MariaDB tables in a structured, safe way.
     """
-
     def execute_load_data(
         self,
         *,
@@ -1422,48 +1338,45 @@ class MariaDBImporter:
     ) -> None:
         """
         Execute a generic MySQL LOAD DATA import.
-    
+
         Parameters
         ----------
         filename : str
             Path to the CSV file.
-    
+
         table : str
             Target database table.
-    
+
         columns : str
             Column definition for the LOAD DATA statement.
-    
+
         set_clause : str, optional
             Optional SQL SET clause.
-    
+
         line_terminator : str, optional
             CSV line ending.
-    
+
         field_terminator : str, optional
             CSV field delimiter.
-    
+
         encoding : str, optional
             File encoding.
-    
+
         ignore_lines : int, optional
             Number of header rows to ignore.
-    
+
         replace : bool, optional
             Use REPLACE INTO TABLE.
-    
+
         local : bool, optional
             Use LOCAL INFILE.
-    
+
         commit : bool, optional
             Execute COMMIT after import.
         """
-    
         sql_filename = str(Path(filename)).replace("\\", "\\\\")
-    
         local_sql = "LOCAL" if local else ""
         replace_sql = "REPLACE" if replace else ""
-    
         load_sql = f"""
             LOAD DATA LOW_PRIORITY {local_sql} INFILE '{sql_filename}'
             {replace_sql} INTO TABLE {table}
@@ -1477,40 +1390,258 @@ class MariaDBImporter:
                 {columns}
             )
         """
-    
         if set_clause:
             load_sql += f"\nSET\n{set_clause}"
-    
         load_sql += ";"
-    
         self.executor.execute(load_sql)
-    
         if commit:
             self.executor.execute("COMMIT")
 
-    def import_local_infile(
-        self,
-        filename: str,
-        fields: list[str],
-    ) -> None:
+    def parse_decimal(self, value: str, decimal_separator=",", places=2):
         """
-        Import CSV data into the prices table.
+        Converts values like:
+            1.234,56
+            -1.234,56
+            1234,56
+        into Decimal.
         """
-    
-        columns = ", ".join(fields)
-    
-        self.execute_load_data(
-            filename=filename,
-            table="prices",
-            columns=columns,
-            line_terminator="\\n",
-            field_terminator=",",
-            encoding="utf8",
-            ignore_lines=1,
-            replace=False,
-            local=True,
-            commit=True,
-        )
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+            if value == "":
+                return None
+            if decimal_separator == ",":  # If a comma is present → German format
+                value = value.replace(".", "")
+                value = value.replace(",", ".")
+        if places == 2:
+            return dec2.convert(value)
+        elif places == 3:
+            return dec3.convert(value)
+        elif places == 6:
+            return dec6.convert(value)
+        elif places == 10:
+            return dec10.convert(value)
+        raise "Method parse_decimal: Param places not 2, 3, 6 or 10"
+
+    def transaction_exists(self, table: str, db_fields: List[str], values: List[Any]) -> bool:
+        """
+        Build a SQL EXISTS query for checking whether a row already exists.
+
+        Args:
+            table: Name of the database table.
+            data: Dictionary containing column names and values.
+
+        Returns:
+            Tuple containing:
+            - SQL query string
+            - List of query parameters
+        """
+        where_clauses: List[str] = []
+        params: List[Any] = []
+        for field, value in zip(db_fields, values):
+            # Handle NULL values separately
+            if value is None:
+                where_clauses.append(f"`{field}` IS NULL")
+            else:
+                where_clauses.append(f"`{field}` = %s")
+                params.append(value)
+        sql: str = f"""
+        SELECT EXISTS(
+            SELECT 1
+            FROM `{table}`
+            WHERE {' AND '.join(where_clauses)}
+        ) AS row_exists
+        """
+        result = self.executor.execute(sql, params)
+        return result
+
+    def load_csv_to_table(
+            self,
+            csv_file,
+            table_name,
+            field_mapping,
+            additional_fields=None,
+            value_transformers=None,
+            csv_date_format="%d.%m.%Y",
+            delimiter=";",
+            decimal_separator=',',
+            encoding="latin1",
+            has_header=True,
+            start_line=1,
+            commit=True
+    ):
+        """
+        Loads selected CSV fields into a MariaDB table.
+        value_transformers can access all current row values.
+        Transformer signature:
+            lambda value, row_data: ...
+
+        Parameters
+        ----------
+
+            csv_file : str              Path to CSV file
+            table_name : str            Target table name
+            field_mapping : dict        Mapping between CSV fields and DB fields.
+            additional_fields : dict    Additional static fields added to every INSERT.
+            value_transformers : dict   Optional transformation functions per DB field.
+            csv_date_format :           STANDARD "%d.%m.%Y"
+            has_header : bool           True: CSV contains header row  False: CSV has no header
+            start_line: int             Positioonieren auf Startzeile
+
+        Example:
+        --------
+                mapping = {
+                    "ISIN": "isin_code",
+                    "Price": "price",
+                    "Quantity": "pieces"
+                }
+
+                    Examples:
+                    ---------
+                    CSV with header:
+                        {
+                            "Article": "isin_code",
+                            "Price": "price"
+                        }
+
+                    CSV without header:
+                        {
+                            0: "isisn_code",
+                            3: "price"
+                        }
+
+                additional_fields = {
+                    "status": None,
+                    "total_value": None
+                }
+
+                transformers = {
+                    # Convert isin_code to uppercase
+                    "isin_code": lambda value, row:
+                        value.upper(),
+                    # Always store positive price
+                    "price": lambda value, row:
+                        abs(value),
+                    # Status depends on price
+                    "status": lambda value, row:
+                        "EXPENSIVE"
+                        if row["price"] > 10
+                        else "NORMAL",
+                    # total_value depends on price and stock
+                    "total_value": lambda value, row:
+                        row["price"] * row["pieces"]
+                }
+
+                load_csv_to_table(
+                    cursor=cursor,
+                    csv_file="holding.csv",
+                    table_name="holding",
+                    field_mapping=mapping,
+                    additional_fields=additional_fields,
+                    value_transformers=transformers
+                )
+        """
+        message_1st_line = False
+        field_properties = declm.TABLE_FIELDS_PROPERTIES[table_name]
+        if additional_fields is None:
+            additional_fields = {}
+        if value_transformers is None:
+            value_transformers = {}
+        with open(csv_file, "r", encoding=encoding, newline="") as f:
+            reader = csv.reader(f, delimiter=delimiter)
+            for _ in range(start_line - 1):
+                next(reader)
+            headers = None
+            if has_header:
+                headers = next(reader)
+            # Final DB field list
+            db_fields = (
+                list(field_mapping.values()) +
+                list(additional_fields.keys())
+            )
+            placeholders = ", ".join(["?"] * len(db_fields))
+            sql = f"""
+                INSERT INTO {table_name}
+                ({", ".join(db_fields)})
+                VALUES ({placeholders})
+            """
+            price_date = None
+            counter = 0
+            for _, row in enumerate(reader, start=1):
+                # Build original_row with mapped DB field names
+                original_row = {}
+                for csv_field, db_field in field_mapping.items():
+                    if isinstance(csv_field, int):
+                        if csv_field < len(row):
+                            original_row[db_field] = row[csv_field]
+                        else:
+                            original_row[db_field] = None
+                    else:
+                        idx = headers.index(csv_field)
+                        if idx < len(row):
+                            original_row[db_field] = row[idx]
+                        else:
+                            original_row[db_field] = None
+                values = []
+                # Process mapped CSV fields
+                for csv_field, db_field in field_mapping.items():
+                    value = original_row[db_field]
+                    if value is not None:
+                        if field_properties[db_field].typ == decl.TYP_DECIMAL:
+                            value = self.parse_decimal(
+                                value,
+                                decimal_separator=decimal_separator,
+                                places=field_properties[db_field].places)
+                            original_row[db_field] = value
+                        elif field_properties[db_field].typ == decl.TYP_DATE:
+                            value = date_days.mariadb_date(value, csv_date_format=csv_date_format)
+                            original_row[db_field] = value
+                        else:
+                            value = value.strip()
+                            if value == "":
+                                value = None
+                    # Apply transformer
+                    if db_field in value_transformers:
+                        value = value_transformers[db_field](
+                            value,
+                            original_row
+                        )
+                    values.append(value)
+                # Add additional fields
+                for db_field, value in additional_fields.items():
+                    if db_field in value_transformers:
+                        value = value_transformers[db_field](
+                            value,
+                            original_row
+                        )
+                    elif db_field == declm.DB_counter:
+                        if price_date == original_row[declm.DB_price_date]:
+                            counter += 1
+                        else:
+                            price_date = original_row[declm.DB_price_date]
+                            counter = 0
+                        value = counter
+                    values.append(value)
+                result_row = dict(zip(db_fields, values))
+                result = self.select_exists(table_name, date_name=declm.DB_price_date, **result_row)
+                if not result:
+                    self.executor.execute(sql, values)
+                else:
+                    if not message_1st_line:
+                        msg.MessageBoxInfo(
+                            title=msg.MESSAGE_TITLE,
+                            info_storage=msg.Informations.TRANSACTION_INFORMATIONS,
+                            message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_ALREADY', csv_file)
+                            )
+                        message_1st_line = True
+                    msg.MessageBoxInfo(
+                        title=msg.MESSAGE_TITLE,
+                        info_storage=msg.Informations.TRANSACTION_INFORMATIONS,
+                        message=result_row
+                        )
+            if commit:
+                self.executor.execute("COMMIT")
 
 
 class MariaDB(
@@ -1535,6 +1666,5 @@ class MariaDB(
         """
         if getattr(self, "_initialized", False):
             return  # Already initialized
-        
         super().__init__()
         self._initialized = True

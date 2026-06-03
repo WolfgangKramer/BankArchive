@@ -16,11 +16,189 @@ import banking.message_handler as msg
 import banking.declarations_mariadb as declm
 from banking.repository import Repository
 from banking.utils import (
-    date_days, dec6, date_yyyymmdd, 
+    date_days, dec6, date_yyyymmdd,
     application_store, dec2, check_mixin_method_uniqueness,
     signed_balance
     )
 from banking.trading_calendar import xetra_cls
+
+
+class BuildHoldings:
+    """
+    Creates holding records from transaction data.
+
+    This class processes transaction rows for a given IBAN and ISIN,
+    calculates the daily holding state, enriches it with market prices,
+    and stores the resulting holding records in the database.
+    """
+    def build_holdings(self, title, state, iban, isin_code):
+        """
+        Creates holding entries for all trading days of a security.
+
+        The method retrieves transaction data, calculates the daily
+        portfolio state, obtains market prices, and inserts/replaces holding
+        records into the database within a single transaction.
+
+        Args:
+            state (str): Insert or Replace
+            iban (str): Account IBAN.
+            isin_code (str): ISIN of the security.
+
+        Returns:
+            bool: True if the holdings were successfully created,
+                otherwise False.
+
+        Raises:
+            Exception: Any exception raised during database processing
+                is caught, logged, and causes a transaction rollback.
+        """
+        last_state = None
+        repo = Repository()
+        rows = self.repo.get_transactions_delta_of_iban_isin_code(iban, isin_code)
+        if rows:    
+            trading_days =xetra_cls.trading_days(
+                start=rows[0][declm.DB_price_date],
+                end=date_days.subtract(date.today(), 1),
+                as_str=True
+                )
+            if trading_days:
+                market_price = self._get_close_price(trading_days[-1][:10], isin_code)
+                if market_price:
+                    daily_state = self._get_daily_state(rows)
+                else:
+                    return False
+            # Start database transaction
+            self.repo.start_transaction()                
+            try:
+                for trading_day in trading_days:
+                
+                    price_date = date_days.convert_to_date(trading_day[:10])
+                    if price_date in daily_state:
+                        last_state = daily_state[price_date]
+                    if last_state and last_state[declm.DB_pieces] > 0:
+                        field_dict = {
+                            declm.DB_iban: iban,
+                            declm.DB_ISIN: isin_code,
+                            declm.DB_price_date: price_date,
+                            declm.DB_pieces: last_state[declm.DB_pieces],
+                            declm.DB_acquisition_amount:
+                                last_state[declm.DB_acquisition_amount],
+                            declm.DB_acquisition_price:
+                                last_state[declm.DB_acquisition_price],
+                            declm.DB_origin: decl.ORIGIN_TRANSACTION,
+                        }
+                        market_price = repo.get_close_price(isin_code, price_date)
+                        if market_price:
+                            field_dict[declm.DB_market_price] = market_price
+                            field_dict[declm.DB_total_amount] = dec2.multiply(market_price, field_dict[declm.DB_pieces])
+                        if state==decl.BUTTON_INSERT:
+                            repo.insert_holding(field_dict)
+                        else:    
+                            repo.replace_holding(field_dict)
+                        if price_date in daily_state:
+                            msg.MessageBoxInfo(
+                                title=title,
+                                info_storage=msg.Informations.HOLDING_INFORMATIONS,
+                                message=msg.get_message(
+                                    msg.MESSAGE_TEXT,
+                                    'HOLDING_TRANSACTION_CREATED',
+                                    self.repo.get_name_of_isin_code(isin_code),
+                                    price_date
+                                    )
+                                )                                
+                # Commit transaction
+                self.repo.commit()
+                return True
+            except Exception as e:
+                print(str(e))
+                self.repo.rollback_transaction()
+                
+                msg.MessageBoxInfo(
+                    title=title,
+                    info_storage=msg.Informations.HOLDING_INFORMATIONS,
+                    message=msg.get_message(
+                        msg.MESSAGE_TEXT,
+                        "HOLDING_TRANSACTION_ERROR",
+                        f"""
+                        {self.repo.get_name_of_isin_code(isin_code)}: {str(e)}
+                        Insert:   {field_dict}
+                        Database: {self.repo.select_holding_view_row(iban, price_date, isin_code, field_list=list(field_dict.keys()))}
+                         """   
+                    )
+                )
+                return False
+    
+    def _get_daily_state(self, rows):
+        """
+        Calculates the portfolio state after each transaction.
+
+        Buy and sell transactions are processed chronologically to
+        determine the current position size, acquisition amount,
+        and average acquisition price for each transaction date.
+
+        Args:
+            rows (list): Transaction records sorted by price date.
+
+        Returns:
+            dict[date, dict]: Mapping of each transaction date to the
+                corresponding portfolio state. Each state contains:
+
+                - ``declm.DB_pieces``
+                - ``declm.DB_acquisition_amount``
+                - ``declm.DB_acquisition_price``
+        """    
+        current_pieces = 0
+        acquisition_amount = 0
+        acquisition_price = 0
+        daily_state = {}
+        for row in rows:
+            pieces = row[declm.DB_pieces]
+            if pieces > 0:
+                purchase_amount = row[declm.DB_posted_amount]
+                current_pieces += pieces
+                acquisition_amount += purchase_amount
+                acquisition_price = dec6.divide(acquisition_amount, current_pieces)
+            elif pieces < 0:
+                sold_pieces = -pieces
+                sold_cost = dec2.multiply(acquisition_price, sold_pieces)
+                current_pieces -= sold_pieces
+                acquisition_amount -= sold_cost
+                if current_pieces > 0:
+                    acquisition_price = dec6.divide(acquisition_amount, current_pieces)
+                else:
+                    current_pieces = 0
+                    acquisition_amount = 0
+                    acquisition_price = 0
+            daily_state[row[declm.DB_price_date]] = {
+                declm.DB_pieces: current_pieces,
+                declm.DB_acquisition_amount: acquisition_amount,
+                declm.DB_acquisition_price: acquisition_price
+            }
+        return daily_state    
+    
+    def _get_close_price(self, price_date, isin_code):
+        """
+        Retrieves the closing price for a security.
+
+        If the price is not available in the database, missing market
+        data is imported and the lookup is repeated.
+
+        Args:
+            price_date (date): Date for which the closing price is
+                requested.
+            isin_code (str): ISIN of the security.
+
+        Returns:
+            Decimal | None: Closing market price if available;
+                otherwise None.
+        """    
+        market_price = self.repo.get_close_price(isin_code, price_date)
+        if not market_price:
+            name = self.repo.get_name_of_isin_code(isin_code)
+            # import price data
+            self.import_prices_and_corporate_actions(msg.MESSAGE_TITLE, [name], state=decl.BUTTON_APPEND)
+            market_price = self.repo.get_close_price(isin_code, price_date)
+        return market_price  
 
 
 class CostBasisStrategy(ABC):
@@ -77,7 +255,7 @@ class LotCostBasis(CostBasisStrategy):
         return -pieces, proceeds, profit_loss
 
     def current_pieces(self) -> Decimal:
-        return sum(l["pieces"] for l in self.lots)
+        return sum(lot_item["pieces"] for lot_item in self.lots)
 
 
 class AverageCostBasis(CostBasisStrategy):
@@ -105,6 +283,7 @@ class AverageCostBasis(CostBasisStrategy):
 
     def current_pieces(self) -> Decimal:
         return self.pieces
+
 
 class DownloadServices:
 
@@ -242,7 +421,6 @@ class DownloadServices:
     def _holdings(self, bank) -> List[Dict[str, Any]]:
         """
         Persist daily holdings of a bank account into the HOLDING table.
-
         The method:
         1. Downloads current holdings from the bank.
         2. Normalizes the price date (adjusts weekends to the previous business day).
@@ -250,7 +428,6 @@ class DownloadServices:
         4. Ensures referenced ISIN master data exists.
         5. Updates acquisition amounts per holding.
         6. Commits all changes as a single database transaction.
-
         Parameters
         ----------
         bank : Bank
@@ -258,7 +435,6 @@ class DownloadServices:
             - IBAN
             - bank_name
             - access to the holdings download dialog
-
         Returns
         -------
         List[Dict[str, Any]]
@@ -267,40 +443,27 @@ class DownloadServices:
             - no holdings are available, or
             - the transaction is rolled back due to user cancellation.
         """
-
-        # ------------------------------------------------------------------
         # Start database transaction
-        # ------------------------------------------------------------------
         self.repo.start_transaction()
         try:
-            # ------------------------------------------------------------------
             # Download holdings from bank
-            # ------------------------------------------------------------------
             holdings: List[Dict[str, Any]] = bank.dialogs.holdings(bank)
             if holdings in decl.START_DIALOG_FAILED:
                 self.repo.rollback_transaction()
                 return holdings
-            # ------------------------------------------------------------------
             # Determine and normalize price date (weekend adjustment)
-            # ------------------------------------------------------------------
             price_date_holding = max(h[declm.DB_price_date] for h in holdings)
-    
             weekday = date_yyyymmdd.convert(price_date_holding).weekday()
             if weekday == 5:          # Saturday
                 price_date_holding = date_yyyymmdd.subtract(price_date_holding, 1)
             elif weekday == 6:        # Sunday
                 price_date_holding = date_yyyymmdd.subtract(price_date_holding, 2)
-            # -----------------------------------------------------------------
             # Remove existing holdings for the same IBAN and price date
-            # ------------------------------------------------------------------
             self.repo.delete_holding(bank.iban, price_date_holding)
-            # ------------------------------------------------------------------
             # Insert or replace holdings
-            # ------------------------------------------------------------------
             for holding in holdings:
                 isin = holding[declm.DB_ISIN]
                 name = holding[declm.DB_name]
-    
                 # Ensure ISIN master record exists
                 if not self.repo.exist_isin_name(name):
                     self.repo.replace_isin_name_of_isin_code(isin, name)
@@ -313,9 +476,7 @@ class DownloadServices:
                 self.repo.replace_holding(holding_data)
                 # Update acquisition amount
                 self._set_acquisition_amount(bank, isin, name)
-            # ------------------------------------------------------------------
             # Commit transaction
-            # ------------------------------------------------------------------
             self.repo.commit()
             return holdings
         except Exception as e:
@@ -328,18 +489,15 @@ class DownloadServices:
                     bank.bank_name
                 )
             )
-            return []            
-    
+            return []
 
     def _statements(self, bank) -> list[dict]:
         """
         Store bank statements for a bank account in the STATEMENT table.
-
         Parameters
         ----------
         bank : Bank
             Bank object containing account info and download dialogs.
-
         Returns
         -------
         list[dict]
@@ -348,21 +506,16 @@ class DownloadServices:
         max_entry_date = self.repo.max_entry_date_of_statement(bank.iban)
         bank.from_date = max_entry_date if max_entry_date else decl.START_DATE_STATEMENTS
         bank.to_date = str(date.today())
-
         statements = bank.download_statements() if bank.scraper else bank.dialogs.statements(bank)
-
         if statements in decl.START_DIALOG_FAILED or statements == []:
             return statements
-
         entry_date = None
         for statement in statements:
             if statement[declm.DB_entry_date] != entry_date:
                 entry_date = statement[declm.DB_entry_date]
                 counter = 0
-
             statement[declm.DB_iban] = bank.iban
             statement[declm.DB_counter] = counter
-
             # Skip if already exists
             if self.repo.exists_statement_row(statement[declm.DB_iban], statement[declm.DB_entry_date], counter):
                 pass
@@ -372,16 +525,12 @@ class DownloadServices:
                 if not statement.get(declm.DB_purpose_wo_identifier):
                     statement[declm.DB_purpose_wo_identifier] = statement[declm.DB_purpose]
                 self.repo.insert_statement(statement)
-
             counter += 1
-
         self.repo.commit()
-
         if application_store.get(declm.DB_ledger):
             self.transfer_statement_to_ledger(bank)
-
         return statements
-   
+
     def transfer_statement_to_ledger(self, bank):
         """
         Upload ledger rows from table statement
@@ -393,7 +542,7 @@ class DownloadServices:
         if statements:
             # get ledger account_number assigned to iban of bank account
             account = self.repo.get_account_of_iban(bank.iban)
-            if not account: # cancel download of this bank account
+            if not account:  # cancel download of this bank account
                 msg.MessageBoxInfo(
                     message=msg.MessageBoxInfo(
                         msg.MESSAGE_TEXT,
@@ -404,13 +553,11 @@ class DownloadServices:
                         )
                     )
                 return
-    
             # initialize credit/debit
             opening_balance = statements[0][declm.DB_opening_balance]
             if statements[0][declm.DB_opening_status] == decl.DEBIT:
                 opening_balance = -opening_balance
             # check and store statement records in ledger table
-    
             for statement_dict in statements:
                 iban = statement_dict[declm.DB_iban]
                 entry_date = statement_dict[declm.DB_entry_date]
@@ -474,7 +621,7 @@ class DownloadServices:
                     ),
                     information=decl.WARNING
                 )
-    
+
     def _recommend_account(self, account, statement_dict):
         """
         recommendation contra account, otherwise return 'NA'
@@ -511,12 +658,11 @@ class DownloadServices:
             recommended_account = self.repo.get_contra_account_of_posting_text(statement_dict)
             if recommended_account not in [decl.NOT_ASSIGNED, account]:
                 return recommended_account
-        return decl.NOT_ASSIGNED    
+        return decl.NOT_ASSIGNED
 
     def _set_acquisition_amount(self, bank: object, isin: str, name_: str):
         """
         Update the acquisition amount of a holding based on previous entries.
-
         Parameters
         ----------
         bank : Bank
@@ -525,15 +671,12 @@ class DownloadServices:
             ISIN of the holding.
         name_ : str
             Name of the security.
-
         """
         rows = self.repo.get_holding_aquisition_data(bank.iban, isin)
         if not rows:
             return
-
         data = [HoldingAcquisition(*row) for row in reversed(rows)]
         pieces_diff = data[0].pieces - data[-1].pieces
-
         if len(data) > 1 and pieces_diff == 0 and data[0].acquisition_price == data[-1].acquisition_price:
             acquisition_amount = data[0].acquisition_amount
         elif data[-1].price_currency == decl.PERCENT:
@@ -551,10 +694,8 @@ class DownloadServices:
             acquisition_amount = data[0].acquisition_amount
         else:
             acquisition_amount = dec2.multiply(data[-1].pieces, data[-1].acquisition_price)
-
         data[-1].acquisition_amount = acquisition_amount
         self._update_holding_acquisition(bank.iban, isin, data[-1])
-
 
     def _update_holding_acquisition(self, iban, isin_code, HoldingAcquisition):
 
@@ -574,6 +715,7 @@ class DownloadServices:
                 HoldingAcquisition.price_date)
 
 
+    
 
 @dataclass
 class HoldingAcquisition:
@@ -587,23 +729,18 @@ class HoldingAcquisition:
     acquisition_amount: Decimal = field(default=0)
     origin: str = field(default=0)
 
+
 class UpdateHoldingAcquisition:
 
     def update_holding_acquisition(self, iban, price_date, isin_code):
 
         holding = self.repo.select_holding_view_row(iban, price_date, isin_code)
-        
         remaining = dec6.convert(holding[declm.DB_pieces])
         acquisition_amount = dec2.convert(0)
-    
         transactions = self.repo.get_transactions_update_acquisition(iban, price_date, isin_code)
-
-    
         for t_pieces, t_amount in transactions:
-    
             if remaining <= 0:
                 break
-    
             if t_pieces <= remaining:
                 acquisition_amount += t_amount
                 remaining -= t_pieces
@@ -612,13 +749,11 @@ class UpdateHoldingAcquisition:
                 acquisition_amount += t_amount * ratio
                 remaining = 0
                 break
-            
         acquisition_price = dec6.convert(0)
         if holding[declm.DB_pieces] > 0:
             acquisition_price = acquisition_amount / holding[declm.DB_pieces]
         field_dict = {declm.DB_acquisition_price: acquisition_price, declm.DB_acquisition_amount: acquisition_amount}
         self.repo.update_holding(iban, price_date, isin_code, field_dict)
-  
 
 
 class ImportServices:
@@ -630,21 +765,18 @@ class ImportServices:
             period_start: str = decl.START_DATE_PRICES,
             state: str = decl.BUTTON_APPEND
             ):
+
         period_start = date_days.convert_to_str(period_start)
         isin_code_name_dict = {}
         for name in isin_name_list:
             isin_code_name_dict[self.repo.get_isin_of_name(name)] = name
-
         for isin_code in isin_code_name_dict.keys():
-
             start_date = period_start
             if state == decl.BUTTON_APPEND:
                 last_date = self.repo.prices_max_date_of_isin(isin_code)
                 if last_date:
                     start_date = date_days.add(last_date, 1)
-
             end_date = date_days.today()
-
             if start_date >= end_date:
                 msg.MessageBoxInfo(
                     title=title,
@@ -652,7 +784,6 @@ class ImportServices:
                     message=msg.get_message(msg.MESSAGE_TEXT, 'PRICES_ALREADY', name)
                     )
                 continue
-
             msg.MessageBoxInfo(
                 title=title,
                 info_storage=msg.Informations.PRICES_INFORMATIONS,
@@ -664,16 +795,13 @@ class ImportServices:
                     end_date
                     )
                 )
-
-            # -----------------------------
             # Download Prices + Corporate Actions
-            # -----------------------------
             try:
                 isin_code_data_dict = self.repo.get_isin_symbol_data(isin_code)
                 if not isin_code_data_dict:
                     msg.MessageBoxInfo(
                         title=title,
-                        info_storage=msg.Informations.PRICES_INFORMATIONS,                    
+                        info_storage=msg.Informations.PRICES_INFORMATIONS,
                         message=msg.get_message(
                             msg.MESSAGE_TEXT,
                             'ISIN_SYMBOL_MISSED',
@@ -682,9 +810,7 @@ class ImportServices:
                         )
                     return
                 ticker_obj = yf.Ticker(isin_code_data_dict[declm.DB_symbol])
-                
                 # Prices
-              
                 with msg.capture_yfinance_logs() as logs:
                     df_prices = ticker_obj.history(
                         start=start_date,
@@ -692,7 +818,6 @@ class ImportServices:
                         auto_adjust=False,
                         actions=False
                     )
-                
                 # Logs auswerten
                 for log in logs:
                     if "ERROR" in log or "WARNING" in log:
@@ -706,16 +831,11 @@ class ImportServices:
                                 isin_code_data_dict[declm.DB_symbol],
                                 log
                             )
-                        ) 
-                
-                
+                        )
                 # Dividends & Splits
                 df_dividends = ticker_obj.dividends
                 df_splits = ticker_obj.splits
-
-                # -----------------------------
                 # 3. Transform Prices
-                # -----------------------------
                 if not df_prices.empty:
                     df_prices.reset_index(inplace=True)
                     df_prices.rename(columns={
@@ -727,18 +847,32 @@ class ImportServices:
                         "Adj Close": declm.DB_adjclose,
                         "Volume": declm.DB_volume
                     }, inplace=True)
-
                     df_prices[declm.DB_ISIN] = isin_code
                     df_prices[declm.DB_origin] = decl.YAHOO
                     df_prices[declm.DB_symbol_prices] = isin_code_data_dict[declm.DB_symbol]
-
                     df_prices = df_prices[
                         [declm.DB_ISIN, declm.DB_price_date, declm.DB_open, declm.DB_high, declm.DB_low,
                          declm.DB_close, declm.DB_adjclose, declm.DB_volume,
                          declm.DB_origin, declm.DB_symbol_prices]
                     ]
-
+                    
+                    rows_to_delete = df_prices[df_prices[declm.DB_close] == 0]
+                    if not rows_to_delete.empty:
+                        msg.MessageBoxInfo(
+                            title=title,
+                            info_storage=msg.Informations.PRICES_INFORMATIONS,
+                            information=decl.WARNING,
+                            message=msg.get_message(
+                                msg.MESSAGE_TEXT,
+                                'PRICES_CLOSE_ZERO',
+                                isin_code_name_dict[isin_code],
+                                f"{rows_to_delete[declm.DB_price_date].tolist()}"
+                                )
+                            )                   
+                        df_prices = df_prices[df_prices[declm.DB_close] != 0]                    
                     self.repo.import_prices_batch(df_prices)
+                    
+                    
                     msg.MessageBoxInfo(
                         title=title,
                         info_storage=msg.Informations.PRICES_INFORMATIONS,
@@ -748,7 +882,7 @@ class ImportServices:
                             isin_code_name_dict[isin_code],
                             str(len(df_prices)))
                         )
-                else:    
+                else:
                     msg.MessageBoxInfo(
                         title=title,
                         info_storage=msg.Informations.PRICES_INFORMATIONS,
@@ -759,34 +893,26 @@ class ImportServices:
                             isin_code_data_dict[declm.DB_symbol],
                             decl.YAHOO)
                     )
-                # -----------------------------
                 # 4. Transform Corporate Actions
-                # -----------------------------
                 actions_list = []
-
                 if not df_dividends.empty:
-                    for date, value in df_dividends.items():
+                    for date_, value in df_dividends.items():
                         actions_list.append({
                             declm.DB_ISIN: isin_code,
-                            "action_date": date.date(),
+                            "action_date": date_days.mariadb_date(date_),
                             "action_type": "DIVIDEND",
                             "value": dec6.convert(value)
                         })
-
                 if not df_splits.empty:
-                    for date, value in df_splits.items():
+                    for date_, value in df_splits.items():
                         actions_list.append({
                             declm.DB_ISIN: isin_code,
-                            "action_date": date.date(),
+                            "action_date": date_days.mariadb_date(date_),
                             "action_type": "SPLIT",
                             "value": dec6.convert(value)
                         })
-
-                # -----------------------------
                 # 5. Insert into corporate_actions
-                # -----------------------------
                 self.repo.replace_corporate_actions_data(actions_list)
-
                 if actions_list:
                     msg.MessageBoxInfo(
                         title=title,
@@ -810,26 +936,27 @@ class ImportServices:
                         e if isinstance(e, str) else str(e))
                     )
 
+
 class ShowServices:
-    
+
     def get_balances(self, bank_accounts: List[Dict]):
-        
+
         period = xetra_cls.last_trading_period()
-        # recalculate balance, delete 
+        # recalculate balance, delete
         balance_accounts = []
-        ledger_accounts = []  
+        ledger_accounts = []
         for acc in bank_accounts:
             balance_account = {declm.DB_iban: acc[decl.KEY_ACC_IBAN]}
             balance_account[decl.KEY_ACC_OWNER_NAME] = acc[decl.KEY_ACC_OWNER_NAME]
-            balance_account[declm.DB_name] = acc[decl.KEY_ACC_PRODUCT_NAME]            
+            balance_account[declm.DB_name] = acc[decl.KEY_ACC_PRODUCT_NAME]
             balance_account_data = self.repo.get_balance_account_of_iban(acc[decl.KEY_ACC_IBAN])
-            balance_account[declm.DB_account] = balance_account_data.get(declm.DB_account, decl.NOT_ASSIGNED)        
-            balance_account[declm.DB_portfolio] = balance_account_data.get(declm.DB_portfolio, False)        
-            balance_account[declm.DB_asset_accounting] = True        
+            balance_account[declm.DB_account] = balance_account_data.get(declm.DB_account, decl.NOT_ASSIGNED)
+            balance_account[declm.DB_portfolio] = balance_account_data.get(declm.DB_portfolio, False)
+            balance_account[declm.DB_asset_accounting] = True
             balance_accounts.append(balance_account)
             if balance_account[declm.DB_account] != decl.NOT_ASSIGNED:
                 ledger_accounts.append(balance_account[declm.DB_account])
-        if ledger_accounts:        
+        if ledger_accounts:
             self.repo.delete_ledger_daily_balance_in_period(ledger_accounts, period)
         # calculate balances
         from_date, to_date = period
@@ -843,20 +970,18 @@ class ShowServices:
             account = row["account"]
             if account not in from_map:
                 row[declm.DB_opening_balance] = row[decl.FN_BALANCE]
-            row[declm.DB_opening_balance] = from_map[account]        
-       
+            row[declm.DB_opening_balance] = from_map[account]
         for row in balances_to_date:
             opening = row.get(declm.DB_opening_balance)
             current = row.get(decl.FN_BALANCE)
-        
             if opening is None or opening == 0:
                 row[decl.FN_DAILY_PERCENT] = None  # oder 0 / "N/A"
             else:
                 change = (current - opening) / opening * Decimal(100)
-                row[decl.FN_DAILY_PERCENT] = change        
+                row[decl.FN_DAILY_PERCENT] = change
         return balances_to_date
-       
-    
+
+
 class LedgerServices:
 
     def ledger_balance_account(
@@ -883,7 +1008,7 @@ class LedgerServices:
                     - declm.DB_name: account name
                     - declm.DB_iban: IBAN (can be decl.NOT_ASSIGNED)
                     - declm.DB_portfolio: True if it's a portfolio account, else False
-            return_to_date  if True return to_date       
+            return_to_date  if True return to_date
             from_date (yyyy-mm-dd): The date from which balances are calculated.
 
         Returns:
@@ -898,7 +1023,7 @@ class LedgerServices:
         if from_date is None:
             from_date = date_days.yyyy_01_01(to_date)
         else:
-            from_date = date_days.convert_to_str(from_date)    
+            from_date = date_days.convert_to_str(from_date)
         period = (from_date, to_date)
         # Get the latest price date for all holdings
         max_price_date_all_iban = self.repo.max_price_date_of_all_ibans((to_date))
@@ -943,11 +1068,8 @@ class LedgerServices:
                     )
                 return 0
                 # signed_balance(value, status)
-            else:                
+            else:
                 return balance
-
-
-
         # Iterate over all asset accounts
         for asset_account_dict in asset_accounts:
             account = asset_account_dict.get(declm.DB_account, decl.NOT_ASSIGNED)
@@ -972,7 +1094,7 @@ class LedgerServices:
                         iban=iban,
                         price_date=max_price_date_all_iban,
                     )
-                    balance_entry_date = max_price_date_all_iban 
+                    balance_entry_date = max_price_date_all_iban
             # 2️⃣ IBAN account: try statement balance, fallback to ledger
             elif iban != decl.NOT_ASSIGNED:
                 result = self.repo.get_last_statement_of_iban_period(
@@ -985,7 +1107,7 @@ class LedgerServices:
                         result[declm.DB_closing_balance],
                         result[declm.DB_closing_status]
                     )
-                    balance_entry_date = result[declm.DB_closing_entry_date] 
+                    balance_entry_date = result[declm.DB_closing_entry_date]
                 else:
                     balance = ledger_fallback(asset_account_dict, period)
                     balance_entry_date = to_date
@@ -995,12 +1117,12 @@ class LedgerServices:
                 balance_entry_date = to_date
             # Append calculated balance
             if balance:
-                if self.repo.is_asset_accounting(account) and to_date<date_days.today():
+                if self.repo.is_asset_accounting(account) and to_date < date_days.today():
                     self.repo.replace_ledger_daily_balance(account, to_date, balance)
                 if return_to_date:
                     date = date_days.convert_to_str(to_date)
                 else:
-                    date = date_days.convert_to_str(balance_entry_date)        
+                    date = date_days.convert_to_str(balance_entry_date)
                 if owner_name == decl.NOT_ASSIGNED:
                     data.append({
                         declm.DB_account: account,
@@ -1008,18 +1130,17 @@ class LedgerServices:
                         declm.DB_entry_date: date,
                         decl.FN_BALANCE: balance,
                     })
-                else:    
+                else:
                     data.append({
                         decl.KEY_ACC_OWNER_NAME: owner_name,
                         declm.DB_account: account,
                         declm.DB_name: name,
-                        declm.DB_entry_date: date, 
+                        declm.DB_entry_date: date,
                         decl.FN_BALANCE: balance,
                     })
 
         return data
 
-    
     def select_ledger_balance(
         self,
         account_dict: Dict[str, any],
@@ -1028,7 +1149,6 @@ class LedgerServices:
     ) -> Optional[Decimal]:
         """
         Determine the balance of a ledger account for a given period.
-
         Priority order:
         0. Use table LEDGER_DAILY_BALANCE
         1. Use the latest opening balance booking involving the opening balance account
@@ -1037,7 +1157,6 @@ class LedgerServices:
            - Use the latest STATEMENT entry (closing balance + movements).
         3. If neither exists:
            - Calculate balance purely from ledger movements within the period.
-
         Parameters
         ----------
         account_dict : Dict[str, any]
@@ -1046,35 +1165,25 @@ class LedgerServices:
             Ledger account used for opening balance postings.
         period : Tuple[str, str]
             Period (from_date, to_date), format YYYY-MM-DD.
-
         Returns
         -------
         Optional[Decimal]
             Calculated ledger balance, or None if no data exists.
         """
-
         from_date, to_date = period
         account = account_dict[declm.DB_account]
-
         balance = self.repo.get_daily_balance(account=account, entry_date=to_date)
         if balance:
             return balance
-
         # Resolve IBAN (if available)
         iban = self.repo.get_iban_of_account(account=account)
-
         if account_dict[declm.DB_asset_accounting]:
-            # ------------------------------------------------------------------
             # Only relevant for non-bank accounts
             # 1. Determine latest opening balance booking
-            # ------------------------------------------------------------------
             opening_rows = self.repo.get_opening_rows(account, opening_balance_account, to_date)
-            # ------------------------------------------------------------------
             # Case A: Opening balance exists
-            # ------------------------------------------------------------------
             if opening_rows:
                 opening_date, opening_balance = opening_rows[0]
-
                 _, _, movements = self.repo.select_ledger_totals(
                     account=account,
                     from_date=opening_date,
@@ -1086,43 +1195,30 @@ class LedgerServices:
                     return opening_balance + movements
                 else:
                     return movements
-
-        # ------------------------------------------------------------------
         # Case B: No opening balance → STATEMENT fallback
-        # ------------------------------------------------------------------
         if iban and self.repo.exists_statements_of_iban(iban):
-
             statement_row = self.repo.get_last_statement_of_iban(iban)
-
             if statement_row:
                 closing_balance, closing_status, statement_date = statement_row
-
                 # Normalize statement balance sign
                 base_balance = (
                     -closing_balance
                     if closing_status == decl.CREDIT
                     else closing_balance
                 )
-
                 _, _, movements = self.repo.select_ledger_totals(
                     account=account,
                     from_date=statement_date,
                     to_date=to_date,
                 )
-
                 return base_balance + movements
-
-        # ------------------------------------------------------------------
         # Case C: Pure ledger movements within period
-        # ------------------------------------------------------------------
         _, _, balance = self.repo.select_ledger_totals(
             account=account,
             from_date=from_date,
             to_date=to_date,
         )
-
         return balance
-    
 
     def select_ledger_total_amount(
         self,
@@ -1132,27 +1228,18 @@ class LedgerServices:
         Return the most recent ledger entry (date, status, amount)
         for the given IBAN, excluding opening balance postings.
         """
-
-        # ------------------------------------------------------------
         # Resolve opening balance account
-        # ------------------------------------------------------------
         opening_account = self.repo.opening_balance_account()
         if not opening_account:
             msg.MessageBoxInfo(
                 message=msg.get_message(msg.MESSAGE_TEXT, "OPENING_ACCOUNT_MISSED")
             )
             return {}
-
-        # ------------------------------------------------------------
         # Resolve internal ledger account for IBAN
-        # ------------------------------------------------------------
         account = self.repo.get_account_of_iban(iban)
         if not account:
             return {}
-
-        # ------------------------------------------------------------
         # SQL: unified debit / credit view
-        # ------------------------------------------------------------
         result = self.repo.get_ledger_rows(account, opening_account)
         return result
 
@@ -1197,7 +1284,7 @@ class TransactionOverviewService:
                         isin_code,
                         declm.DB_market_price)
                     )
-                return result 
+                return result
 
         # 2️⃣ Period transactions
         transactions = self.repo.get_transactions(
@@ -1240,7 +1327,7 @@ class TransactionOverviewService:
                         isin_code,
                         declm.DB_market_price)
                     )
-                return result                        
+                return result
             tx_pieces, proceeds, profit_loss = strategy.sell(
                 strategy.current_pieces(),
                 end_price
@@ -1266,9 +1353,9 @@ class TransactionOverviewService:
         if not market_price:
             market_price = self.repo.get_close_price(isin_code, price_date)
             if not market_price:
-            # import price data
-                self.import_prices_and_corporate_actions(msg.MESSAGE_TITLE, [name], state=decl.BUTTON_APPEND)            
-            market_price = self.repo.get_close_price(isin_code, price_date) 
+                # import price data
+                self.import_prices_and_corporate_actions(msg.MESSAGE_TITLE, [name], state=decl.BUTTON_APPEND)
+            market_price = self.repo.get_close_price(isin_code, price_date)
 
     def _create_strategy(self, cost_method: str):
 
@@ -1295,9 +1382,10 @@ class TransactionOverviewService:
 
 
 class Services(
+        BuildHoldings,
         DownloadServices,
         LedgerServices,
-        HoldingAcquisition,        
+        HoldingAcquisition,
         UpdateHoldingAcquisition,
         ShowServices,
         TransactionOverviewService,
@@ -1308,12 +1396,9 @@ class Services(
         self.repo = repo
 
 
-
-
-    
 conflicts = check_mixin_method_uniqueness(Repository)
 
 if conflicts:
-        print("Conflicts found")
-        for method, classes in conflicts.items():
-            raise ValueError(f"Method {method} in class {classes} already exists in another class")
+    print("Conflicts found")
+    for method, classes in conflicts.items():
+        raise ValueError(f"Method {method} in class {classes} already exists in another class")

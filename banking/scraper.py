@@ -2,7 +2,7 @@
 # -*- coding: ISO-8859-15 -*-
 """
 Created on 27.06.2021
-__updated__ = "2026-05-19"
+__updated__ = "2026-05-27"
 @author: Wolfgang Kramer
 
   Attention! new Scraper Class, see     Module: mariadb.py
@@ -461,9 +461,9 @@ class BmwBank(object):
         dataframe[declm.DB_closing_entry_date] = dataframe[declm.DB_entry_date]
         statements = dataframe.to_dict(orient='records')
         # get last stored statement
-        result = statement_row = self.repo.get_last_statement_of_iban(self.iban)
+        result = self.repo.get_last_statement_of_iban(self.iban)
         if result:
-            mariadb_closing_balance, closing_status, entry_date  = result
+            mariadb_closing_balance, _, entry_date  = result
             # delete statements already stored in mariadb
             idx = len(statements) - 1
             while idx >= 0 and statements[idx][declm.DB_entry_date] <= entry_date:

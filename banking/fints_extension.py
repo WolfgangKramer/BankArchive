@@ -1,13 +1,11 @@
 """
 Created on 11.02.2020
-__updated__ = "2026-05-18"
+__updated__ = "2026-05-27"
 @author: Wolfgang Kramer
 
 Extensions of project fints source code  copied and modified
     Pure-python FinTS (formerly known as HBCI) implementation https://pypi.python.org/pypi/fints
 """
-
-
 
 from fints.fields import DataElementField, DataElementGroupField, CodeField
 from fints.formals import DataElementGroup

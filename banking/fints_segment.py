@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-05-19"
+__updated__ = "2026-05-27"
 @author: Wolfgang Kramer
 """
 
@@ -75,7 +75,7 @@ def encrypt(bank, message):
                 KeyType.V,
                 0,
                 0,
-            ),
+                ),
             compression_function=CompressionFunction.NULL,
         )
     )
@@ -105,16 +105,31 @@ def from_to_date(bank):
         bank.to_date = _latest_date
         if bank.period_message:
             return
-        msg.MessageBoxInfo(msg.get_message(msg.MESSAGE_TEXT,'BANK_PERIOD', 
-            bank.bank_name, bank.bank_code, bank.account_number, bank.account_product_name, _latest_date))
+        msg.MessageBoxInfo(msg.get_message(
+            msg.MESSAGE_TEXT,
+            'BANK_PERIOD',
+            bank.bank_name,
+            bank.bank_code,
+            bank.account_number,
+            bank.account_product_name,
+            _latest_date
+            )
+        )
         bank.period_message = True  # trigger:  message is shown
     else:
         if bank.from_date < _latest_date:
             bank.from_date = _latest_date
             if bank.period_message:
                 return
-            msg.MessageBoxInfo(msg.get_message(msg.MESSAGE_TEXT,'BANK_PERIOD', 
-                bank.bank_name, bank.bank_code, bank.account_number, bank.account_product_name, _latest_date))
+            msg.MessageBoxInfo(msg.get_message(
+                msg.MESSAGE_TEXT,
+                'BANK_PERIOD',
+                bank.bank_name,
+                bank.bank_code,
+                bank.account_number,
+                bank.account_product_name,
+                _latest_date)
+            )
             bank.period_message = True
 
 
@@ -124,8 +139,16 @@ def _get_segment(bank, segment_type):
         if (seg.__name__[2:5] == segment_type
                 and seg.__name__[5:6] == str(bank.transaction_versions[segment_type])):
             return seg
-    msg.MessageBoxTermination(info=msg.get_message(msg.MESSAGE_TEXT,'VERSION_TRANSACTION', 
-        'HK', segment_type, bank.transaction_versions[segment_type]), bank=bank)
+    msg.MessageBoxTermination(
+        info=msg.get_message(
+            msg.MESSAGE_TEXT,
+            'VERSION_TRANSACTION',
+            'HK',
+            segment_type,
+            bank.transaction_versions[segment_type]
+            ),
+        bank=bank
+        )
     return False  # thread checking
 
 
@@ -435,8 +458,15 @@ class Segments():
                 date_end=bank.to_date
             )
             return message
-        msg.MessageBoxTermination(info=msg.get_message(msg.MESSAGE_TEXT,'HIKAZ', 
-            'HKKAZ', bank.bank_name, bank.account_number, bank.account_product_name),
+        msg.MessageBoxTermination(
+            info=msg.get_message(
+                msg.MESSAGE_TEXT,
+                'HIKAZ',
+                'HKKAZ',
+                bank.bank_name,
+                bank.account_number,
+                bank.account_product_name
+                ),
             bank=bank
             )
 

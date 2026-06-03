@@ -93,34 +93,37 @@ MESSAGE_TEXT = {
     'HITAN_MISSED': 'Response HITAN missing: bank_name {}, account_number {}, account_product_name {}',
     'HIUPD_EXTENSION': 'Bank: {} \n Bank Account: {}  {}       \n     IBAN {} received Bank Information: \n     {}',
     'HOLDING_INSERT': 'Holding data for date {} does not exist. Insert?',
+    'HOLDING_TRANSACTION_ERROR': 'Holding not created: {}',
+    'HOLDING_TRANSACTION_CREATED': 'Holding row {} {} inserted',
     'HTTP': 'Server not connected! HTTP Status Code: {}\nBank: {}  Server: {}',
     'HTTP_INPUT': 'Server not valid or not available! HTTP Status Code: {}',
     'IBAN': 'IBAN invalid',
     'IBAN_MISSED': 'IBAN {} has no account assignment (see LEDGER_COA)',
     'IBAN_USED': 'IBAN is already assigned to another account',
-    'IMPORT_ERROR': """ 
+    'IMPORT_ERROR': """
         CSV import failed.
         File : {}
         Error: {}
         """,
+    'IMPORT_ALREADY': 'Rows of CSV-File {} already imported',
     'IMPORT_TEXT_TICKER': f"""
         ZIP format
         ----------
         The ZIP file is converted into the following CSV file during import.
-        
+
         CSV format
         ----------
         - Encoding: utf8
         - Delimiter: ,
         - Quote character: "
         - Line ending: CRLF (\\r\\n)
-    
+
         Expected columns
         ----------------
         1. symbol
         2. company_name
         3. exchange
-    
+
         Additional values
         -----------------
         - ISIN is automatically set to 'NA'
@@ -128,55 +131,55 @@ MESSAGE_TEXT = {
         Notes
         -----
         Download Spreadsheet of Companies Traded on German Stock Exchanges
-        
+
         {decl.TICKER_ADDRESS}
-    """,    
+    """,
     'IMPORT_TEXT_SERVER': f"""
         CSV format
         ----------
         The CSV file must use the following structure:
-    
+
         - Encoding: latin1
         - Delimiter: ;
         - Optional quote character: "
         - Line ending: CRLF (\r\n)
         - First row: header (ignored)
-    
+
         Expected columns
         ----------------
         The CSV file contains 28 columns in total.
-    
+
         Only the following columns are imported:
-    
+
         1. code      : Bank / institute code
         2. server    : HBCI / FinTS server address
-    
+
         All remaining columns are ignored during import.
-    
+
         Additional processing
         ---------------------
         - Existing entries are deleted before import.
         - Placeholder server entries ('\\r') are removed.
         - Additional known servers from
           ``decl.SCRAPER_BANKDATA`` are inserted after import.
-    
+
         Notes
         -----
         Registration to get CSV File:
-        
+
         {decl.FINTS_SERVER_ADDRESS}
     """,
     'IMPORT_TEXT_BANKIDENTIFIER': f"""
          CSV format
         ----------
         The CSV file must use the following structure:
-    
+
         - Encoding: latin1
         - Delimiter: ;
         - Optional quote character: "
         - Line ending: CRLF (\r\n)
         - First row: header (ignored)
-    
+
         Expected columns
         ----------------
         1. code                      : Bank code (BLZ)
@@ -192,33 +195,34 @@ MESSAGE_TEXT = {
         11. change_indicator         : Change indicator
         12. code_deletion            : Deletion flag
         13. follow_code              : Follow-up bank code
-    
+
         Additional processing
         ---------------------
         - Existing entries are deleted before import.
-        - Payment providers with provider code '2'    
-        
+        - Payment providers with provider code '2'
+
         Notes
         -----
         Informations
-        
+
         {decl.BUNDESBANK_BLZ_MERKBLATT}
-        
+
         Download
-        
+
         {decl.BUNDEBANK_BLZ_DOWNLOAD}
     """,
+    'IMPORT_TEXT_TRANSACTION_BANK_CSV': 'Loads transaction data from the bank downloaded CSV file.',
     'IMPORT_TEXT_TRANSACTION': """
         CSV format
         ----------
         The CSV file must use the following structure:
-    
+
         - Encoding: latin1
         - Delimiter: ;
         - Optional quote character: "
         - Line ending: CRLF (\n)
         - First row: header (ignored)
-    
+
         Expected columns:
         -----------------
         1. price_date     : Booking or valuation date
@@ -226,7 +230,7 @@ MESSAGE_TEXT = {
         3. counter        : Number of transactions
         4. pieces         : Quantity of shares / units
         5. price          : Price per unit (decimal point!)
-    
+
         Additional values are automatically added during import:
         --------------------------------------------------------
         - iban
@@ -234,9 +238,9 @@ MESSAGE_TEXT = {
         - currencies
         - posted_amount
         - origin filename
-    
+
         Negative transactions are automatically converted into
-        delivery transactions after import.    
+        delivery transactions after import.
     """,
     'IMPORT_CSV': 'Import CSV_File into Table {}\n\n Source: \n{}',
     'IMPORT_CSV_MISSED': 'Customizing: Import CSV_File into Table {} ',
@@ -280,6 +284,7 @@ MESSAGE_TEXT = {
     'PIN': 'PIN missing! \nBank: {} ({})',
     'PIN_INPUT': 'Enter PIN   {} ({}) ',
     'PRICES_DELETED': '{}:  Prices deleted\n\n Used Ticker Symbol {} \n ISIN: {}',
+    'PRICES_CLOSE_ZERO': '{} has not yet updated ClosePrice: {} {}',
     'PRICES_EMPTY': 'Price table is empty',
     'PRICES_ERROR': 'Prices Download Error {} ({}): {}',
     'PRICES_DOWNLOAD': 'Download Prices {}: {} → {}',
@@ -341,6 +346,7 @@ MESSAGE_TEXT = {
     'WEBDRIVER': 'Installing {} WEB Driver failed\n\n{}',
     'WEBDRIVER_INSTALL': '{} WEB Driver installed to project.root/.wdm'
 }
+
 
 @contextmanager
 def capture_yfinance_logs(level=logging.DEBUG):
@@ -432,6 +438,7 @@ def destroy_widget(widget):
     except TclError:
         pass
 
+
 def bankdata_informations_append(information, message):
 
     message = str(message)
@@ -444,6 +451,13 @@ def prices_informations_append(information, message):
     message = str(message)
     Informations.prices_informations = ' '.join(
         [Informations.prices_informations, '\n' + information, message])
+
+
+def transaction_informations_append(information, message):
+
+    message = str(message)
+    Informations.transaction_informations = ' '.join(
+        [Informations.transaction_informations, '\n' + information, message])
 
 
 def holding_informations_append(information, message):
@@ -471,6 +485,13 @@ class Informations(object):
     PRICES_INFORMATIONS = 'PRICES_INFORMATIONS'
 
     """
+    Upload transactions from bank
+    Container of messages, errors
+    """
+    transaction_informations = ' '
+    TRANSACTION_INFORMATIONS = 'TRANSACTION_INFORMATIONS'
+
+    """
     Update prices in holding from Yahoo! or Alpha Vantage
     Container of messages, errors
     """
@@ -487,13 +508,13 @@ class Level():
     ERROR = decl.ERROR
 
 
-
 class InfoStorage():
     """
     Message Storage Place
     """
     BANK = Informations.BANKDATA_INFORMATIONS
     PRICES = Informations.PRICES_INFORMATIONS
+    TRANSACTION = Informations.TRANSACTION_INFORMATIONS
     HOLDING = Informations.HOLDING_INFORMATIONS
 
 
@@ -624,6 +645,12 @@ class BankDispatcher(MessageDispatcher):
         bankdata_informations_append(message.level, message.text)
 
 
+class TransactionDispatcher(MessageDispatcher):
+
+    def dispatch(self, message: Message):
+        transaction_informations_append(message.level, message.text)
+
+
 class PricesDispatcher(MessageDispatcher):
 
     def dispatch(self, message: Message):
@@ -690,6 +717,7 @@ class DispatcherRouter():
         self.print = PrintDispatcher()
         self.bank = BankDispatcher()
         self.prices = PricesDispatcher()
+        self.transaction = TransactionDispatcher()
         self.holding = HoldingDispatcher()
 
     def route(self, message: Message):
@@ -703,6 +731,8 @@ class DispatcherRouter():
             self.bank.dispatch(message)
         elif message.info_storage == InfoStorage.PRICES:
             self.prices.dispatch(message)
+        elif message.info_storage == InfoStorage.TRANSACTION:
+            self.transaction.dispatch(message)
         elif message.info_storage == InfoStorage.HOLDING:
             self.holding.dispatch(message)
         elif not is_main_thread():

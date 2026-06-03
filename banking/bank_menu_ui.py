@@ -1,6 +1,6 @@
 """0
 Created on 09.12.2019
-__updated__ = "2026-05-19"
+__updated__ = "2026-06-02"
 Author: Wolfang Kramer
 """
 import sys
@@ -40,12 +40,12 @@ class BankMenu:
         self.repo = Repository()
         self.srv = Services(self.repo)
         self.window = Tk()
-        self.progress = ProgressBar(self.window)        
-        self.footer = StringVar() 
+        self.progress = ProgressBar(self.window)
+        self.footer = StringVar()
         self.men = Menue(title, self.repo, self.srv, self.footer, self.progress, self.window)
         application_store.load_data(self.repo.get_application())
         if application_store.get(declm.DB_logging):
-            self.configure_logging(application_store.get(declm.DB_directory))        
+            self.configure_logging(application_store.get(declm.DB_directory))
         self.bank_names = self.repo.dictbank_names()
         while True:
 
@@ -66,7 +66,6 @@ class BankMenu:
             self.canvas.create_text(300, 200, fill=fill_colour, font=(
                 'Arial', 20, 'bold'), text=msg.get_message(msg.MESSAGE_TEXT, 'DATABASE', self.repo.get_database_name()))
             self._def_styles()
-           
             self.men.create_menu(self.window)
             self.window.config(menu=self.men.menu, borderwidth=10, relief=GROOVE)
             self.message_widget = Label(self.window,
@@ -122,8 +121,7 @@ class Menue:
         self.w_db = wrk.DatabaseWorkFlow(title, repo, service, footer, progress)
         self.w_cust = wrk.CustomizingWorkFlow(title, repo, service, footer, progress)
         self.wpd_iban = []
-        self.kaz_iban = []          
-
+        self.kaz_iban = []
 
     def wm_deletion_window(self):
 
@@ -208,10 +206,10 @@ class Menue:
             ledger_menu.add_separator()
         if self.repo.ledger_is_not_empty():
             ledger_menu.add_command(
-                label=get_menu_text("Reset Ledger_daily_balance"), command=self.w_ledg.ledger_daily_balance)            
+                label=get_menu_text("Reset Ledger_daily_balance"), command=self.w_ledg.ledger_daily_balance)
         ledger_menu.add_command(
             label=get_menu_text("Chart of Accounts"), command=self.w_ledg.ledger_coa_table)
-        ledger_menu.add_separator()       
+        ledger_menu.add_separator()
         if self.repo.ledger_is_not_empty():
             ledger_menu.add_command(
                 label=get_menu_text("Statement_wo"), command=self.w_ledg.show_statements_no_ledger)
@@ -329,7 +327,7 @@ class Menue:
         customize_menu = Menu(menu, tearoff=0, font=menu_font, bg='Lightblue')
         menu.add_cascade(label=get_menu_text("Customize"), menu=customize_menu)
         customize_menu.add_command(label=get_menu_text("Application INI File"),
-                                   command= self._safe_callback(self.w_cust.appcustomizing))
+                                   command=self._safe_callback(self.w_cust.appcustomizing))
         if application_store.get(None):  # Customizing is done
             customize_menu.add_separator()
             customize_menu.add_command(label=get_menu_text("Import Bankidentifier CSV-File"),
@@ -365,7 +363,7 @@ class Menue:
                     if bank_code not in list(decl.SCRAPER_BANKDATA.keys()):
                         cust_bank_menu.add_command(label=get_menu_text("Refresh BankParameterData"),
                                                    command=lambda
-                                                   x=bank_code: self.w_cust.bank_refresh_bpd(x))                        
+                                                   x=bank_code: self.w_cust.bank_refresh_bpd(x))
                         cust_bank_menu.add_command(label=get_menu_text("Change Security Function"),
                                                    command=lambda
                                                    x=bank_code: self.w_cust.bank_security_function(x, False))
@@ -383,7 +381,7 @@ class Menue:
     def _create_menu_banks(self, menu_text, bank_owner_account, typ_menu, menu_font):
         """
         Populate the top-level bank menu with owners and their accounts.
-        
+
         :param menu_text: Type of menu ("Show", "Transfer", "Database").
         :param bank_owner_account: Dict mapping bank_code -> owner_name -> accounts.
         :param typ_menu: The Tkinter menu object to populate.
@@ -396,32 +394,26 @@ class Menue:
             elif menu_text == get_menu_text("Database"):
                 return self._create_menu_database_accounts(accounts, parent_menu, bank_name)
             return False
-    
         for bank_code, bank_name in self.bank_names.items():
             # If bank has owner accounts
             if bank_code in bank_owner_account:
                 owner_menu = Menu(typ_menu, tearoff=0, font=menu_font, bg='Lightblue')
-    
                 # Add balances at bank level if in "Show" menu
                 if menu_text == get_menu_text("Show"):
                     owner_menu.add_command(
                         label=get_menu_text("Balances"),
                         command=lambda bc=bank_code, bn=bank_name: self.w_show.show_balances(bc, bn)
                     )
-    
                 owners_exist = False
                 for owner_name, accounts in bank_owner_account[bank_code].items():
                     account_menu = Menu(owner_menu, tearoff=0, font=menu_font, bg='Lightblue')
                     accounts_exist = add_account_menu(accounts, account_menu, bank_code, bank_name, owner_name)
-                    
                     if accounts_exist:
                         owners_exist = True
                         owner_menu.add_cascade(label=owner_name, menu=account_menu, underline=0)
-    
                 if owners_exist:
                     typ_menu.add_cascade(label=bank_name, menu=owner_menu, underline=0)
                     typ_menu.add_separator()
-    
             # If bank has no owner accounts, create menu directly for bank
             else:
                 account_menu = Menu(typ_menu, tearoff=0, font=menu_font, bg='Lightblue')
@@ -429,41 +421,32 @@ class Menue:
                 bank_code = dict_get_first_key(self.bank_names, bank_name)
                 accounts = self.repo.shelve_get_accounts(bank_code)
                 accounts_exist = add_account_menu(accounts, account_menu, bank_code, bank_name)
-    
                 if accounts_exist:
                     typ_menu.add_cascade(label=bank_name, menu=account_menu, underline=0)
                     typ_menu.add_separator()
-
 
     def _create_menu_show_accounts(self, accounts, account_menu, bank_code, bank_name, owner_name=None):
         """
         Populate account menu with balances, statements, holdings, and transactions
         using a concise mapping-driven approach.
         """
-
-
         if self.repo.shelve_get_loging_online_banking(bank_code):
             login_website = self.repo.shelve_get_loging_online_banking(bank_code)
             if login_website:
                 account_menu.add_command(
                     label=get_menu_text("Login Online Banking"),
                     command=lambda x=login_website: self.w_show.websites(x))
-
-
         account_menu.add_command(
             label=get_menu_text("Balances"),
             command=lambda bc=bank_code, bn=bank_name: self.w_show.show_balances(bc, bn, owner_name=owner_name)
         )
-    
         if not accounts:
             return True
-    
         TRANSACTION_MAP = {
             'HKKAZ': ('Statement', self.w_show.show_statements),
             'HKCAZ': ('Statement', self.w_show.show_statements),
             'HKWPD': [('Holding', self.w_show.show_holdings), ('Transactions', self.w_show.show_transactions)],
         }
-    
         for acc in accounts:
             transactions = acc.get(decl.KEY_ACC_ALLOWED_TRANSACTIONS, "")
             for txn_type, actions in TRANSACTION_MAP.items():
@@ -480,7 +463,6 @@ class Menue:
                         label=label,
                         command=lambda bc=bank_code, a=acc, cb=callback: cb(bc, a)
                     )
-    
         return True
 
     def _create_menu_database_accounts(self, accounts, account_menu, bank_name):
@@ -530,6 +512,11 @@ class Menue:
                                  y=acc[decl.KEY_ACC_IBAN]: self.w_db.data_holding_table(x, y)))
                     account_menu.add_separator()
                     account_menu.add_command(
+                        label=get_menu_text("Insert Holding Positions from Transactions"),
+                        command=(lambda x=bank_name,
+                                 y=acc[decl.KEY_ACC_IBAN]:
+                                 self.w_db.data_insert_holding_from_transaction(x, y)))
+                    account_menu.add_command(
                         label=get_menu_text("Update Holding Market Price by Closing Price"),
                         command=(lambda x=bank_name,
                                  y=acc[decl.KEY_ACC_IBAN]:
@@ -542,7 +529,8 @@ class Menue:
                     account_menu.add_separator()
                     account_menu.add_command(
                         label=get_menu_text("Import Transactions"),
-                        command=(lambda y=acc[decl.KEY_ACC_IBAN]: self.w_db.import_transaction(y)))
+                        command=(lambda x=bank_name,
+                                 y=acc[decl.KEY_ACC_IBAN]: self.w_db.import_transaction(x, y)))
                     account_menu.add_command(
                         label=get_menu_text("Check Transactions Pieces"),
                         command=(lambda x=bank_name,

@@ -20,7 +20,7 @@ from tkinter import filedialog, Menu
 from fints.formals import CreditDebit2
 from pandas import DataFrame, to_numeric, concat, to_datetime, set_option
 from pandastable import TableModel
-from  copy import copy
+from copy import copy
 
 import banking.declarations_mariadb as declm
 import banking.declarations as decl
@@ -38,6 +38,8 @@ from banking.utils import (
     date_days,
     get_popup_menu_text, get_menu_text,
     http_error_code)
+from banking.trading_calendar import xetra_cls
+
 
 def _set_defaults(field_defs=[FieldDefinition()], default_values=(1,)):
 
@@ -230,6 +232,7 @@ class SelectLedgerAccount(BuiltSelectBox):
             self.data_dict[decl.FN_TO_DATE] = date(datetime.now().year, 12, 31)
         return field_defs_list
 
+
 class SelectLedgerDailyBalanceAccounts(BuiltSelectBox):
     """
     Selection: Accounts in table ledger_daily_balance
@@ -248,6 +251,7 @@ class SelectLedgerDailyBalanceAccounts(BuiltSelectBox):
             field_defs_list.append(
                 self.create_check_field(decl.FN_ACCOUNT_NUMBER + account, account_name))
         return field_defs_list
+
 
 class InputPeriod(BuiltSelectBox):
     """
@@ -316,28 +320,34 @@ class InputDateHolding(InputPeriod):
 
     def validation_all_addon(self, field_defs):
         from_date = getattr(field_defs, decl.FN_FROM_DATE).widget.get()
-        _date = self._validate_date(from_date)
-        if _date:
-            getattr(self._field_defs, decl.FN_FROM_DATE).textvar.set(
-                _date)  # adjusted date returned
         to_date = getattr(field_defs, decl.FN_TO_DATE).widget.get()
-        _date = self._validate_date(to_date)
-        if _date:
-            getattr(self._field_defs, decl.FN_TO_DATE).textvar.set(
-                _date)  # adjusted date returned
-        if from_date == to_date:
-            from_date = date_days.subtract(from_date, 1)
-            getattr(self._field_defs, decl.FN_FROM_DATE).textvar.set(
-                from_date)  # adjusted date returned
-            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE_ADJUSTED'))
-        if (from_date > to_date):
-            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE', from_date))
+        if date_days.is_valid_date(from_date) and date_days.is_valid_date(to_date):
+            trading_from_date, trading_to_date = xetra_cls.adjust_period(from_date, to_date)
+            _date = self._validate_date(from_date, trading_from_date)
+            if _date:
+                getattr(self._field_defs, decl.FN_FROM_DATE).textvar.set(
+                    _date)  # adjusted date returned
+            _date = self._validate_date(to_date, trading_to_date)
+            if _date:
+                getattr(self._field_defs, decl.FN_TO_DATE).textvar.set(
+                    _date)  # adjusted date returned
+            if from_date == to_date:
+                from_date = date_days.subtract(from_date, 1)
+                getattr(self._field_defs, decl.FN_FROM_DATE).textvar.set(
+                    from_date)  # adjusted date returned
+                self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE_ADJUSTED'))
+            if (from_date > to_date):
+                self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE', from_date))
 
-    def _validate_date(self, _date):
+    def _validate_date(self, _date, trading_date):
         data_exists = self.repo.exist_holding_of_iban_price_date(self.container, _date)
         if not data_exists:
-            _date = self._get_prev_date(_date)
-            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE_ADJUSTED'))
+            data_exists = self.repo.exist_holding_of_iban_price_date(self.container, trading_date)
+            if not data_exists:
+                _date = self._get_prev_date(_date)
+                self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE_ADJUSTED'))
+            else:    
+                return trading_date
         return _date
 
     def _get_prev_date(self, _date):
@@ -393,7 +403,7 @@ class InputDatePrices(BuiltSelectBox):
         # selection field_names of table price
         fields_properties = declm.TABLE_FIELDS_PROPERTIES[declm.PRICES]
         for field_name in fields_properties.keys():
-            if field_name not in [declm.DB_ISIN, declm.DB_price_date,declm.DB_symbol_prices, declm.DB_origin]:
+            if field_name not in [declm.DB_ISIN, declm.DB_price_date, declm.DB_symbol_prices, declm.DB_origin]:
                 field_defs_list.append(self.create_check_field(
                     field_name, fields_properties[field_name].comment))
                 if field_name not in self.data_dict.keys():
@@ -624,10 +634,12 @@ class BankDataNew(BuiltEnterBox):
     def __init__(self,  title, bank_codes=[]):
 
         self.bank_codes = bank_codes
-        FieldNames = namedtuple('FieldNames', [
-            
-            decl.KEY_BANK_CODE, decl.KEY_BANK_NAME, decl.KEY_USER_ID, decl.KEY_PIN, decl.KEY_BIC, decl.KEY_SERVER,
-            decl.KEY_IDENTIFIER_DELIMITER, decl.KEY_DOWNLOAD_ACTIVATED, decl.KEY_LOGIN_ONLINE_BANKING])
+        FieldNames = namedtuple(
+            'FieldNames',
+            [decl.KEY_BANK_CODE, decl.KEY_BANK_NAME, decl.KEY_USER_ID, decl.KEY_PIN, decl.KEY_BIC, decl.KEY_SERVER,
+             decl.KEY_IDENTIFIER_DELIMITER, decl.KEY_DOWNLOAD_ACTIVATED, decl.KEY_LOGIN_ONLINE_BANKING
+             ]
+            )
         field_defs = FieldNames(
             FieldDefinition(definition=decl.COMBO,
                             name=decl.KEY_BANK_CODE, length=8, lformat=decl.FORMAT_FIXED,
@@ -692,7 +704,7 @@ class BankDataNew(BuiltEnterBox):
                 getattr(self._field_defs, decl.KEY_BANK_NAME).textvar.set('')
                 getattr(self._field_defs, decl.KEY_BIC).textvar.set('')
                 getattr(self._field_defs, decl.KEY_SERVER).textvar.set('')
-            
+
 
 class BankDataChange(BuiltEnterBox):
     """
@@ -719,9 +731,10 @@ class BankDataChange(BuiltEnterBox):
                             default_value=':'),
             FieldDefinition(name=decl.KEY_DOWNLOAD_ACTIVATED,
                             definition=decl.CHECK,
-                            checkbutton_text=decl.KEY_DOWNLOAD_ACTIVATED), 
+                            checkbutton_text=decl.KEY_DOWNLOAD_ACTIVATED),
             FieldDefinition(name=decl.KEY_LOGIN_ONLINE_BANKING, length=300,
-                            mandatory=False),            ]
+                            mandatory=False)
+            ]
         _set_defaults(field_defs, (login_data[decl.KEY_BANK_NAME],
                                    login_data[decl.KEY_USER_ID], login_data[decl.KEY_PIN],
                                    login_data[decl.KEY_BIC], login_data[decl.KEY_SERVER],
@@ -784,7 +797,8 @@ class IsinTableRowBox(BuiltTableRowBox):
     """
 
     def set_field_def(self, field_def):
-        if field_def.name==declm.DB_symbol:
+
+        if field_def.name == declm.DB_symbol:
             field_def.length = decl.MAX_FIELD_LENGTH
         return field_def
 
@@ -796,7 +810,7 @@ class IsinTableRowBox(BuiltTableRowBox):
         BuiltEnterBox.button_1_button3(self, event)
 
     def focus_out_action(self, event):
-        
+
         if event.widget.myId == declm.DB_ISIN:
             if getattr(self._field_defs, declm.DB_type).widget.get() == decl.FN_INDEX:
                 isin_name = getattr(self._field_defs, declm.DB_name).widget.get()
@@ -833,9 +847,9 @@ class IsinTableRowBox(BuiltTableRowBox):
             isin_name = getattr(self._field_defs, declm.DB_name).widget.get()
             getattr(self._field_defs, declm.DB_ISIN).textvar.set(isin_name[:12].ljust(12, "_"))
         if event.widget.myId == declm.DB_symbol:
-                symbol = getattr(self._field_defs, declm.DB_origin_symbol).widget.get()
-                exchange = self.repo.get_ticker_exchange(symbol)
-                getattr(self._field_defs, declm.DB_exchange).textvar.set(exchange)
+            symbol = getattr(self._field_defs, declm.DB_origin_symbol).widget.get()
+            exchange = self.repo.get_ticker_exchange(symbol)
+            getattr(self._field_defs, declm.DB_exchange).textvar.set(exchange)
         if event.widget.myId == declm.DB_origin_symbol:
             if decl.ALPHA_VANTAGE == getattr(self._field_defs, declm.DB_origin_symbol).widget.get():
                 key_alpha_vantage = application_store.get(declm.DB_alpha_vantage)
@@ -868,9 +882,7 @@ class IsinTableRowBox(BuiltTableRowBox):
                 if self.yahoo_symbols:
                     getattr(self._field_defs, declm.DB_name).widget.values = self.yahoo_symbols
                 else:
-                    webbrowser.open(decl.WWW_YAHOO)    
-
-
+                    webbrowser.open(decl.WWW_YAHOO)
 
     def comboboxselected_action(self, event):
 
@@ -880,13 +892,12 @@ class IsinTableRowBox(BuiltTableRowBox):
         """
         more field validations
         """
-        if field_def.name==declm.DB_symbol:
+        if field_def.name == declm.DB_symbol:
             symbol = field_def.widget.get().partition(" ")[0]  # 1. part of string (without following text)
-            if symbol != decl.NOT_ASSIGNED:                    
+            if symbol != decl.NOT_ASSIGNED:
                 field_def.textvar.set(symbol)
                 exchange = self.repo.get_ticker_exchange(symbol)
-                getattr(self._field_defs, declm.DB_exchange).textvar.set(exchange)             
-
+                getattr(self._field_defs, declm.DB_exchange).textvar.set(exchange)
                 name_symbol = self.repo.select_isin_table([declm.DB_name, declm.DB_symbol], symbol=symbol)
                 if name_symbol and name_symbol[0][declm.DB_name] != getattr(self._field_defs, declm.DB_name).widget.get():
                     self.header = set(msg.get_message(msg.MESSAGE_TEXT, 'SYMBOL_USED', name_symbol))
@@ -921,6 +932,7 @@ class LedgerCoaTableRowBox(BuiltTableRowBox):
                 iban = decl.NOT_ASSIGNED
             if iban != decl.NOT_ASSIGNED and self.repo.exist_ledger_coa_with_iban(iban):
                 self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'IBAN_USED'))
+
 
 class LedgerTableRowBox(BuiltTableRowBox):
     """
@@ -1075,7 +1087,7 @@ class LedgerTableSearchRowBox(BuiltTableRowBox):
                     self.field_dict[field_def.name].upper()
                 )
 
-                
+
 class StatementTableSearchRowBox(BuiltTableRowBox):
 
     def set_field_def(self, field_def):
@@ -1252,6 +1264,22 @@ class SelectDownloadPrices(BuiltCheckButton):
                 self.field_list.append(self.checkbutton_texts[idx])
         self.quit_widget()
 
+class SelectBuildHoldings(SelectDownloadPrices):
+    
+    def __init__(self,  title=msg.MESSAGE_TITLE,
+                 button1_text=decl.BUTTON_INSERT, button2_text=decl.BUTTON_REPLACE, button3_text=None,
+                 checkbutton_texts=['Description of Checkbox1',
+                                    'Description of Checkbox2',
+                                    'Description of Checkbox3']
+                 ):
+
+        super().__init__(
+            title=title,
+            button1_text=button1_text,
+            button2_text=button2_text, button3_text=button3_text,
+            checkbutton_texts=checkbutton_texts
+            )
+
 
 class PrintList(BuiltText):
     """
@@ -1281,7 +1309,7 @@ class PandasBoxBalance(BuiltPandasBox):
 
         self.dataframe[decl.KEY_ACC_OWNER_NAME] = self.dataframe[decl.KEY_ACC_OWNER_NAME].where(
             self.dataframe[decl.KEY_ACC_OWNER_NAME] != self.dataframe[decl.KEY_ACC_OWNER_NAME].shift(), ""
-            )          
+            )
 
     def set_row_format(self):
 
@@ -1303,20 +1331,13 @@ class PandasBoxBalanceAll(BuiltPandasBox):
             return 0 if opening == 0 else (balance - opening) / opening * 100
 
         dataframe = concat(d for d in self.dataframe)
-        
         df = dataframe.sort_values(by=[decl.FN_BANK_NAME, decl.KEY_ACC_OWNER_NAME]).reset_index(drop=True)
-        
         result = []
-        
         for bank, bank_group in df.groupby(decl.FN_BANK_NAME):
-            
             for owner, owner_group in bank_group.groupby(decl.KEY_ACC_OWNER_NAME):
-                
-                # Detailzeilen (decl.FN_DAILY_PERCENT bleibt wie vorhanden)
+                # Detail lines (decl.FN_DAILY_PERCENT unchanged)
                 owner_group["level"] = "DETAIL"
                 result.append(owner_group)
-                
-                # Owner-Summe
                 owner_sum = DataFrame({
                     decl.FN_BANK_NAME: [bank],
                     decl.KEY_ACC_OWNER_NAME: [owner],
@@ -1328,10 +1349,7 @@ class PandasBoxBalanceAll(BuiltPandasBox):
                     )],
                     "level": ["OWNER_SUM"]
                 })
-                
                 result.append(owner_sum)
-            
-            # Bank-Summe
             bank_sum = DataFrame({
                 decl.FN_BANK_NAME: [bank],
                 decl.KEY_ACC_OWNER_NAME: [decl.FN_TOTAL],
@@ -1343,13 +1361,8 @@ class PandasBoxBalanceAll(BuiltPandasBox):
                 )],
                 "level": ["BANK_SUM"]
             })
-            
             result.append(bank_sum)
-        
-        # Zusammenführen
         df_final = concat(result, ignore_index=True)
-        
-        # --- Gesamt-Summe ---
         total_sum = DataFrame({
             decl.FN_BANK_NAME: [decl.FN_TOTAL],
             decl.KEY_ACC_OWNER_NAME: [decl.FN_TOTAL],
@@ -1361,14 +1374,13 @@ class PandasBoxBalanceAll(BuiltPandasBox):
             )],
             "level": ["GRAND_TOTAL"]
         })
-        
         self.dataframe = concat([df_final, total_sum], ignore_index=True)
         self.dataframe[decl.FN_BANK_NAME] = self.dataframe[decl.FN_BANK_NAME].where(
             self.dataframe[decl.FN_BANK_NAME] != self.dataframe[decl.FN_BANK_NAME].shift(), ""
-            )        
+            )
         self.dataframe[decl.KEY_ACC_OWNER_NAME] = self.dataframe[decl.KEY_ACC_OWNER_NAME].where(
             self.dataframe[decl.KEY_ACC_OWNER_NAME] != self.dataframe[decl.KEY_ACC_OWNER_NAME].shift(), ""
-            )        
+            )
 
     def set_row_format(self):
 
@@ -1380,7 +1392,6 @@ class PandasBoxBalanceAll(BuiltPandasBox):
                 self.pandas_table.setRowColors(
                     rows=[i], clr='lightgreen', cols='all')
         self.pandas_table.model.df = self.dataframe.drop(columns=["level"])
-
 
 
 class PandasBoxHolding(BuiltPandasBox):
@@ -1795,10 +1806,11 @@ class PandasBoxIsinTable(BuiltPandasBox):
         industry_dict = {declm.DB_industry: industry_list}
         if name:
             yahoo_symbols = self.repo.get_yahoo_symbols(name)
-            symbol_dict = {declm.DB_symbol: yahoo_symbols}        
+            symbol_dict = {declm.DB_symbol: yahoo_symbols}
             return {**currency_dict, **type_dict, **origin_symbol_dict, **industry_dict, **symbol_dict}
         else:
             return {**currency_dict, **type_dict, **origin_symbol_dict, **industry_dict}
+
 
 class PandasBoxIsinComparision(BuiltPandasBox):
     """
@@ -1996,7 +2008,7 @@ class PandasBoxHoldingTable(BuiltPandasBox):
                     iban=row_dict[declm.DB_iban], period=(row_dict[declm.DB_price_date], row_dict[declm.DB_price_date]))
                 if result:
                     field_dict = {declm.DB_total_amount_portfolio: result[0][1]}
-                    self.repo.update_holding_all_isin_codes(field_dict, row_dict[declm.DB_iban], row_dict[declm.DB_price_date]) # update all isin_codes
+                    self.repo.update_holding_all_isin_codes(field_dict, row_dict[declm.DB_iban], row_dict[declm.DB_price_date])  # update all isin_codes
                 self.message = msg.get_message(
                     msg.MESSAGE_TEXT,
                     'DATA_CHANGED',
@@ -2052,7 +2064,7 @@ class PandasBoxHoldingTable(BuiltPandasBox):
                 holding.field_dict[declm.DB_origin] = decl.ORIGIN_INSERTED
                 holding.field_dict.pop(declm.DB_name, None)
                 holding.field_dict.pop(declm.DB_symbol, None)
-                self.repo.insert_holding( holding.field_dict)
+                self.repo.insert_holding(holding.field_dict)
                 self.message = msg.get_message(
                     msg.MESSAGE_TEXT,
                     'DATA_INSERTED',
@@ -2145,7 +2157,7 @@ class PandasBoxLedgerTable(BuiltPandasBox):
 
         self.selected_row = selected_row
         self.repo = Repository()
-        self.credit_statement_missed = self.debit_statement_missed = []        
+        self.credit_statement_missed = self.debit_statement_missed = []
         if period:
             result = self.repo.select_ledger_statement_missed(self.period)
             if result:
@@ -2165,7 +2177,7 @@ class PandasBoxLedgerTable(BuiltPandasBox):
         """
         Append Sum Row for column amount for Menu Ledger > Account
         """
-        if ( get_menu_text("Account") in self.title
+        if (get_menu_text("Account") in self.title
                 and declm.DB_credit_account in self.dataframe.columns
                 and declm.DB_debit_account in self.dataframe.columns):
             account = self.title.split()[3]
@@ -2231,8 +2243,6 @@ class PandasBoxLedgerTable(BuiltPandasBox):
                                  title=title,  button1_text=None, button2_text=None)
                 self.message = ''
             else:
-                # self.repo.delete_ledger_statement_with_idno_status(row_dict[declm.DB_id_no], status)
-                # self.repo.delete_ledger(row_dict[declm.DB_id_no])                
                 self.message = msg.get_message(msg.MESSAGE_TEXT, 'LEDGER_ROW')
         self.quit_widget()
 
@@ -2490,7 +2500,7 @@ class PandasBoxLedgerCoaTable(BuiltPandasBox):
             ledger_coa = LedgerCoaTableRowBox(declm.LEDGER_COA, declm.LEDGER_COA, row_dict,
                                               protected=protected, mandatory=mandatory,
                                               combo_positioning_dict={declm.DB_iban: self.get_all_ibans()},
-                                              combo_insert_value=[declm.DB_iban], 
+                                              combo_insert_value=[declm.DB_iban],
                                               title=self.title, button1_text=decl.BUTTON_UPDATE)
 
             self.button_state = ledger_coa.button_state
@@ -2558,14 +2568,15 @@ class PandasBoxLedgerCoaTable(BuiltPandasBox):
         return ledger_coa
 
     def get_all_ibans(self):
-        
+
         bank_codes = self.repo.listbank_codes()
         ibans = []
         for bank_code in bank_codes:
             accounts = self.repo.shelve_get_accounts(bank_code)
             for acc in accounts:
                 ibans.append(acc[decl.KEY_ACC_IBAN])
-        return ibans        
+        return ibans
+
 
 class PandasBoxLedgerStatement(BuiltPandasBox):
     """
@@ -2585,7 +2596,7 @@ class PandasBoxLedgerStatement(BuiltPandasBox):
         if status == decl.DEBIT:
             # Debit always 1st account transaction (before credit), therefore 5 days in advance
             self.from_date = date_days.subtract(self.ledger_dict[declm.DB_entry_date], 5)
-            self.to_date = self.ledger_dict[declm.DB_entry_date]            
+            self.to_date = self.ledger_dict[declm.DB_entry_date]
         title = ' '.join(
             [
                 self.title,
@@ -2603,7 +2614,7 @@ class PandasBoxLedgerStatement(BuiltPandasBox):
     def create_dataframe(self):
 
         period = (self.from_date, self.to_date)
-        statement_list = self.repo.get_statements_of_amount(self.iban, period, self.status,self.ledger_dict[declm.DB_amount])
+        statement_list = self.repo.get_statements_of_amount(self.iban, period, self.status, self.ledger_dict[declm.DB_amount])
         new_statement_list = []
         for statement_dict in statement_list:
             if not self.repo.exist_ledger_statement(statement_dict[declm.DB_iban], statement_dict[declm.DB_entry_date], statement_dict[declm.DB_counter]):
@@ -2769,7 +2780,7 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
 
     def new_row(self):
         #  inserts new row in ledger table !!!
-        row_dict = self.get_selected_row()  #  row of selected Statement
+        row_dict = self.get_selected_row()  # row of selected Statement
         if row_dict:
             self.new_row_insert(row_dict)
         self.quit_widget()
@@ -2791,16 +2802,16 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
         statement_row = self.repo.get_statement_copy_to_ledger(
             row_dict[declm.DB_iban],
             row_dict[declm.DB_entry_date],
-            row_dict[declm.DB_counter]            
+            row_dict[declm.DB_counter]
             )
         combo_positioning_dict, mandatory = self.new_row_properties()
         # create ledger
         ledger_dict = {}
         ledger_dict[declm.DB_entry_date] = row_dict[declm.DB_entry_date]
         ledger_dict[declm.DB_date] = statement_row[declm.DB_date]
-        if statement_row[declm.DB_status]==decl.CREDIT:
+        if statement_row[declm.DB_status] == decl.CREDIT:
             ledger_dict[declm.DB_credit_account] = self.repo.get_account_of_iban(row_dict[declm.DB_iban])
-        else:    
+        else:
             ledger_dict[declm.DB_debit_account] = self.repo.get_account_of_iban(row_dict[declm.DB_iban])
         ledger_dict[declm.DB_purpose_wo_identifier] = statement_row[declm.DB_purpose_wo_identifier]
         ledger_dict[declm.DB_amount] = statement_row[declm.DB_amount]
@@ -2811,13 +2822,13 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
             self.message = msg.get_message(msg.MESSAGE_TEXT, 'IBAN_MISSED',  row_dict[declm.DB_iban])
             return
         protected = declm.TABLE_FIELDS[declm.LEDGER].copy()
-        if statement_row[declm.DB_status]==decl.CREDIT:
+        if statement_row[declm.DB_status] == decl.CREDIT:
             ledger_dict[declm.DB_credit_account] = account
-            protected.remove(declm.DB_debit_account)            
+            protected.remove(declm.DB_debit_account)
             ledger_dict[declm.DB_credit_name] = name
-        else:    
+        else:
             ledger_dict[declm.DB_debit_account] = account
-            protected.remove(declm.DB_credit_account)            
+            protected.remove(declm.DB_credit_account)
             ledger_dict[declm.DB_debit_name] = name
         ledger_dict[declm.DB_applicant_name] = statement_row[declm.DB_applicant_name]
         ledger_dict[declm.DB_currency] = decl.EURO
@@ -2833,7 +2844,7 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
             ledger.field_dict[declm.DB_id_no] = id_no
             ledger.field_dict.pop(declm.DB_credit_name, None)
             ledger.field_dict.pop(declm.DB_debit_name, None)
-            self.repo.insert_ledger( ledger.field_dict)
+            self.repo.insert_ledger(ledger.field_dict)
             # connect to ledger_statemnt
             ledger_statement_dict = {}
             ledger_statement_dict[declm.DB_iban] = row_dict[declm.DB_iban]
@@ -2841,7 +2852,7 @@ class PandasBoxStatementNoLedgerTable(BuiltPandasBox):
             ledger_statement_dict[declm.DB_counter] = row_dict[declm.DB_counter]
             ledger_statement_dict[declm.DB_status] = statement_row[declm.DB_status]
             ledger_statement_dict[declm.DB_id_no] = id_no
-            self.repo.insert_ledger_statement(ledger_statement_dict)            
+            self.repo.insert_ledger_statement(ledger_statement_dict)
             self.message = msg.get_message(
                 msg.MESSAGE_TEXT,
                 'DATA_INSERTED',
@@ -3166,7 +3177,7 @@ class PandasBoxTransactionTable(PandasBoxTransactionTableShow):
 
 class PandasBoxPiecesConsistency(BuiltPandasBox):
     """
-    TOP-LEVEL-WINDOW        Shows Dataframe 
+    TOP-LEVEL-WINDOW        Shows Dataframe
                             whether the accumulated pieces from TRANSACTION table
                             match the HOLDING table pieces.
 
@@ -3179,7 +3190,7 @@ class PandasBoxPiecesConsistency(BuiltPandasBox):
         self.dataframe = DataFrame(self.dataframe)
         cols_to_check = [declm.DB_ISIN, "holding_pieces", "transaction_cum_pieces"]
         self.dataframe = self.dataframe.loc[~self.dataframe[cols_to_check].eq(self.dataframe[cols_to_check].shift()).all(axis=1)]
-        #self.dataframe = self.dataframe.sort_values(by=declm.DB_price_date)
+        self.dataframe = self.dataframe.sort_values(by=declm.DB_price_date)
 
     def show_row(self):
 
@@ -3196,6 +3207,7 @@ class PandasBoxPiecesConsistency(BuiltPandasBox):
             message = transaction_table.message
             if transaction_table.button_state == decl.WM_DELETE_WINDOW:
                 break
+
 
 class TechnicalIndicator(InputISIN):
     """
@@ -3220,9 +3232,9 @@ class TechnicalIndicator(InputISIN):
         }
 
     def __init__(self, title=msg.MESSAGE_TITLE, data_dict={}, container=[], selection_name=None):
-        
+
         self.repo = Repository()
-        self.srv = Services(self.repo)        
+        self.srv = Services(self.repo)
 
         super().__init__(title=title, header=None, table=None,
                          button1_text=decl.BUTTON_INDICATOR, button2_text=None,

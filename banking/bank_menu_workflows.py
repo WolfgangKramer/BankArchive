@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-05-20"
+__updated__ = "2026-06-02"
 Author: Wolfang Kramer
 """
 import requests
@@ -41,9 +41,9 @@ from banking.forms import (
     LedgerTableSearchRowBox, StatementTableSearchRowBox,
     PrintMessageCode,
     SelectFields, SelectLedgerAccount, SelectLedgerAccountCategory,
-    SelectLedgerDailyBalanceAccounts,
+    SelectLedgerDailyBalanceAccounts, SelectDownloadPrices, SelectBuildHoldings,
     TechnicalIndicator,
-    VersionTransaction, SelectDownloadPrices,
+    VersionTransaction,
 )
 from banking.scraper import AlphaVantage, BmwBank
 from banking.services_file import FileService
@@ -56,6 +56,7 @@ from banking.utils import (
 )
 
 from functools import wraps
+
 
 def _wrapper(before=None, after=None):
     """
@@ -100,9 +101,52 @@ def _wrapper(before=None, after=None):
 
     return decorator
 
+
 def websites(site):
 
     webbrowser.open(site)
+
+
+class BankProcessor:
+    """
+        Example
+        processor = BankProcessor()
+
+        processor.process("sparkasse")
+        processor.process("ing")
+    """
+
+    def process_consors(self, title, iban, filename, repo):
+
+        if filename:
+            result = repo.import_transaction_consors(iban, filename)
+            return result
+        else:
+            msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TRANSACTION_BANK_CSV'))
+
+    def process_flatex(self, title, iban, filename, repo):
+
+        if filename:
+            result = repo.import_transaction_flatex(iban, filename)
+            return result
+        else:
+            msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TRANSACTION_BANK_CSV'))
+
+    def process_default(self, title, iban, filename, repo):
+
+        if filename:
+            result = repo.import_transaction(iban, filename)
+            return result
+        else:
+            msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TRANSACTION'))
+
+    def process(self, bank_name, title, iban, filename, repo):
+        methods = {
+            "Consors": self.process_consors,
+            "BIW": self.process_flatex,
+        }
+        methods.get(bank_name, self.process_default)(title, iban, filename, repo)
+
 
 class BaseWorkflow:
 
@@ -113,7 +157,8 @@ class BaseWorkflow:
         self.srv = service
         self.footer = footer
         self.progress = progress
-        self.bank_names = self.repo.dictbank_names()        
+        self.bank_names = self.repo.dictbank_names()
+        self.bank_processor = BankProcessor()
 
     def _bank_data_scraper(self, bank_code):
 
@@ -131,7 +176,7 @@ class BaseWorkflow:
             acc[decl.KEY_ACC_PRODUCT_NAME] = account_product_name
             acc[decl.KEY_ACC_ALLOWED_TRANSACTIONS] = ['HKKAZ']
             accounts.append(acc)
-        if get_accounts:    
+        if get_accounts:
             data = [(decl.KEY_ACCOUNTS, accounts),
                     (decl.KEY_STORAGE_PERIOD, bank.storage_period),
                     (decl.KEY_MIN_PIN_LENGTH, 6),
@@ -158,6 +203,10 @@ class BaseWorkflow:
         """
         show informations of threads, if exist
         """
+        # download transaction
+        title = ' '.join([get_menu_text("Download"), get_menu_text("Transaction")])
+        PrintMessageCode(title=title, header=msg.Informations.TRANSACTION_INFORMATIONS,
+                         text=msg.Informations.transaction_informations)
         # downloaad prices
         title = ' '.join([get_menu_text("Download"), get_menu_text("Prices")])
         PrintMessageCode(title=title, header=msg.Informations.PRICES_INFORMATIONS,
@@ -203,7 +252,8 @@ class BaseWorkflow:
 class DownloadWorkFlow(BaseWorkflow):
 
     def __init__(self, title, repo, service, footer, progress):
-        super().__init__( title, repo, service, footer, progress)
+
+        super().__init__(title, repo, service, footer, progress)
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def all_banks(self):
@@ -285,7 +335,7 @@ class DownloadWorkFlow(BaseWorkflow):
             self.progress.stop()
             self.footer.set(
                 msg.get_message(msg.MESSAGE_TEXT, 'DOWNLOAD_DONE', bank.bank_name, 10 * '!'))
- 
+
     @_wrapper(before="_delete_footer", after="_show_informations")
     def all_holdings(self, bank_code):
 
@@ -318,7 +368,7 @@ class DownloadWorkFlow(BaseWorkflow):
                                              args=(title, field_list), kwargs={"state": state})
                     download_prices.start()
                 else:
-                    self.srv.import_prices_and_corporate_actions(title, field_list, state=state)  
+                    self.srv.import_prices_and_corporate_actions(title, field_list, state=state)
         else:
             self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'SYMBOL_MISSING_ALL', title))
 
@@ -326,37 +376,30 @@ class DownloadWorkFlow(BaseWorkflow):
 class CustomizingWorkFlow(BaseWorkflow):
 
     def __init__(self,  title, repo, service, footer, progress):
-        super().__init__( title, repo, service, footer, progress)
+
+        super().__init__(title, repo, service, footer, progress)
 
     @_wrapper(before="_delete_footer")
     def appcustomizing(self):
         """Handle application customization dialog loop."""
-    
         field_dict = application_store.get(None)
-    
         while True:
             app_data_box = AppCustomizing(field_dict)
-    
             # Window closed
             if app_data_box.button_state == decl.WM_DELETE_WINDOW:
                 return
-    
             field_dict = app_data_box.field_dict
-    
             if app_data_box.button_state == decl.BUTTON_SAVE:
                 # Save changes to database
                 field_dict[declm.DB_row_id] = 1
                 self.repo.replace_application(field_dict)
-    
                 msg.MessageBoxInfo(
                     message=msg.get_message(msg.MESSAGE_TEXT, 'DATABASE_REFRESH')
                 )
                 raise msg.ExitBankMenu()
-    
             elif app_data_box.button_state == decl.BUTTON_RESTORE:
                 # Restore original values
                 field_dict = application_store.get(None)
-    
             elif app_data_box.button_state == decl.WM_DELETE_WINDOW:
                 break
 
@@ -453,7 +496,6 @@ class CustomizingWorkFlow(BaseWorkflow):
             message=msg.get_message(msg.MESSAGE_TEXT, 'BANK_DELETED', bank_name, bank_code))
         raise msg.ExitBankMenu()  # not show deleted bank in menu after restart
 
-
     @_wrapper(before="_delete_footer", after="_show_informations")
     def bank_refresh_bpd(self, bank_code):
 
@@ -462,7 +504,7 @@ class CustomizingWorkFlow(BaseWorkflow):
         bank_name = self._bank_name(bank_code)
         message = ' '.join([bank_name, get_menu_text("Customize"),
                             get_menu_text("Refresh BankParameterData")])
-        self._show_message(bank, message=message)        
+        self._show_message(bank, message=message)
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def bank_show_shelve(self, bank_code):
@@ -579,16 +621,16 @@ class CustomizingWorkFlow(BaseWorkflow):
                     title=title,
                     message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_ERROR', file_dialogue.filename, result)
                     )
-            
+
     @_wrapper(before="_delete_footer", after="_show_informations")
     def import_tickers(self):
 
         title = get_menu_text("Import Ticker Symbols")
         msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TICKER'))
         webbrowser.open(decl.TICKER_ADDRESS)
-        file_dialogue = FileDialogue(title=title, filetypes='zip') # zip file
+        file_dialogue = FileDialogue(title=title, filetypes='zip')  # zip file
         if file_dialogue.filename not in ['', None]:
-            csv_file = FileService.spreadsheet_zip_to_csv(file_dialogue.filename) # convert to csv file          
+            csv_file = FileService.spreadsheet_zip_to_csv(file_dialogue.filename)  # convert to csv file
             result = self.repo.import_tickers(csv_file)
             if result is None:
                 msg.MessageBoxInfo(
@@ -618,9 +660,7 @@ class CustomizingWorkFlow(BaseWorkflow):
         for twostep in self.repo.shelve_get_twostep(bank_code):
             security_function, security_function_name = twostep
             security_function_dict[security_function] = security_function_name
-            if (self.repo.shelve_get_security_function(bank_code) and
-                self.repo.shelve_get_key(bank_code, decl.KEY_SECURITY_FUNCTION)[0:3] == security_function[0:3]
-                ):
+            if (self.repo.shelve_get_security_function(bank_code) and self.repo.shelve_get_key(bank_code, decl.KEY_SECURITY_FUNCTION)[0:3] == security_function[0:3]):
                 default_value = security_function
         bank_name = self._bank_name(bank_code)
         title = ' '.join([bank_name, get_menu_text("Customize"),
@@ -628,19 +668,22 @@ class CustomizingWorkFlow(BaseWorkflow):
         if new:
             security_function_box = BuiltRadioButtons(
                 title=title,
-                header=msg.get_message(msg.MESSAGE_TEXT,'TWOSTEP'), default_value=default_value,
-                button2_text=None, radiobutton_dict=security_function_dict)
+                header=msg.get_message(msg.MESSAGE_TEXT, 'TWOSTEP'),
+                default_value=default_value,
+                button2_text=None,
+                radiobutton_dict=security_function_dict)
         else:
             security_function_box = BuiltRadioButtons(
                 title=title,
-                header=msg.get_message(msg.MESSAGE_TEXT,'TWOSTEP'), default_value=default_value,
+                header=msg.get_message(msg.MESSAGE_TEXT, 'TWOSTEP'),
+                default_value=default_value,
                 radiobutton_dict=security_function_dict)
         if security_function_box.button_state == decl.WM_DELETE_WINDOW:
             return
         if security_function_box.button_state == decl.BUTTON_SAVE:
             data = (decl.KEY_SECURITY_FUNCTION, security_function_box.field[0:3])
             self.repo.shelve_put_key(bank_code, data)
-        self.footer.set(msg.get_message(msg.MESSAGE_TEXT,'SYNC_START', bank_name))
+        self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'SYNC_START', bank_name))
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def reset(self):
@@ -662,7 +705,8 @@ class CustomizingWorkFlow(BaseWorkflow):
 class DatabaseWorkFlow(BaseWorkflow):
 
     def __init__(self,  title, repo, service, footer, progress):
-        super().__init__( title, repo, service, footer, progress)
+
+        super().__init__(title, repo, service, footer, progress)
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def data_holding_performance(self, bank_name, iban):
@@ -866,6 +910,24 @@ class DatabaseWorkFlow(BaseWorkflow):
 
 
     @_wrapper(before="_delete_footer", after="_show_informations")
+    def data_insert_holding_from_transaction(self, bank_name, iban):
+        title = ' '.join(
+            [bank_name, get_menu_text("Insert Holding Positions from Transactions")])
+        name_isin_code = self.repo.get_transactions_name_isin_of_iban(iban)
+        if name_isin_code:
+            names = list(name_isin_code.keys())
+            while True:
+                select_isins = SelectBuildHoldings(title=title, checkbutton_texts=names)
+                if select_isins.button_state == decl.WM_DELETE_WINDOW:
+                    self._show_informations()
+                    return
+                field_list = select_isins.field_list
+                for seleted_isin_name in field_list:
+                    isin_code = name_isin_code[seleted_isin_name]
+                    self.srv.build_holdings(title, select_isins.button_state, iban, isin_code)
+     
+
+    @_wrapper(before="_delete_footer", after="_show_informations")
     def data_update_holding_and_prices(self, bank_name, iban):
         """
         For a working day:
@@ -895,7 +957,7 @@ class DatabaseWorkFlow(BaseWorkflow):
                     field_list='*', period=(price_date, price_date), iban=iban)
                 for holding_dict in holdings:
                     holding_dict[declm.DB_price_date] = date_day
-                    holding_dict[declm.DB_origin] =decl.ORIGIN_INSERTED
+                    holding_dict[declm.DB_origin] = decl.ORIGIN_INSERTED
                     self.repo.insert_holding(holding_dict)
 
                     msg.holding_informations_append(
@@ -950,7 +1012,7 @@ class DatabaseWorkFlow(BaseWorkflow):
                         )
             self.repo.update_total_holding_amount(
                 iban=iban, period=(date_day, date_day))
-          
+
     def _data_update_holding_price(self, title, bank_name, iban, holding_dict):
         """
         Imports prices
@@ -967,10 +1029,21 @@ class DatabaseWorkFlow(BaseWorkflow):
             field_dict[declm.DB_market_price] = price_close
             field_dict[declm.DB_total_amount] = dec2.multiply(
                 field_dict[declm.DB_market_price], holding_dict[declm.DB_pieces])
-            field_dict[declm.DB_origin] =decl.ORIGIN_PRICES
+            field_dict[declm.DB_origin] = decl.ORIGIN_PRICES
             self.repo.update_holding(iban, holding_dict[declm.DB_price_date], holding_dict[declm.DB_ISIN], field_dict)
-            msg.holding_informations_append(decl.INFORMATION, ' '.join(['\n', bank_name, declm.DB_ISIN.upper(), holding_dict[declm.DB_ISIN], holding_dict[declm.DB_name], '\n          ',
-                                                               declm.DB_price_date.upper(), date_days.convert_to_str(holding_dict[declm.DB_price_date]), '\n']))
+            msg.holding_informations_append(
+                decl.INFORMATION, ' '.join([
+                    '\n',
+                    bank_name,
+                    declm.DB_ISIN.upper(),
+                    holding_dict[declm.DB_ISIN],
+                    holding_dict[declm.DB_name],
+                    '\n          ',
+                    declm.DB_price_date.upper(),
+                    date_days.convert_to_str(holding_dict[declm.DB_price_date]),
+                    '\n'
+                    ])
+                )
             return True
         return False
 
@@ -986,7 +1059,7 @@ class DatabaseWorkFlow(BaseWorkflow):
         title = get_menu_text("Technical Indicators")
         data_dict = {decl.FN_FROM_DATE: date_days.subtract(date.today(), 360),
                      decl.FN_TO_DATE: date.today()}
-        names = self.repo.isin_names_with_ticker()        
+        names = self.repo.isin_names_with_ticker()
         while True:
             ta_data = TechnicalIndicator(
                 title=title, data_dict=data_dict, selection_name=title, container=names)
@@ -1064,7 +1137,6 @@ class DatabaseWorkFlow(BaseWorkflow):
                 if transaction_table.button_state == decl.WM_DELETE_WINDOW:
                     break
 
-
     @_wrapper(before="_delete_footer", after="_show_informations")
     def data_prices(self, sign):
 
@@ -1112,54 +1184,65 @@ class DatabaseWorkFlow(BaseWorkflow):
                         break
             else:
                 msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', ', '.join(selected_isins), ''))
-    @_wrapper(before="_delete_footer", after="_show_informations")
-    def import_transaction(self, iban):
+
+    @_wrapper(before="_delete_footer", after="_show_informations")
+    def import_transaction(self, bank_name, iban):
         """
         import transactions from CSV_File.
-        CSV File Columns ((price_date, ISIN, name, pieces, transaction_type, price)
-        price_date: YYYY-MM-DD
-        decimals: decimal_point
         """
-        title = get_menu_text("Import Transactions")
-        msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TRANSACTION'))
+        title = ' '.join([bank_name, get_menu_text("Import Transactions")])
+        self.bank_processor.process(bank_name, title, iban, None, None)
         file_dialogue = FileDialogue(title=title)
         if file_dialogue.filename not in ['', None]:
-            result = self.repo.import_transaction(iban, file_dialogue.filename)
+            last_price_date = self.repo.get_max_price_date_of_transaction(iban)
+            if not last_price_date:
+                last_price_date = decl.START_DATE_TRANSACTIONS
+            result = self.bank_processor.process(bank_name, title, iban, file_dialogue.filename, self.repo)
             if result is None:
                 msg.MessageBoxInfo(
                     title=title,
                     message=msg.get_message(msg.MESSAGE_TEXT, 'LOAD_DATA', file_dialogue.filename)
                     )
-                data = self.repo.get_transaction_data_of_iban(iban)
-                dataframe = DataFrame(data)
-                BuiltPandasBox(title=title, dataframe=dataframe)
+                data = self.repo.get_transaction_data_of_iban_from_date(iban, last_price_date)
+                if data:
+                    dataframe = DataFrame(data)
+                    BuiltPandasBox(title=title, dataframe=dataframe)
+                else:
+                    msg.MessageBoxInfo(
+                        title=title,
+                        message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_ALREADY', file_dialogue.filename)
+                        )
             else:
                 msg.MessageBoxInfo(
                     title=title,
                     message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_ERROR', file_dialogue.filename, result)
                     )
-    @_wrapper(before="_delete_footer", after="_show_informations")
+
+    @_wrapper(before="_delete_footer", after="_show_informations")
     def transactions_pieces(self, bank_name, iban):
 
         title = ' '.join([bank_name, get_menu_text("Check Transactions Pieces")])
-        data_dict = {}
-        while True:
-            input_date = InputDate(title=title)
-            if input_date.button_state == decl.WM_DELETE_WINDOW:
-                return
-            data_dict = input_date.field_dict
-            result = self.repo.check_pieces_consistency_for_iban(
-                iban, data_dict[decl.FN_DATE])
-            if result:
-                title_period = ' '.join(
-                    [title, msg.get_message(msg.MESSAGE_TEXT, 'PERIOD', decl.START_DATE_TRANSACTIONS, data_dict[decl.FN_DATE])])
-                table = PandasBoxPiecesConsistency(
-                    dataframe=result, title=title_period, cellwidth_resizeable=False, mode=decl.EDIT_ROW)
-                if table.button_state == decl.WM_DELETE_WINDOW:
-                    break
-            else:
-                msg.MessageBoxInfo(title=title,
-                               message=msg.get_message(msg.MESSAGE_TEXT, 'TRANSACTION_CHECK', 'NO '))
+        price_dates = self.repo.get_price_dates_of_transactions(iban=iban)
+        if price_dates:
+            for price_date in price_dates:
+                price_date = date_days.convert_to_str(price_date[0])
+                result = self.repo.check_pieces_consistency_for_iban(
+                    iban, price_date)
+                if result:
+                    title_period = ' '.join(
+                        [title, msg.get_message(msg.MESSAGE_TEXT, 'PERIOD', decl.START_DATE_TRANSACTIONS, price_date)])
+                    table = PandasBoxPiecesConsistency(
+                        dataframe=result, title=title_period, cellwidth_resizeable=False, mode=decl.EDIT_ROW)
+                    if table.button_state == decl.WM_DELETE_WINDOW:
+                        break
+        else:
+            msg.MessageBoxInfo(title=title,
+                               message=msg.get_message(
+                                   msg.MESSAGE_TEXT,
+                                   'TRANSACTION_CHECK',
+                                   'NO '
+                                   )
+                               )
     @_wrapper(before="_delete_footer", after="_show_informations")
     def transactions_profit(self, bank_name, iban):
 
@@ -1189,7 +1272,13 @@ class DatabaseWorkFlow(BaseWorkflow):
 
         else:
             msg.MessageBoxInfo(title=title,
-                           message=msg.get_message(msg.MESSAGE_TEXT, 'TRANSACTION_CLOSED_EMPTY', from_date, to_date))
+                               message=msg.get_message(
+                                   msg.MESSAGE_TEXT,
+                                   'TRANSACTION_CLOSED_EMPTY',
+                                   from_date,
+                                   to_date
+                                   )
+                               )
     @_wrapper(before="_delete_footer", after="_show_informations")
     def transactions_profit_all(self, bank_name, iban):
 
@@ -1245,7 +1334,8 @@ class DatabaseWorkFlow(BaseWorkflow):
 class ShowWorkFlow(BaseWorkflow):
 
     def __init__(self,  title, repo, service, footer, progress):
-        super().__init__( title, repo, service, footer, progress)
+
+        super().__init__(title, repo, service, footer, progress)
         if application_store.get(declm.DB_alpha_vantage):
             self.alpha_vantage_function = self.repo.get_alpha_vantage_functions()
             self.alpha_vantage_parameter = self.repo.get_alpha_vantage_parameters()
@@ -1383,17 +1473,17 @@ class ShowWorkFlow(BaseWorkflow):
         if self.bank_names != {}:
             bank_accounts_missed = ''
             for bank_name in self.bank_names.values():
-                bank_code = dict_get_first_key(self.bank_names, bank_name)                
+                bank_code = dict_get_first_key(self.bank_names, bank_name)
                 balance_accounts = self.repo.shelve_get_accounts(bank_code)
                 if not balance_accounts:
                     bank_accounts_missed = f"{bank_accounts_missed} ({bank_name})  "
-                    message = msg.get_message(msg.MESSAGE_TEXT, 'BANK_DATA_ACCOUNTS_MISSED', bank_accounts_missed) 
+                    message = msg.get_message(msg.MESSAGE_TEXT, 'BANK_DATA_ACCOUNTS_MISSED', bank_accounts_missed)
                     self.footer.set(message)
-                else:    
+                else:
                     bank_balances = self.srv.get_balances(balance_accounts)
                     if bank_balances:
                         dataframe = DataFrame(bank_balances)
-                        dataframe.insert(0, decl.KEY_BANK_NAME, bank_name)                    
+                        dataframe.insert(0, decl.KEY_BANK_NAME, bank_name)
                         dataframe = dataframe.sort_values(by=[decl.KEY_BANK_NAME, decl.KEY_ACC_OWNER_NAME])
                         total_df.append(dataframe)
             if total_df:
@@ -1420,12 +1510,12 @@ class ShowWorkFlow(BaseWorkflow):
             dataframe = dataframe.sort_values(by=decl.KEY_ACC_OWNER_NAME)
             title = f"""{title} {date_days.today()}"""
             PandasBoxBalance(title=title, dataframe=dataframe, dataframe_sum=[
-                              decl.FN_BALANCE,declm.DB_opening_balance], mode=decl.CURRENCY_SIGN,
-                              cellwidth_resizeable=False)
+                             decl.FN_BALANCE, declm.DB_opening_balance], mode=decl.CURRENCY_SIGN,
+                             cellwidth_resizeable=False)
         else:
             self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', title, ''))
 
-    @_wrapper(before="_delete_footer", after="_show_informations")
+    @_wrapper(before="_delete_footer", after="_show_informations")
     def show_statements(self, bank_code, account):
 
         iban = account[decl.KEY_ACC_IBAN]
@@ -1536,7 +1626,8 @@ class ShowWorkFlow(BaseWorkflow):
 class LedgerWorkFlow(BaseWorkflow):
 
     def __init__(self,  title, repo, service, footer, progress):
-        super().__init__( title, repo, service, footer, progress)
+
+        super().__init__(title, repo, service, footer, progress)
     @_wrapper(before="_delete_footer", after="_show_informations")
     def ledger_balances(self):
         """
@@ -1565,7 +1656,7 @@ class LedgerWorkFlow(BaseWorkflow):
                         )
             else:
                 self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', title, ''))
-        @_wrapper(before="_delete_footer", after="_show_informations")
+    @_wrapper(before="_delete_footer", after="_show_informations")
     def ledger_assets(self):
         """
         Show ledger assets of period
@@ -1581,7 +1672,7 @@ class LedgerWorkFlow(BaseWorkflow):
         if input_period:
             from_date = input_period.field_dict[decl.FN_FROM_DATE]
             to_date = input_period.field_dict[decl.FN_TO_DATE]
-            if date_days.convert_to_date(to_date)>date.today():
+            if date_days.convert_to_date(to_date) > date.today():
                 to_date = date_days.today()
             data = []
             data_counter = 0
@@ -1811,7 +1902,7 @@ class LedgerWorkFlow(BaseWorkflow):
                         title_period, data, message, mode=decl.EDIT_ROW)
                     message = table.message
                     if table.button_state == decl.WM_DELETE_WINDOW:
-                            break
+                        break
                 else:
                     self.footer.set(
                         msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', title_period, selected_check_button))
@@ -1820,18 +1911,15 @@ class LedgerWorkFlow(BaseWorkflow):
     def ledger_search(self):
         """Handle ledger search workflow."""
         title = f"{get_menu_text('Ledger')} {get_menu_text('Search')}"
-    
         # --- collect allowed accounts ---
         accounts = self.repo.get_all_accounts() or []
         accounts_list = [f"{acc[0]} {acc[1]}" for acc in accounts]
-    
         # --- build combo dictionaries ---
         combo_sources = [
             declm.DB_origin,
             declm.DB_category,
             declm.DB_applicant_name
         ]
-    
         combo_dict = {}
         for field in combo_sources:
             combo_dict.update(
@@ -1841,9 +1929,7 @@ class LedgerWorkFlow(BaseWorkflow):
                     date_name=declm.DB_entry_date
                 )
             )
-    
         combo_insert_value = combo_sources.copy()
-    
         combo_positioning_dict = {
             **self._create_combo_list(declm.LEDGER, declm.DB_category, date_name=declm.DB_entry_date),
             **self._create_combo_list(declm.LEDGER, declm.DB_applicant_name, date_name=declm.DB_entry_date),
@@ -1851,10 +1937,8 @@ class LedgerWorkFlow(BaseWorkflow):
             declm.DB_credit_account: accounts_list,
             declm.DB_debit_account: accounts_list,
         }
-    
         message = msg.get_message(msg.MESSAGE_TEXT, 'HELP_PANDASTABLE')
         selected_row = 0
-    
         # --- main search loop ---
         while True:
             search = LedgerTableSearchRowBox(
@@ -1869,22 +1953,16 @@ class LedgerWorkFlow(BaseWorkflow):
                 combo_insert_value=combo_insert_value,
                 combo_positioning_dict=combo_positioning_dict
             )
-    
             if search.button_state == decl.WM_DELETE_WINDOW:
                 break
-    
             # filter out empty values
             search_dict = {
                 k: v for k, v in search.field_dict.items()
                 if v not in ['', '0']
             }
-    
             title_search = f"{title} {search_dict}"
-    
-            # --- result loop ---
             while search_dict:
                 data = self.repo.get_ledgers_of_search(search_dict)
-    
                 table = PandasBoxLedgerTable(
                     title_search,
                     data,
@@ -1892,13 +1970,11 @@ class LedgerWorkFlow(BaseWorkflow):
                     mode=decl.EDIT_ROW,
                     selected_row=selected_row
                 )
-    
                 message = table.message
                 selected_row = table.selected_row
-    
                 if table.button_state == decl.WM_DELETE_WINDOW:
                     break
-            
+
     def _create_combo_list(
         self,
         table,
@@ -1907,10 +1983,9 @@ class LedgerWorkFlow(BaseWorkflow):
         date_name=declm.DB_price_date
     ):
         """
-        Return dict {field_name: sorted list of field values} 
+        Return dict {field_name: sorted list of field values}
         filtered by optional date range.
         """
-    
         # --- get data from repository ---
         if from_date:
             period = (from_date, date.today())
@@ -1919,10 +1994,8 @@ class LedgerWorkFlow(BaseWorkflow):
             )
         else:
             values = self.repo.get_field_values_of_table(table, field_name)
-    
         if not values:
             return {field_name: []}
-    
         # --- flatten + remove None ---
         # faster and cleaner than sum(...) and while-remove loop
         flat_values = [
@@ -1931,26 +2004,21 @@ class LedgerWorkFlow(BaseWorkflow):
             for item in row
             if item is not None
         ]
-    
         # --- return sorted result ---
         return {field_name: sorted(flat_values)}
     @_wrapper(before="_delete_footer", after="_show_informations")
     def ledger_search_of_statement(self):
-    
+
         title = f"{get_menu_text('Ledger')} {get_menu_text('Search via Statement')}"
-    
         combo_dict = self._create_combo_list(
             declm.STATEMENT,
             declm.DB_iban,
             date_name=declm.DB_entry_date,
         )
-    
         combo_insert_value = [declm.DB_iban]
         message = msg.get_message(msg.MESSAGE_TEXT, 'HELP_PANDASTABLE')
-    
         selected_row = 0
         header = None
-    
         while True:
             search = StatementTableSearchRowBox(
                 declm.STATEMENT,
@@ -1966,30 +2034,23 @@ class LedgerWorkFlow(BaseWorkflow):
                 button1_text=decl.BUTTON_SELECT,
                 button2_text=None,
             )
-    
             if search.button_state == decl.WM_DELETE_WINDOW:
                 break
-    
             search_dict = {
                 k: v
                 for k, v in search.field_dict.items()
                 if v not in ("", "0") or k in (declm.DB_iban, declm.DB_entry_date)
             }
-    
             if not search_dict:
                 continue
-    
             title_search = f"{title} {search_dict}"
-    
             while True:
                 data = self.repo.get_ledgers_via_statement(search_dict)
-    
                 if not data:
                     header = msg.get_message(
                         msg.MESSAGE_TEXT, 'SELECT_NO_RESULTS', search_dict
                     )
                     break
-    
                 table = PandasBoxLedgerTable(
                     title_search,
                     data,
@@ -1997,9 +2058,7 @@ class LedgerWorkFlow(BaseWorkflow):
                     mode=decl.EDIT_ROW,
                     selected_row=selected_row,
                 )
-    
                 message = table.message
                 selected_row = table.selected_row
-    
                 if table.button_state == decl.WM_DELETE_WINDOW:
                     break

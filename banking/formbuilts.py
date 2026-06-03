@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2026-05-19"
+__updated__ = "2026-06-02"
 @author: Wolfgang Kramer
 """
 import re
@@ -28,7 +28,9 @@ import banking.message_handler as msg
 from banking.pandastable_extension import Table, TableRowEdit, MyPlotViewer
 from banking.utils import (
     application_store,
-    Amount, dec2, list_positioning
+    Amount, dec2,
+    date_days,
+    list_positioning
     )
 from banking.repository import Repository
 from banking.connect_data import connectionresult
@@ -86,8 +88,6 @@ def find_list_index(list_, substring, mode='START'):
                 if re.search(substring, item):
                     idx = list_.index(item)
     return idx
-
-
 
 
 def extend_message_len(title, message):
@@ -409,30 +409,24 @@ class BuiltBox(object):
     ):
         # --- Thread safety check (must happen BEFORE any UI creation) ---
         self.window_id = self.__class__.__name__
-    
         if not msg.is_main_thread():
             msg.MessageBoxInfo(
                 title=title,
                 message=msg.get_message(msg.MESSAGE_TEXT, 'THREAD', self.window_id)
             )
             return
-    
         # --- Safe to create UI from here ---
         self.repo = Repository()
         self.button_state = None
         self._box_window_top = Toplevel()
-    
         # --- Header & layout setup ---
         self.header = header
-    
         buttons = [
             button1_text, button2_text, button3_text,
             button4_text, button5_text, button6_text
         ]
-    
         button_count = sum(btn is not None for btn in buttons)
         self.columnspan = max(columnspan, button_count)
-    
         (
             self._button1_text,
             self._button2_text,
@@ -441,82 +435,64 @@ class BuiltBox(object):
             self._button5_text,
             self._button6_text
         ) = buttons
-    
         self._width = width
         self._height_canvas = height_canvas
         self._row = 0
-    
         # --- UI creation ---
         self._create_header()
-    
         if scrollable:
             self._row += 1
             self.frame = Frame(self._box_window_top)
             self.frame.grid(row=self._row, column=0, sticky="nsew")
-    
             self._box_window_top.columnconfigure(0, weight=1)
             self._box_window_top.rowconfigure(0, weight=1)
             self.frame.columnconfigure(0, weight=1)
-    
             canvas = Canvas(self.frame)
             canvas.grid(row=self._row, column=0, sticky="nsew")
-    
             self.frame.grid_rowconfigure(0, weight=1)
             self.frame.grid_columnconfigure(0, weight=1)
-    
             self._box_window = Frame(canvas)
             canvas.create_window((0, 0), window=self._box_window, anchor="nw")
-    
             scrollbar = Scrollbar(self.frame, orient="vertical", command=canvas.yview)
             scrollbar.grid(row=self._row, column=1, sticky="ns")
-    
             canvas.configure(
                 yscrollcommand=scrollbar.set,
                 height=height_canvas
             )
-    
             self._box_window.bind(
                 "<Configure>",
                 lambda _: canvas.configure(scrollregion=canvas.bbox("all"))
             )
         else:
             self._box_window = self._box_window_top
-    
         # --- Window title ---
         db_name = connectionresult.database.upper()
         self._box_window_top.title(
             title if title.startswith(db_name) else f"{db_name} {title}"
         )
-    
         # --- Content ---
         self.create_fields()
-    
         if scrollable:
             self._row = 3
-    
         self._create_footer()
         self._create_buttons()
         self._keyboard()
-    
         self.set_geometry()
-    
         if grab:
             self._activate_window()
-        else:    
+        else:
             self._box_window_top.focus_force()
             # Focus first input widget
             self._focus_first_input()
-
         if scrollable:
             canvas.configure(width=self.calculate_width_canvas())
-    
         self._box_window_top.protocol(
             decl.WM_DELETE_WINDOW,
             self._wm_deletion_window
         )
-    
         self._box_window_top.mainloop()
         destroy_widget(self._box_window_top)
+
     def _activate_window(self):
         """
         Activates this dialog window in a fully modal and
@@ -528,32 +504,23 @@ class BuiltBox(object):
         - Assigns keyboard focus safely
         - Restores parent focus when closed
         """
-
         win = self._box_window_top
         parent = win.master
-
         win.update_idletasks()
-
         # If there is a parent window, make dialog transient
         if parent and parent.winfo_exists():
             win.transient(parent)
-            
         # Apply modal grab
         win.grab_set()
-
         # Ensure visibility and foreground
         win.deiconify()
         win.lift()
-
         # Temporary topmost (important for Windows)
         win.attributes("-topmost", True)
         win.after(80, lambda: win.attributes("-topmost", False))
-
         win.focus_force()
-
         # Focus first input widget
         self._focus_first_input()
-
         # Ensure parent regains focus when dialog closes
         win.protocol(decl.WM_DELETE_WINDOW, self._safe_close)
 
@@ -562,7 +529,6 @@ class BuiltBox(object):
         Sets focus to the first Entry or Combobox widget
         in the dialog.
         """
-
         win = self._box_window_top
 
         def set_focus():
@@ -577,20 +543,15 @@ class BuiltBox(object):
         """
         Releases grab safely and restores parent focus.
         """
-
         win = self._box_window_top
         parent = win.master
-
         try:
             win.grab_release()
         except Exception:
             pass
-
         self._geometry_put(win)
         self.button_state = decl.WM_DELETE_WINDOW
-
         win.destroy()
-
         # Restore parent focus
         if parent and parent.winfo_exists():
             parent.lift()
@@ -639,8 +600,12 @@ class BuiltBox(object):
     def _create_footer(self):
 
         self.footer = StringVar()
-        self.message_widget = Label(self._box_window_top, width=self._width, textvariable=self.footer,
-                                    foreground='RED')
+        self.message_widget = Label(
+            self._box_window_top,
+            width=self._width,
+            textvariable=self.footer,
+            foreground='RED'
+            )
         self.message_widget.grid(
             row=self._row, columnspan=self.columnspan, padx='3m', pady='3m')
         self._row += 1
@@ -1144,7 +1109,7 @@ class BuiltEnterBox(BuiltBox):
                 if field_def.name in self.field_dict:
                     self.field_dict[field_def.name] = self.field_dict[field_def.name].upper(
                     )
-        
+
     def field_dict_adjust_period(self):
         # adjusts period using trading_calendar XETRA
         if all(key in self.field_dict for key in [decl.FN_FROM_DATE, decl.FN_TO_DATE]):
@@ -1179,23 +1144,14 @@ class BuiltEnterBox(BuiltBox):
                 field_value = field_value.strip()
                 if ',' in field_value:
                     # German format
-                    field_value = field_value.replace('.', '').replace(',', '.')            
+                    field_value = field_value.replace('.', '').replace(',', '.')
                 field_def.widget.delete(0, END)
                 field_def.widget.insert(0, field_value)
                 if (re_amount.fullmatch(field_value) is None and
                         re_amount_int.fullmatch(field_value) is None):
                     return msg.get_message(msg.MESSAGE_TEXT, 'DECIMAL', name)
             if field_def.typ == decl.TYP_DATE:
-                if len(field_value) == 10:
-                    date_ = field_value[0:10]
-                    try:
-                        day = int(date_.split('-')[2])
-                        month = int(date_.split('-')[1])
-                        year = int(date_.split('-')[0])
-                        date_ = date(year, month, day)
-                    except (ValueError, EOFError, IndexError):
-                        return msg.get_message(msg.MESSAGE_TEXT, 'DATE', name)
-                else:
+                if not date_days.is_valid_date(field_value):
                     return msg.get_message(msg.MESSAGE_TEXT, 'DATE', name)
             # if combo_list contains extended values e.g. declm.DB_credit_account in class BuitlTableBoxRow Ledger
             combo_values = [
@@ -1305,7 +1261,6 @@ class BuiltSelectBox(BuiltEnterBox):
                          button1_text=button1_text, button2_text=button2_text,
                          button3_text=button3_text, button4_text=button4_text,
                          scrollable=scrollable)
-        
 
     def get_selection(self):
         """
@@ -1576,6 +1531,8 @@ class BuiltText(object):
 
         self.window_id = self.__class__.__name__
         if msg.is_main_thread():
+            if header == msg.Informations.TRANSACTION_INFORMATIONS:
+                msg.Informations.transaction_informations = ''
             if header == msg.Informations.PRICES_INFORMATIONS:
                 msg.Informations.prices_informations = ''
             elif header == msg.Informations.BANKDATA_INFORMATIONS:
@@ -1868,7 +1825,7 @@ class BuiltPandasBox(Frame):
 
         self.column_width = column_width
         self.repo.update_geometry_width_of_caller(column_width, self.window_id)
- 
+
     def _get_col_width(self):
 
         self.column_width = self.pandas_table.maxcellwidth / 2

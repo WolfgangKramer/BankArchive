@@ -1,6 +1,6 @@
 '''
 Created on 02.01.2026
-__updated__ = "2026-05-18"
+__updated__ = "2026-05-26"
 @author: Wolfgang Kramer
 '''
 from tkinter import (
@@ -16,11 +16,13 @@ import banking.message_handler as msg
 
 from banking.connect_data import ConnectionResult, connectionresult
 
+
 class ConnectController:
 
     def run(self) -> ConnectionResult:
         view = ConnectView()
         view.show()
+
 
 class ConnectView:
 
@@ -150,10 +152,10 @@ class ConnectView:
 
             self.db_combo["values"] = databases
             if databases:
-                self.db_combo.current(0)   
+                self.db_combo.current(0)
                 if declm.PRODUCTIVE_DATABASE_NAME in databases:
                     index = databases.index(declm.PRODUCTIVE_DATABASE_NAME)
-                    self.db_combo.current(index)                
+                    self.db_combo.current(index)
 
         except Error:
             self.db_combo["values"] = []
@@ -176,4 +178,3 @@ class ConnectView:
 
     def show(self):
         self.window.mainloop()
-

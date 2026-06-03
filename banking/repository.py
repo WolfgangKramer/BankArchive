@@ -6,6 +6,7 @@ Created on 27.02.2026
 import os
 import tempfile
 import json
+import re
 
 
 from pathlib import Path
@@ -19,7 +20,7 @@ import banking.declarations as decl
 import banking.declarations_mariadb as declm
 
 from banking.mariadb import MariaDB
-from banking.utils import date_days
+from banking.utils import date_days, dec2
 
 
 class SingletonNoLockMeta(type):
@@ -29,7 +30,7 @@ class SingletonNoLockMeta(type):
         if cls not in cls._instances:
             instance = super().__call__(*args, **kwargs)
             cls._instances[cls] = instance
-        return cls._instances[cls]    
+        return cls._instances[cls]
 
 
 class BaseRepository(metaclass=SingletonNoLockMeta):
@@ -138,14 +139,12 @@ class BankIdentifierRepository(BaseRepository):
     def import_bankidentifier(self, filename: str) -> None:
         """
         Import bank identifier data into the BANKIDENTIFIER table.
-    
         Notes
         -----
         Source:
         Bundesbank - Bankleitzahlen
         https://www.bundesbank.de/de/aufgaben/unbarer-zahlungsverkehr/serviceangebot/bankleitzahlen/download-bankleitzahlen-602592
         """
-    
         columns = """
             `code`,
             `payment_provider`,
@@ -161,32 +160,25 @@ class BankIdentifierRepository(BaseRepository):
             `code_deletion`,
             `follow_code`
         """
-    
         try:
             # Remove existing records
             self.db.executor.execute(
                 f"DELETE FROM {declm.BANKIDENTIFIER}"
             )
-    
             # Import CSV file
             self.db.execute_load_data(
                 filename=filename,
                 table=declm.BANKIDENTIFIER,
                 columns=columns,
             )
-    
             # Remove unwanted payment providers
             cleanup_sql = f"""
                 DELETE FROM {declm.BANKIDENTIFIER}
                 WHERE payment_provider = '2'
             """
-    
             self.db.executor.execute(cleanup_sql)
-    
             return None
-    
         except Exception as exc:
-    
             return exc
 
 
@@ -488,7 +480,7 @@ class HoldingRepository(BaseRepository):
         result = self.db.select_table_distinct(
             declm.HOLDING, declm.DB_ISIN, price_date=max_price_date_all_iban)
         return [x[0] for x in result]
-    
+
     def get_holding_price_dates_of_iban(self, iban):
 
         data = self.db.select_table_distinct(
@@ -681,11 +673,13 @@ class HoldingRepository(BaseRepository):
             self,
             iban: str,
             price_date: str,
-            isin_code: str
+            isin_code: str,
+            *,
+            field_list: Union[str, Iterable[str]] = '*'
             ) -> Dict:
         result = self.db.select_table(
                 declm.HOLDING_VIEW,
-                '*',
+                field_list,
                 result_dict=True,
                 date_name=declm.DB_price_date,
                 iban=iban,
@@ -949,7 +943,7 @@ class IsinRepository(BaseRepository):
             field_list=[declm.DB_symbol, declm.DB_exchange, declm.DB_currency,
                         declm.DB_origin_symbol, declm.DB_last_check],
             isin_code=isin_code,
-            clause=f"""{declm.DB_symbol} != '{decl.NOT_ASSIGNED}'"""        
+            clause=f"""{declm.DB_symbol} != '{decl.NOT_ASSIGNED}'"""
             )
         if result:
             return result[0]
@@ -1142,7 +1136,6 @@ class LedgerDailyBalanceRepository(BaseRepository):
             date_name=declm.DB_entry_date,
             )
 
-
     def replace_ledger_daily_balance(self, account: str, entry_date: str, balance: Decimal):
 
         self.db.execute_replace(
@@ -1264,58 +1257,52 @@ class LedgerRepository(BaseRepository):
     def __init__(self):
         super().__init__()
 
-    def ledger_is_not_empty(self):    
+    def ledger_is_not_empty(self):
 
         return self.db.select_exists(declm.LEDGER)
 
-    def get_ledgers_via_statement(self, search_dict: Dict) -> list[Dict]:    
+    def get_ledgers_via_statement(self, search_dict: Dict) -> list[Dict]:
         """
         get ledger rows via (partial) values of statement columns
         """
         sql = f"""
             SELECT DISTINCT l.*
             FROM ledger l
-            JOIN ledger_statement ls 
+            JOIN ledger_statement ls
                 ON l.id_no = ls.id_no AND  ls.entry_date LIKE "%{search_dict[declm.DB_entry_date]}%"
-            JOIN statement s 
+            JOIN statement s
                 ON s.iban = ls.iban
-               AND s.iban LIKE "%{search_dict[declm.DB_iban]}%"  
+               AND s.iban LIKE "%{search_dict[declm.DB_iban]}%"
                AND s.entry_date = ls.entry_date
                AND s.counter = ls.counter
-            WHERE 1=1        
+            WHERE 1=1
         """
         conditions = []
         vars_ = []
-    
         for field, value in search_dict.items():
             if field not in [declm.DB_iban, declm.DB_entry_date]:
                 if value not in ['0', '']:
                     # CAST(`entry_date` AS CHAR)
                     conditions.append(f"s.{field} LIKE %s")
                     vars_.append(f"%{value}%")  # Teilstring-Suche
-    
         if conditions:
-            sql = sql + " AND " + " AND ".join(conditions)       
-        result =  self.db.executor.execute(sql, vars_, result_dict=True)
+            sql = sql + " AND " + " AND ".join(conditions)
+        result = self.db.executor.execute(sql, vars_, result_dict=True)
         return result
 
-    def get_ledgers_of_search(self, search_dict):    
+    def get_ledgers_of_search(self, search_dict):
         """
         get ledger rows via (partial) values of ledger columns
         """
-    
         conditions = []
         vars_ = []
-    
         for field, value in search_dict.items():
             if value not in ['0', '']:
                 conditions.append(f"{field} LIKE %s")
                 vars_.append(f"%{value}%")  # Teilstring-Suche
-    
         if conditions:
             where_clause = " AND ".join(conditions)
             sql = f"SELECT * FROM ledger_view WHERE {where_clause}"
-    
             result = self.db.executor.execute(sql, vars_, result_dict=True)
             return result
         return []
@@ -1525,7 +1512,7 @@ class LedgerRepository(BaseRepository):
             clause=clause,
             clause_vars=clause_vars,
             **kwargs
-        )    
+        )
 
         if not rows:
             return decl.NOT_ASSIGNED
@@ -2008,22 +1995,16 @@ class PricesRepository(BaseRepository):
         """
         Import a pandas DataFrame into the prices table.
         """
-    
         if dataframe.empty:
             return None
-    
         dataframe = dataframe.reset_index()
-    
         tmp = tempfile.mktemp(suffix=".csv")
-    
         dataframe.to_csv(
             tmp,
             index=False,
         )
-    
         tmp = tmp.replace("\\", "/")
-    
-        fields = [
+        columns = ', '.join([
             "@dummy",
             declm.DB_ISIN,
             declm.DB_price_date,
@@ -2035,16 +2016,21 @@ class PricesRepository(BaseRepository):
             declm.DB_volume,
             declm.DB_origin,
             declm.DB_symbol_prices,
-        ]
-    
+        ])
         try:
-            self.db.import_local_infile(
-                tmp,
-                fields,
+            self.db.execute_load_data(
+                filename=tmp,
+                table=declm.PRICES,
+                columns=columns,
+                line_terminator="\\n",
+                field_terminator=",",
+                encoding="utf8",
+                ignore_lines=1,
+                replace=False,
+                local=True,
+                commit=True,
             )
-    
             return None
-    
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
@@ -2212,6 +2198,11 @@ class ShelvesRepository(BaseRepository):
 
         return self.shelve_get_key(bank_code, decl.KEY_BANK_NAME)
 
+    def shelve_get_bank_name_of_iban(self, iban):
+
+        bank_code = iban[4:12]
+        return self.shelve_get_key(bank_code, decl.KEY_BANK_NAME)
+
     def shelve_get_version_transaction_allowed(self, bank_code):
 
         return self.shelve_get_key(bank_code, decl.KEY_VERSION_TRANSACTION_ALLOWED)
@@ -2223,7 +2214,6 @@ class ShelvesRepository(BaseRepository):
     def listbank_codes(self) -> list[str]:
         """
         List all bank codes from the SHELVES table.
-
         Returns
         -------
         list[str]
@@ -2235,7 +2225,6 @@ class ShelvesRepository(BaseRepository):
     def dictbank_names(self) -> Dict[str, str]:
         """
         Map bank codes to customized bank names (fall back to code if name missing).
-
         Returns
         -------
         dict[str, str]
@@ -2247,25 +2236,21 @@ class ShelvesRepository(BaseRepository):
         }
 
     def get_bank_owner_accounts(self) -> Dict:
+
         bank_owner_account = {}
-    
         for bank_code in self.dictbank_names():
             accounts = self.shelve_get_accounts(bank_code)
             if not accounts:
                 continue
-    
             product_names = [acc[decl.KEY_ACC_PRODUCT_NAME] for acc in accounts]
             if len(product_names) == len(set(product_names)):
                 continue
-    
             owners = defaultdict(list)
             for acc in accounts:
                 owner = acc.get(decl.KEY_ACC_OWNER_NAME) or bank_code
                 acc[decl.KEY_ACC_OWNER_NAME] = owner
                 owners[owner].append(acc)
-    
             bank_owner_account[bank_code] = dict(owners)
-    
         return bank_owner_account
 
 
@@ -2393,8 +2378,8 @@ class StatementRepository(BaseRepository):
             return statement_row[0]
         return {}
 
-    def get_statement_without_ledger(self,field_list, period) -> List[Dict]:     
-        
+    def get_statement_without_ledger(self, field_list, period) -> List[Dict]:
+
         if declm.DB_amount in field_list and declm.DB_status not in field_list:
             field_list.append(declm.DB_status)
         if declm.DB_opening_balance in field_list and declm.DB_opening_status not in field_list:
@@ -2404,21 +2389,22 @@ class StatementRepository(BaseRepository):
         field_list = ["s." + item for item in field_list]
         field_list = self.db._normalize_fields(field_list)
         from_date, to_date = period
-        sql  = f"""
+        sql = f"""
                 SELECT {field_list}
                 FROM statement s
                 LEFT JOIN ledger_statement ls
                   ON s.{declm.DB_iban} = ls.{declm.DB_iban}
                  AND s.{declm.DB_entry_date} = ls.{declm.DB_entry_date}
                  AND s.{declm.DB_counter} = ls.{declm.DB_counter}
-                WHERE ls.iban IS NULL 
+                WHERE ls.iban IS NULL
                  AND s.{declm.DB_entry_date} >= ?
                  AND s.{declm.DB_entry_date} <= ?
                  AND s.{declm.DB_amount} != 0
             """
-        vars_ =   (from_date, to_date)  
+        vars_ = (from_date, to_date)
         result = self.db.executor.execute(sql, vars_, result_dict=True, compress=True)
         return result
+
 
 class ServerRepository(BaseRepository):
 
@@ -2454,61 +2440,49 @@ class ServerRepository(BaseRepository):
     def import_server(self, filename: str) -> None:
         """
         Import server data into the SERVER table.
-    
         Notes
         -----
         The CSV contains 28 columns.
         Only the columns 'code' and 'server'
         are imported.
         """
-    
         # Create placeholders for unused CSV columns
         csv_columns = [f'@VAR{x}' for x in range(28)]
-    
         # Import only required columns
         csv_columns[1] = 'code'
         csv_columns[24] = 'server'
-    
         columns = ", ".join(csv_columns)
-    
         try:
             # Remove existing records
             self.db.executor.execute(
                 f"DELETE FROM {declm.SERVER}"
             )
-    
             # Import CSV file
             self.db.execute_load_data(
                 filename=filename,
                 table=declm.SERVER,
                 columns=columns,
             )
-    
             # Remove invalid placeholder servers
             cleanup_sql = f"""
                 DELETE FROM {declm.SERVER}
                 WHERE server = '\\r'
             """
-    
             self.db.executor.execute(cleanup_sql)
-    
             # Insert additional known servers
             insert_sql = f"""
                 INSERT INTO {declm.SERVER}
                 SET code = ?, server = ?
             """
-    
             for code, (server, *_) in decl.SCRAPER_BANKDATA.items():
                 self.db.executor.execute(
                     insert_sql,
                     (code, server),
                 )
-    
             return None
-    
         except Exception as exc:
-    
             return exc
+
 
 class TickersRepository(BaseRepository):
 
@@ -2553,35 +2527,29 @@ class TickersRepository(BaseRepository):
     def import_tickers(self, filename: str) -> None:
         """
         Import ticker symbols into the tickers table.
-    
-        ZIP format 
+        ZIP format
         ----------
         - Encoding: utf8
         - Delimiter: ,
         - Quote character: "
         - Line ending: CRLF (\\r\\n)
-    
         Expected columns
         ----------------
         1. symbol
         2. company_name
         3. exchange
-    
         Additional values
         -----------------
         - ISIN is automatically set to 'NA'
         """
-    
         columns = """
             symbol,
             company_name,
             exchange
         """
-    
         set_clause = f"""
             {declm.DB_ISIN} = 'NA'
         """
-    
         try:
             # Import CSV file
             self.db.execute_load_data(
@@ -2596,21 +2564,24 @@ class TickersRepository(BaseRepository):
                 replace=False,
                 local=True,
             )
-    
             return None
-    
         except Exception as exc:
-    
             return exc
 
     def delete_ticker_with_spaces(self):
 
         self.db.execute_delete(declm.TICKERS, symbol='')
 
+
 class TransactionRepository(BaseRepository):
 
     def __init__(self):
         super().__init__()
+
+    def get_max_price_date_of_transaction(self, iban):
+
+        result = self.db.select_scalar(declm.TRANSACTION, f"MAX({declm.DB_price_date})", iban=iban)
+        return result
 
     def get_transactions_name_isin_of_iban(self, iban):
 
@@ -2643,6 +2614,15 @@ class TransactionRepository(BaseRepository):
 
     def get_iban_of_transactions(self, period):
         return self.db.select_table_distinct(declm.TRANSACTION, declm.DB_iban, period=period)
+
+    def get_price_dates_of_transactions(self, iban):
+        result = self.db.select_table_distinct(
+            declm.TRANSACTION,
+            declm.DB_price_date,
+            order=declm.DB_price_date,
+            date_name=declm.DB_price_date,
+            iban=iban)
+        return result
 
     def _transaction_base_cte(self, where_sql: str) -> str:
         return f"""
@@ -2742,6 +2722,17 @@ class TransactionRepository(BaseRepository):
                 date_name=declm.DB_price_date, iban=iban, period=period, order=declm.DB_price_date)
         return result
 
+    def get_transaction_data_of_iban_from_date(self, iban, from_date) -> list[dict]:
+
+        result = self.db.select_table(
+            declm.TRANSACTION,
+            field_list=declm.TABLE_FIELDS[declm.TRANSACTION],
+            result_dict=True,
+            clause=f"""{declm.DB_price_date}<{from_date}""",
+            iban=iban
+            )
+        return result
+
     def get_transaction_data_of_iban(self, iban) -> list[dict]:
 
         result = self.db.select_table(
@@ -2756,7 +2747,6 @@ class TransactionRepository(BaseRepository):
         """
         Import transaction data into the TRANSACTION table.
         """
-    
         columns = f"""
             {declm.DB_price_date},
             {declm.DB_ISIN},
@@ -2764,7 +2754,6 @@ class TransactionRepository(BaseRepository):
             {declm.DB_pieces},
             {declm.DB_price}
         """
-    
         set_clause = f"""
             {declm.DB_iban} = '{iban}',
             {declm.DB_transaction_type} =
@@ -2776,7 +2765,6 @@ class TransactionRepository(BaseRepository):
             {declm.DB_origin} =
                 '{Path(filename).name[-50:]}'
         """
-    
         try:
             # Import CSV file
             self.db.execute_load_data(
@@ -2786,7 +2774,6 @@ class TransactionRepository(BaseRepository):
                 set_clause=set_clause,
                 line_terminator="\\n",
             )
-    
             # Convert negative transactions
             # into delivery transactions
             normalize_sql = f"""
@@ -2801,17 +2788,89 @@ class TransactionRepository(BaseRepository):
                         ABS({declm.DB_posted_amount})
                 WHERE {declm.DB_pieces} < 0
             """
-    
             self.db.executor.execute(
                 normalize_sql,
                 (decl.TRANSACTION_DELIVERY,),
             )
-    
             return None
-    
         except Exception as exc:
-    
             return exc
+
+    def import_transaction_consors(self, iban: str, filename: str) -> None:
+        mapping = {
+            "Ausführungsdatum": declm.DB_price_date,
+            "ISIN": declm.DB_ISIN,
+            "Stück/Nominal": declm.DB_pieces,
+            "Ausführungskurs": declm.DB_price,
+            "Ausführungskurs Währung": declm.DB_price_currency,
+            "Ordernummer": declm.DB_transaction_no,
+            "Orderart": declm.DB_comments
+        }
+        additional_fields = {
+            declm.DB_iban: iban,
+            declm.DB_counter: 0,
+            declm.DB_transaction_type: decl.TRANSACTION_RECEIPT,
+            declm.DB_posted_amount: 0
+        }
+        transformers = {
+            declm.DB_transaction_type: lambda value, row:
+                decl.TRANSACTION_RECEIPT
+                if row[declm.DB_comments] == "Kauf"
+                else decl.TRANSACTION_DELIVERY,
+            declm.DB_posted_amount: lambda value, row:
+                dec2.multiply(row[declm.DB_pieces], row[declm.DB_price])
+                if row[declm.DB_price_currency] != '%'
+                else
+                dec2.divide(
+                    dec2.multiply(row[declm.DB_pieces], row[declm.DB_price]),
+                    100
+                    ),
+            declm.DB_price_currency: lambda value, row:
+                decl.PERCENT if value == '%' else decl.EURO
+        }
+        self.db.load_csv_to_table(
+            csv_file=filename,
+            start_line=8,
+            encoding='utf-8',
+            decimal_separator='.',
+            table_name=declm.TRANSACTION,
+            field_mapping=mapping,
+            additional_fields=additional_fields,
+            value_transformers=transformers
+        )
+
+    def import_transaction_flatex(self, iban: str, filename: str) -> None:
+        mapping = {
+            "Buchungstag": declm.DB_price_date,
+            "ISIN": declm.DB_ISIN,
+            "Nominal (Stk.)": declm.DB_pieces,
+            "Betrag": declm.DB_posted_amount,
+            "Kurs": declm.DB_price,
+            "Devisenkurs": declm.DB_exchange_rate,
+            "TA.-Nr.": declm.DB_transaction_no,
+            "Buchungsinformation": declm.DB_comments
+        }
+        additional_fields = {
+            declm.DB_iban: iban,
+            declm.DB_counter: 0,
+            declm.DB_transaction_type: decl.TRANSACTION_RECEIPT,
+        }
+        transformers = {
+            declm.DB_transaction_type: lambda value, row:
+                decl.TRANSACTION_RECEIPT
+                if row[declm.DB_posted_amount] > 0
+                else decl.TRANSACTION_DELIVERY,
+            declm.DB_price: lambda value, row: abs(value),
+            declm.DB_posted_amount: lambda value, row: abs(value),
+            declm.DB_pieces: lambda value, row: abs(value),
+        }
+        self.db.load_csv_to_table(
+            csv_file=filename,
+            table_name=declm.TRANSACTION,
+            field_mapping=mapping,
+            additional_fields=additional_fields,
+            value_transformers=transformers
+        )
 
     def get_transaction(self, iban, isin_code, price_date, counter):
 
@@ -2894,6 +2953,7 @@ class TransactionRepository(BaseRepository):
 
         sql = """
             SELECT
+                h.price_date,
                 h.iban,
                 h.name,
                 h.isin_code,
@@ -2945,6 +3005,36 @@ class TransactionRepository(BaseRepository):
                 isin_code=isin_code,
                 period=period
                 )
+
+    def get_transactions_delta_of_iban_isin_code(self, iban, isin_code):
+
+        pieces = f"""
+            SUM(   
+                CASE transaction_type
+                    WHEN '{decl.TRANSACTION_RECEIPT}' THEN pieces
+                    WHEN '{decl.TRANSACTION_DELIVERY}' THEN -pieces
+                    ELSE 0
+                END
+            ) AS {declm.DB_pieces}
+            """
+        pieces = re.sub(r'\s+', ' ', pieces.replace('\n', ' ')).strip()    
+        field_list = [
+            declm.DB_iban,
+            declm.DB_ISIN,
+            declm.DB_price_date,
+            pieces,
+            declm.DB_posted_amount
+            ]
+        return self.db.select_rows(
+                table=declm.TRANSACTION,
+                fields=field_list,
+                result_dict=True,
+                order=[declm.DB_price_date, declm.DB_counter],
+                group_by=[declm.DB_price_date, declm.DB_counter],
+                iban=iban,
+                isin_code=isin_code
+                )
+
 
 
 def forward_methods(repo_names, debug=False):

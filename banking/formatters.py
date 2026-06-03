@@ -5,6 +5,7 @@ Created on 05.05.2026
 '''
 import banking.declarations as decl
 
+
 class ShelveFormatter:
     def __init__(self, shelve_data, shelve_keys, account_fields=None):
         self.shelve_data = shelve_data

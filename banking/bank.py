@@ -1,9 +1,8 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-05-19"
+__updated__ = "2026-05-27"
 @author: Wolfgang Kramer
 """
-
 
 import webbrowser
 from datetime import date
@@ -18,6 +17,7 @@ from banking.repository import Repository
 from banking.fints_dialog import Dialogs
 from banking.forms import InputPIN
 from banking.utils import application_store, http_error_code
+
 
 class InitBank(object):
     """
@@ -44,8 +44,14 @@ class InitBank(object):
             return None  # thread checking
         http_code = http_error_code(self.server)
         if http_code not in decl.HTTP_CODE_OK:
-            msg.MessageBoxError(message=msg.get_message(msg.MESSAGE_TEXT, 'HTTP', http_code,
-                                                self.bank_code, self.server))
+            msg.MessageBoxError(message=msg.get_message(
+                msg.MESSAGE_TEXT,
+                'HTTP',
+                http_code,
+                self.bank_code,
+                self.server
+                )
+            )
             webbrowser.open(self.server)
             return None  # thread checking
         if bank_code in list(decl.SCRAPER_BANKDATA.keys()):
@@ -118,7 +124,6 @@ class InitBankSync(object):
 
     def __init__(self, bank_code):
 
-
         repo = Repository()
         self.bank_code = bank_code
         self.scraper = False
@@ -151,8 +156,14 @@ class InitBankSync(object):
         # Checking / Installing FINTS server connection
         http_code = http_error_code(self.server)
         if http_code not in decl.HTTP_CODE_OK:
-            msg.MessageBoxError(message=msg.get_message(msg.MESSAGE_TEXT, 'HTTP', http_code,
-                                                self.bank_code, self.server))
+            msg.MessageBoxError(message=msg.get_message(
+                msg.MESSAGE_TEXT,
+                'HTTP',
+                http_code,
+                self.bank_code,
+                self.server
+                )
+            )
             webbrowser.open(self.server)
             return None  # thread checking
         # Init Sychronization Data
@@ -208,8 +219,14 @@ class InitBankAnonymous(object):
         # Checking / Installing FINTS server connection
         http_code = http_error_code(self.server)
         if http_code not in decl.HTTP_CODE_OK:
-            msg.MessageBoxError(message=msg.get_message(msg.MESSAGE_TEXT, 'HTTP', http_code,
-                                                self.bank_code, self.server))
+            msg.MessageBoxError(message=msg.get_message(
+                msg.MESSAGE_TEXT,
+                'HTTP',
+                http_code,
+                self.bank_code,
+                self.server
+                )
+            )
             webbrowser.open(self.server)
             return None  # thread checking
         # Init Sychronization Data

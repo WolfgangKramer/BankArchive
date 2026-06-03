@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2026-05-19"
+__updated__ = "2026-06-02"
 @author: Wolfgang Kramer
 """
 
@@ -58,7 +58,7 @@ BUNDESBANK_BLZ_MERKBLATT = b"https://www.bundesbank.de/resource/blob/602848/50cb
 BUNDEBANK_BLZ_DOWNLOAD = b"https://www.bundesbank.de/de/aufgaben/unbarer-zahlungsverkehr/serviceangebot/bankleitzahlen/download-bankleitzahlen-602592"
 MSEDGE_DRIVER_DOWNLOAD = b"https://developer.microsoft.com/en-us/microsoft-edge/tools/webdriver"
 FINTS_SERVER_ADDRESS = b"https://www.fints.org/de/hersteller/produktregistrierung"
-TICKER_ADDRESS =  b"https://investexcel.net/stocks-traded-german-exchanges/?utm_source=chatgpt.com"
+TICKER_ADDRESS = b"https://investexcel.net/stocks-traded-german-exchanges/?utm_source=chatgpt.com"
 
 FRANKFURTER_BOERSE = b"https://www.boerse-frankfurt.de/aktien/suche"
 BNPPARIBAS = b"https://www.derivate.bnpparibas.com/realtime"
@@ -110,6 +110,7 @@ MENU_TEXT = {
     'Import Server CSV-File': 'Server CSV-File',
     'Import Ticker Symbols': 'Ticker CSV-File',
     'Import Transactions': 'Import Transactions',
+    'Insert Holding Positions from Transactions': 'Insert Holding Positions from Transactions',    
     'ISIN Table': 'ISIN Table',
     'Journal': 'Journal',
     'Login Online Banking': 'Login Online Banking',
@@ -122,12 +123,12 @@ MENU_TEXT = {
     'Refresh BankParameterData': 'Refresh BankParameterData',
     'Reset Screen Positions': 'Reset Screen Positions',
     'Reset Ledger_daily_balance': 'Reset Ledger_daily_balance',
-    'Search' : 'Search',
-    'Search via Statement' : 'Search via Statement',
+    'Search': 'Search',
+    'Search via Statement': 'Search via Statement',
     'Show Data': 'Show Data',
     'Show All Data': 'Show All Data',
     'Statement': 'Statement',
-    'Statement_wo': 'Statement without Ledger Assignment',    
+    'Statement_wo': 'Statement without Ledger Assignment',
     'Synchronize': 'Synchronize',
     'Synchronize Transactions': 'Synchronize Transactions',
     'Technical Indicators': 'Technical Indicators',
@@ -262,6 +263,8 @@ ORIGIN_LEDGER = '_LEDGER_'  # data source: ledger database
 ORIGIN_PRICES = '_PRICES_'
 # data source: inserted if holding position is missing during update from prices
 ORIGIN_INSERTED = '_INSERTED_'
+# data source: inserted using transaction data
+ORIGIN_TRANSACTION = '_TRANSACTION_'
 ORIGIN_BANKDATA_CHANGED = '_BANKDATA_CHANGED_'
 ORIGINS = [ORIGIN, ORIGIN_LEDGER, ORIGIN_INSERTED]
 DEBIT = 'D'
@@ -289,14 +292,14 @@ ORIGIN_SYMBOLS = [NOT_ASSIGNED, YAHOO]
 CURRENCIES = [EURO, 'USD', 'AUD', 'CAD', 'CHF',
               'GBP', 'JPY']  # ISIN currency of prices
 EXCHANGE_CODES = {
-    "DE" : "XETRA",
-    "F" : "FRA",
-    "SG" : "STUTTGART",
-    "BE" : "BERLIN",
-    "HM" : "HAMBURG",
-    "MU" : "MUNICH",
-    "DU" : "DUESSELDORF"
-}      
+    "DE": "XETRA",
+    "F": "FRA",
+    "SG": "STUTTGART",
+    "BE": "BERLIN",
+    "HM": "HAMBURG",
+    "MU": "MUNICH",
+    "DU": "DUESSELDORF"
+}
 
 """
 --------------- Alpha Vantage field values -------------
@@ -341,6 +344,7 @@ BUTTON_DELETE = 'DELETE'
 BUTTON_DELETE_ALL = 'DELETE ALL'
 BUTTON_DATA = 'DATA'
 BUTTON_INIT = 'INIT'
+BUTTON_INSERT = 'INSERT'
 BUTTON_INDICATOR = 'SELECT INDICATOR'
 BUTTON_PRICES_IMPORT = 'IMPORT PRICES'
 BUTTON_NEXT = 'NEXT'
@@ -394,8 +398,8 @@ SHOW_MESSAGE = [INFORMATION, WARNING, ERROR]
 FN_ACCOUNT_NAME = 'ACCOUNT_NAME'
 FN_ACCOUNT_NUMBER = 'ACCOUNT_NUMBER_'
 FN_COMPARATIVE = 'COMPARATIVE_VALUE'
-COST_FIFO    = "FIFO"
-COST_LIFO    = "LIFO"
+COST_FIFO = "FIFO"
+COST_LIFO = "LIFO"
 COST_AVERAGE = "AVERAGE"
 COST_METHOD = [COST_FIFO, COST_LIFO, COST_AVERAGE]
 FN_COST_METHOD = 'COST_METHOD'

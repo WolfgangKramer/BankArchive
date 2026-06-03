@@ -1,6 +1,6 @@
 '''
 Created on 02.01.2026
-__updated__ = "2026-04-10"
+__updated__ = "2026-05-26"
 @author: Wolfgang Kramer
 '''
 
@@ -18,4 +18,5 @@ class ConnectionResult:
     cursor = None
     engine = None
 
-connectionresult =  ConnectionResult()  
+
+connectionresult = ConnectionResult()
