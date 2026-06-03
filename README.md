@@ -283,7 +283,8 @@ _create_menu_database()
 
 ### Updates
 
-- Update holding market prices
+- Insert Holding Positions from Transactions
+- Update Holding Market Price by Closing Price
 - Update portfolio total values
 
 ---
