@@ -4,6 +4,7 @@ Created on 02.03.2026
 '''
 
 import yfinance as yf
+import csv
 
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -21,6 +22,7 @@ from banking.utils import (
     signed_balance
     )
 from banking.trading_calendar import xetra_cls
+from banking.mariadb import DatabaseErrorHandler
 
 
 class BuildHoldings:
@@ -55,8 +57,8 @@ class BuildHoldings:
         last_state = None
         repo = Repository()
         rows = self.repo.get_transactions_delta_of_iban_isin_code(iban, isin_code)
-        if rows:    
-            trading_days =xetra_cls.trading_days(
+        if rows:
+            trading_days = xetra_cls.trading_days(
                 start=rows[0][declm.DB_price_date],
                 end=date_days.subtract(date.today(), 1),
                 as_str=True
@@ -68,10 +70,10 @@ class BuildHoldings:
                 else:
                     return False
             # Start database transaction
-            self.repo.start_transaction()                
+            self.repo.start_transaction()
             try:
                 for trading_day in trading_days:
-                
+
                     price_date = date_days.convert_to_date(trading_day[:10])
                     if price_date in daily_state:
                         last_state = daily_state[price_date]
@@ -91,9 +93,9 @@ class BuildHoldings:
                         if market_price:
                             field_dict[declm.DB_market_price] = market_price
                             field_dict[declm.DB_total_amount] = dec2.multiply(market_price, field_dict[declm.DB_pieces])
-                        if state==decl.BUTTON_INSERT:
+                        if state == decl.BUTTON_INSERT:
                             repo.insert_holding(field_dict)
-                        else:    
+                        else:
                             repo.replace_holding(field_dict)
                         if price_date in daily_state:
                             msg.MessageBoxInfo(
@@ -105,14 +107,12 @@ class BuildHoldings:
                                     self.repo.get_name_of_isin_code(isin_code),
                                     price_date
                                     )
-                                )                                
+                                )
                 # Commit transaction
                 self.repo.commit()
                 return True
             except Exception as e:
-                print(str(e))
                 self.repo.rollback_transaction()
-                
                 msg.MessageBoxInfo(
                     title=title,
                     info_storage=msg.Informations.HOLDING_INFORMATIONS,
@@ -123,11 +123,11 @@ class BuildHoldings:
                         {self.repo.get_name_of_isin_code(isin_code)}: {str(e)}
                         Insert:   {field_dict}
                         Database: {self.repo.select_holding_view_row(iban, price_date, isin_code, field_list=list(field_dict.keys()))}
-                         """   
+                         """
                     )
                 )
                 return False
-    
+
     def _get_daily_state(self, rows):
         """
         Calculates the portfolio state after each transaction.
@@ -146,7 +146,7 @@ class BuildHoldings:
                 - ``declm.DB_pieces``
                 - ``declm.DB_acquisition_amount``
                 - ``declm.DB_acquisition_price``
-        """    
+        """
         current_pieces = 0
         acquisition_amount = 0
         acquisition_price = 0
@@ -174,8 +174,8 @@ class BuildHoldings:
                 declm.DB_acquisition_amount: acquisition_amount,
                 declm.DB_acquisition_price: acquisition_price
             }
-        return daily_state    
-    
+        return daily_state
+
     def _get_close_price(self, price_date, isin_code):
         """
         Retrieves the closing price for a security.
@@ -191,14 +191,14 @@ class BuildHoldings:
         Returns:
             Decimal | None: Closing market price if available;
                 otherwise None.
-        """    
+        """
         market_price = self.repo.get_close_price(isin_code, price_date)
         if not market_price:
             name = self.repo.get_name_of_isin_code(isin_code)
             # import price data
             self.import_prices_and_corporate_actions(msg.MESSAGE_TITLE, [name], state=decl.BUTTON_APPEND)
             market_price = self.repo.get_close_price(isin_code, price_date)
-        return market_price  
+        return market_price
 
 
 class CostBasisStrategy(ABC):
@@ -291,6 +291,15 @@ class DownloadServices:
         """
         Insert downloaded  Bank Data in Database
         """
+        if not bank.accounts:
+            msg.bankdata_informations_append(
+                decl.INFORMATION,
+                msg.get_message(
+                    msg.MESSAGE_TEXT,
+                    'SYNC',
+                    bank.bank_name) + '\n\n'
+                )
+            return
         for account in bank.accounts:
             bank.account_number = account[decl.KEY_ACC_ACCOUNT_NUMBER]
             bank.account_product_name = account[decl.KEY_ACC_PRODUCT_NAME]
@@ -715,8 +724,6 @@ class DownloadServices:
                 HoldingAcquisition.price_date)
 
 
-    
-
 @dataclass
 class HoldingAcquisition:
     price_date: date
@@ -758,6 +765,284 @@ class UpdateHoldingAcquisition:
 
 class ImportServices:
 
+    def import_transaction_csv(
+            self,
+            csv_file,
+            table_name=declm.TRANSACTION,
+            field_mapping={},
+            additional_fields={},
+            value_transformers={},
+            csv_date_format="%d.%m.%Y",
+            delimiter=";",
+            decimal_separator=',',
+            encoding="latin1",
+            has_header=True,
+            start_line=1,
+            commit=True
+    ):
+        """
+        Loads selected CSV fields into a MariaDB table.
+        value_transformers can access all current row values.
+        Transformer signature:
+            lambda value, row_data: ...
+
+        Parameters
+        ----------
+
+            csv_file : str              Path to CSV file
+            table_name : str            Target table name
+            field_mapping : dict        Mapping between CSV fields and DB fields.
+            additional_fields : dict    Additional static fields added to every INSERT.
+            value_transformers : dict   Optional transformation functions per DB field.
+            csv_date_format :           STANDARD "%d.%m.%Y"
+            has_header : bool           True: CSV contains header row  False: CSV has no header
+            start_line: int             goto startline
+
+        Example:
+        --------
+                mapping = {
+                    "ISIN": "isin_code",
+                    "Price": "price",
+                    "Quantity": "pieces"
+                }
+
+                    Examples:
+                    ---------
+                    CSV with header:
+                        {
+                            "Article": "isin_code",
+                            "Price": "price"
+                        }
+
+                    CSV without header:
+                        {
+                            0: "isisn_code",
+                            3: "price"
+                        }
+
+                additional_fields = {
+                    "status": None,
+                    "total_value": None
+                }
+
+                transformers = {
+                    # Convert isin_code to uppercase
+                    "isin_code": lambda value, row:
+                        value.upper(),
+                    # Always store positive price
+                    "price": lambda value, row:
+                        abs(value),
+                    # Status depends on price
+                    "status": lambda value, row:
+                        "EXPENSIVE"
+                        if row["price"] > 10
+                        else "NORMAL",
+                    # total_value depends on price and stock
+                    "total_value": lambda value, row:
+                        row["price"] * row["pieces"]
+                }
+
+        """
+        def parse_decimal(value: str, decimal_separator=",", places=2):
+            """
+            Converts values like:
+                1.234,56
+                -1.234,56
+                1234,56
+            into Decimal.
+            """
+            if value is None:
+                return None
+            if isinstance(value, str):
+                value = value.strip()
+                if value == "":
+                    return None
+                if decimal_separator == ",":  # If a comma is present → German format
+                    value = value.replace(".", "")
+                    value = value.replace(",", ".")
+            if places == 2:
+                return dec2.convert(value)
+            else:
+                return dec6.convert(value)
+        
+        message_1st_line = False
+        field_properties = declm.TABLE_FIELDS_PROPERTIES[table_name]
+        inserted_transactions = []
+        with open(csv_file, "r", encoding=encoding, newline="") as f:
+            reader = csv.reader(f, delimiter=delimiter)
+            for _ in range(start_line - 1):
+                next(reader)
+            headers = None
+            if has_header:
+                headers = next(reader)
+            # Final DB field list
+            db_fields = (
+                list(field_mapping.values()) +
+                list(additional_fields.keys())
+            )
+            price_date = None
+            counter = 0
+            for _, row in enumerate(reader, start=1):
+                # Build original_row with mapped DB field names
+                original_row = {}
+                for csv_field, db_field in field_mapping.items():
+                    if isinstance(csv_field, int):
+                        if csv_field < len(row):
+                            original_row[db_field] = row[csv_field]
+                        else:
+                            original_row[db_field] = None
+                    else:
+                        idx = headers.index(csv_field)
+                        if idx < len(row):
+                            original_row[db_field] = row[idx]
+                        else:
+                            original_row[db_field] = None
+                values = []
+                # Process mapped CSV fields
+                for csv_field, db_field in field_mapping.items():
+                    value = original_row[db_field]
+                    if value is not None:
+                        if field_properties[db_field].typ == decl.TYP_DECIMAL:
+                            value = parse_decimal(
+                                value,
+                                decimal_separator=decimal_separator,
+                                places=field_properties[db_field].places)
+                            original_row[db_field] = value
+                        elif field_properties[db_field].typ == decl.TYP_DATE:
+                            value = date_days.mariadb_date(value, csv_date_format=csv_date_format)
+                            original_row[db_field] = value
+                        else:
+                            value = value.strip()
+                            if value == "":
+                                value = None
+                    # Apply transformer
+                    if db_field in value_transformers:
+                        value = value_transformers[db_field](
+                            value,
+                            original_row
+                        )
+                    values.append(value)
+                # Add additional fields
+                for db_field, value in additional_fields.items():
+                    if db_field in value_transformers:
+                        value = value_transformers[db_field](
+                            value,
+                            original_row
+                        )
+                    elif db_field == declm.DB_counter:
+                        if price_date == original_row[declm.DB_price_date]:
+                            counter += 1
+                        else:
+                            price_date = original_row[declm.DB_price_date]
+                            counter = 0
+                        value = counter
+                    values.append(value)
+                field_dict = dict(zip(db_fields, values))
+                result = self.repo.exist_transaction_identical(field_dict)
+                if not result:
+                    try:
+                        self.repo.insert_transaction_ignore_duplicate(field_dict)
+                        inserted_transactions.append(field_dict)
+                    except Exception:
+                        if DatabaseErrorHandler.EXCEPTION.errno==1062:
+                            # ignore duplicate error
+                            pass    
+                        else:
+                            raise
+                if DatabaseErrorHandler.EXCEPTION:
+                    if not message_1st_line:
+                        msg.MessageBoxInfo(
+                            title=msg.MESSAGE_TITLE,
+                            info_storage=msg.Informations.TRANSACTION_INFORMATIONS,
+                            message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_ALREADY', csv_file)
+                            )
+                        message_1st_line = True
+                    msg.MessageBoxInfo(
+                        title=msg.MESSAGE_TITLE,
+                        info_storage=msg.Informations.TRANSACTION_INFORMATIONS,
+                        message=field_dict
+                        )
+            if commit:
+                self.repo.commit
+            return inserted_transactions    
+
+    def import_transaction_consors(self, iban: str, filename: str) -> None:
+        mapping = {
+            "Ausführungsdatum": declm.DB_price_date,
+            "ISIN": declm.DB_ISIN,
+            "Stück/Nominal": declm.DB_pieces,
+            "Ausführungskurs": declm.DB_price,
+            "Ausführungskurs Währung": declm.DB_price_currency,
+            "Ordernummer": declm.DB_transaction_no,
+            "Orderart": declm.DB_comments
+        }
+        additional_fields = {
+            declm.DB_iban: iban,
+            declm.DB_counter: 0,
+            declm.DB_transaction_type: decl.TRANSACTION_RECEIPT,
+            declm.DB_posted_amount: 0
+        }
+        transformers = {
+            declm.DB_transaction_type: lambda value, row:
+                decl.TRANSACTION_RECEIPT
+                if row[declm.DB_comments] == "Kauf"
+                else decl.TRANSACTION_DELIVERY,
+            declm.DB_posted_amount: lambda value, row:
+                dec2.multiply(row[declm.DB_pieces], row[declm.DB_price])
+                if row[declm.DB_price_currency] != '%'
+                else
+                dec2.divide(
+                    dec2.multiply(row[declm.DB_pieces], row[declm.DB_price]),
+                    100
+                    ),
+            declm.DB_price_currency: lambda value, row:
+                decl.PERCENT if value == '%' else decl.EURO
+        }
+        return self.import_transaction_csv(
+        #self.db.load_csv_to_table(
+            csv_file=filename,
+            start_line=8,
+            encoding='utf-8',
+            decimal_separator='.',
+            table_name=declm.TRANSACTION,
+            field_mapping=mapping,
+            additional_fields=additional_fields,
+            value_transformers=transformers
+        )
+
+    def import_transaction_flatex(self, iban: str, filename: str) -> None:
+        mapping = {
+            "Buchungstag": declm.DB_price_date,
+            "ISIN": declm.DB_ISIN,
+            "Nominal (Stk.)": declm.DB_pieces,
+            "Betrag": declm.DB_posted_amount,
+            "Kurs": declm.DB_price,
+            "Devisenkurs": declm.DB_exchange_rate,
+            "TA.-Nr.": declm.DB_transaction_no,
+            "Buchungsinformation": declm.DB_comments
+        }
+        additional_fields = {
+            declm.DB_iban: iban,
+            declm.DB_counter: 0,
+            declm.DB_transaction_type: decl.TRANSACTION_RECEIPT,
+        }
+        result = transformers = {
+            declm.DB_transaction_type: lambda value, row:
+                decl.TRANSACTION_RECEIPT
+                if row[declm.DB_posted_amount] > 0
+                else decl.TRANSACTION_DELIVERY,
+            declm.DB_price: lambda value, row: abs(value),
+            declm.DB_posted_amount: lambda value, row: abs(value),
+            declm.DB_pieces: lambda value, row: abs(value),
+        }
+        self.import_transaction_csv(
+            csv_file=filename,
+            field_mapping=mapping,
+            additional_fields=additional_fields,
+            value_transformers=transformers
+        )
+
+
     def import_prices_and_corporate_actions(
             self,
             title: str,
@@ -776,6 +1061,9 @@ class ImportServices:
                 last_date = self.repo.prices_max_date_of_isin(isin_code)
                 if last_date:
                     start_date = date_days.add(last_date, 1)
+            elif state == decl.BUTTON_REPLACE:
+                self.repo.delete_prices(isin_code)        
+                self.repo.delete_corporate_actions_data(isin_code)        
             end_date = date_days.today()
             if start_date >= end_date:
                 msg.MessageBoxInfo(
@@ -855,7 +1143,7 @@ class ImportServices:
                          declm.DB_close, declm.DB_adjclose, declm.DB_volume,
                          declm.DB_origin, declm.DB_symbol_prices]
                     ]
-                    
+
                     rows_to_delete = df_prices[df_prices[declm.DB_close] == 0]
                     if not rows_to_delete.empty:
                         msg.MessageBoxInfo(
@@ -868,11 +1156,9 @@ class ImportServices:
                                 isin_code_name_dict[isin_code],
                                 f"{rows_to_delete[declm.DB_price_date].tolist()}"
                                 )
-                            )                   
-                        df_prices = df_prices[df_prices[declm.DB_close] != 0]                    
+                            )
+                        df_prices = df_prices[df_prices[declm.DB_close] != 0]
                     self.repo.import_prices_batch(df_prices)
-                    
-                    
                     msg.MessageBoxInfo(
                         title=title,
                         info_storage=msg.Informations.PRICES_INFORMATIONS,
@@ -901,7 +1187,7 @@ class ImportServices:
                             declm.DB_ISIN: isin_code,
                             "action_date": date_days.mariadb_date(date_),
                             "action_type": "DIVIDEND",
-                            "value": dec6.convert(value)
+                            "action_value": dec6.convert(value)
                         })
                 if not df_splits.empty:
                     for date_, value in df_splits.items():
@@ -909,7 +1195,7 @@ class ImportServices:
                             declm.DB_ISIN: isin_code,
                             "action_date": date_days.mariadb_date(date_),
                             "action_type": "SPLIT",
-                            "value": dec6.convert(value)
+                            "action_value": dec6.convert(value)
                         })
                 # 5. Insert into corporate_actions
                 self.repo.replace_corporate_actions_data(actions_list)
@@ -964,13 +1250,14 @@ class ShowServices:
         if not balances_from_date:
             return None
         balances_to_date = self.ledger_balance_account(to_date, balance_accounts, return_to_date=False)
-        # Mapping von account -> BALANCE aus balances_from_date
+        # Mapping from account -> BALANCE from balances_from_date
         from_map = {d["account"]: d["BALANCE"] for d in balances_from_date}
         for row in balances_to_date:
             account = row["account"]
             if account not in from_map:
                 row[declm.DB_opening_balance] = row[decl.FN_BALANCE]
-            row[declm.DB_opening_balance] = from_map[account]
+            else:    
+                row[declm.DB_opening_balance] = from_map[account]
         for row in balances_to_date:
             opening = row.get(declm.DB_opening_balance)
             current = row.get(decl.FN_BALANCE)

@@ -2,7 +2,7 @@
 # -*- coding: ISO-8859-15 -*-
 """
 Created on 27.06.2021
-__updated__ = "2026-05-27"
+__updated__ = "2026-06-10"
 @author: Wolfgang Kramer
 
   Attention! new Scraper Class, see     Module: mariadb.py
@@ -11,6 +11,7 @@ __updated__ = "2026-05-27"
 
 import os
 import time
+import msedgedriver
 
 from datetime import date
 from io import StringIO
@@ -43,6 +44,7 @@ def convert_date(date_):
 
 def setup_driver(title):
 
+    msedgedriver.install()
     options = webdriver.EdgeOptions()
     options.add_argument("--start-minimized")
     # suppressing of DevTools warnings
@@ -283,7 +285,7 @@ class BmwBank(object):
         if error:
             # Print detailed selenium error information
             msg.MessageBoxInfo(
-                message= msg.get_message(
+                message=msg.get_message(
                     msg.MESSAGE_TEXT,
                     'SCRAPER_SELENIUM_EXCEPTION',
                     type(error).__name__,
@@ -293,9 +295,7 @@ class BmwBank(object):
                 info_storage=msg.Informations.BANKDATA_INFORMATIONS
                 )
         msg.MessageBoxException(
-            message= 
-            
-            msg.get_message(
+            message=msg.get_message(
                 msg.MESSAGE_TEXT,
                 'SCRAPER_PAGE_ERROR'
                 )
@@ -463,7 +463,7 @@ class BmwBank(object):
         # get last stored statement
         result = self.repo.get_last_statement_of_iban(self.iban)
         if result:
-            mariadb_closing_balance, _, entry_date  = result
+            mariadb_closing_balance, _, entry_date = result
             # delete statements already stored in mariadb
             idx = len(statements) - 1
             while idx >= 0 and statements[idx][declm.DB_entry_date] <= entry_date:

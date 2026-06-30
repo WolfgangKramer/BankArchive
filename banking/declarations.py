@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2026-06-02"
+__updated__ = "2026-06-30"
 @author: Wolfgang Kramer
 """
 
@@ -12,10 +12,13 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 import banking.declarations_mariadb as declm
+import banking.services_file as srvf
 
 """
 ------------------------- Globals ---------------------------------------------------
 """
+temp_file_manager = srvf.TempFileManager()
+
 technical_indicator_counter = 0
 
 PNS = {}
@@ -51,6 +54,7 @@ OUTPUTSIZE_FULL = 'full'
 """
 NOT_ASSIGNED = 'NA'
 VALIDITY_DEFAULT = '9999-01-01'
+CONSORS_BANK_CODE = '76030080'
 """
 --------------------------- WebSites --------------------------------------------------
 """
@@ -87,12 +91,14 @@ MENU_TEXT = {
     'Account': 'Account',
     'Account Category': 'Account Category',
     'Close Volume': 'Close Volume',
+    'Currency Table':'Currency Table',
     'All_Banks': 'All_Banks',
     'Alpha Vantage': 'Alpha Vantage Query',
     'Alpha Vantage Symbol Search': 'Alpha Vantage Symbol Search',
     'Application INI File': 'Application INI File',
     'Assets': 'Assets',
     'Balances': 'Balances',
+    'Bond_Master Table': 'Bond_Master Table',
     'Change FinTS Transaction Version': 'Check FinTS Transaction Version',
     'Change Security Function': 'Check Security Function',
     'Change Login Data': 'Change Login Data',
@@ -100,6 +106,8 @@ MENU_TEXT = {
     'Check Transactions Pieces': 'Check Transactions Pieces',
     'Check Upload': 'Check Upload',
     'Check Bank Statement': 'Check Bank Statement',
+    'Corporate Actions': 'Corporate Actions',
+    'Corporate Dividends': 'Corporate Dividends',
     'Delete Bank': 'Delete Bank',
     'Holding': 'Holding',
     'Holding Performance': 'Holding Performance',
@@ -110,7 +118,7 @@ MENU_TEXT = {
     'Import Server CSV-File': 'Server CSV-File',
     'Import Ticker Symbols': 'Ticker CSV-File',
     'Import Transactions': 'Import Transactions',
-    'Insert Holding Positions from Transactions': 'Insert Holding Positions from Transactions',    
+    'Insert Holding Positions from Transactions': 'Insert Holding Positions from Transactions',
     'ISIN Table': 'ISIN Table',
     'Journal': 'Journal',
     'Login Online Banking': 'Login Online Banking',
@@ -127,6 +135,7 @@ MENU_TEXT = {
     'Search via Statement': 'Search via Statement',
     'Show Data': 'Show Data',
     'Show All Data': 'Show All Data',
+    'Show Data BPD/UPD': 'Show Data BPD/UPD',
     'Statement': 'Statement',
     'Statement_wo': 'Statement without Ledger Assignment',
     'Synchronize': 'Synchronize',
@@ -269,13 +278,8 @@ ORIGIN_BANKDATA_CHANGED = '_BANKDATA_CHANGED_'
 ORIGINS = [ORIGIN, ORIGIN_LEDGER, ORIGIN_INSERTED]
 DEBIT = 'D'
 CREDIT = 'C'
-PERCENT = 'PCT'
+PERCENT = '%  '
 EURO = 'EUR'
-CURRENCY = [EURO]  # table statement and holding (prices see below)
-CURRENCY_EXTENDED = CURRENCY
-# table statement and holding (prices see below) exteneded by PCT (bonds)
-CURRENCY_EXTENDED.append(PERCENT)
-CURRENCIES = [EURO, PERCENT, 'USD', 'CHF']
 FAMT = 'FAMT'
 UNIT = 'UNIT'
 TYPES = [FAMT, UNIT]
@@ -289,8 +293,6 @@ YAHOO = 'Yahoo!'
 ALPHA_VANTAGE = 'AlphaVantage'
 ONVISTA = 'Onvista'
 ORIGIN_SYMBOLS = [NOT_ASSIGNED, YAHOO]
-CURRENCIES = [EURO, 'USD', 'AUD', 'CAD', 'CHF',
-              'GBP', 'JPY']  # ISIN currency of prices
 EXCHANGE_CODES = {
     "DE": "XETRA",
     "F": "FRA",
@@ -411,6 +413,7 @@ FN_FIELD_NAME = 'Field_Name'
 FN_PROCUDURE_NAME = 'Procedure_Name'
 FN_PERCENTAGE = 'Percentage'
 FN_DATA_MODE = 'DATA_MODE'
+FN_BOND = 'BOND'
 FN_SHARE = 'SHARE'
 FN_INDEX = 'INDEX'
 FN_PROPORTIONAL = 'PROPORTIONAL'
@@ -475,7 +478,12 @@ IDENTIFIER = {
     'ANAM': 'applicant_name',
     'SVWZ': 'sepa_purpose'
 }
+
+SEPA_FIELD86_CHECK = {
+declm.DB_exchange_rate: "PandasBoxStatementTable"
+}
 """
+
 ----------------------------- Scraper ------------
 
     Adding new bank scraper routines or changing login Link -->  reload server table:

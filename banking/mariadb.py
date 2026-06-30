@@ -1,6 +1,6 @@
 """
 Created on 26.11.2019
-__updated__ = "2026-05-31"
+__updated__ = "2026-06-28"
 @author: Wolfgang Kramer
 """
 import sqlalchemy
@@ -12,7 +12,7 @@ import csv
 from pathlib import Path
 from collections.abc import Sequence
 from inspect import stack
-from typing import Iterable, Any, List
+from typing import Iterable, Any
 from mariadb import connect, Error
 from itertools import chain
 from datetime import date
@@ -25,6 +25,7 @@ import banking.message_handler as msg
 
 from banking.utils import date_days,  Termination, dec2, dec3, dec6, dec10
 from banking.connect_data import connectionresult
+from pandas.io import sql
 
 NAMED_PARAM_RE = re.compile(r":([a-zA-Z_][a-zA-Z0-9_]*)")
 
@@ -64,12 +65,11 @@ class MariaDBInitializer(metaclass=SingletonMeta):
         self._init_database_info()
 
     def _initialize_database(self) -> None:
-        """Create database, connect, and initialize tables/views/trigger/procedure."""
+        """Create database, connect, and initialize tables/views/trigger"""
         try:
             self._create_database_if_missing()
             self._create_tables_and_views()
             self._create_trigger()
-            self._create_procedure()
         except Error as exc:
             DatabaseErrorHandler.handle_error(connectionresult.database, msg.Informations.BANKDATA_INFORMATIONS, exc)
 
@@ -84,14 +84,6 @@ class MariaDBInitializer(metaclass=SingletonMeta):
             cur.execute(
                 f"CREATE DATABASE IF NOT EXISTS {connectionresult.database.upper()} "
             )
-
-    def _create_procedure(self):
-        """Create procedure if necessary."""
-        for procedure in declm.PROCEDURES:
-            sql = "DROP PROCEDURE IF EXISTS " + procedure
-            connectionresult.cursor.execute(sql)
-        for sql in declm.CREATE_PROCEDURE:
-            connectionresult.cursor.execute(sql)
 
     def _create_trigger(self):
         """Create trigger if necessary."""
@@ -305,6 +297,7 @@ class MariaDBExecutor:
         """
         sql = self._prepare_sql(sql, compress)
         try:
+            DatabaseErrorHandler.EXCEPTION = None
             # print(sql, vars_)
             self._execute(sql, vars_)
             if self._is_select(sql):
@@ -317,6 +310,7 @@ class MariaDBExecutor:
             # Executor does NOT decide how to display errors
             exc.statement = sql
             exc.params = vars_
+            DatabaseErrorHandler.EXCEPTION = exc            
             raise
 
     def _prepare_sql(self, sql: str, compress: bool) -> str:
@@ -324,21 +318,6 @@ class MariaDBExecutor:
         if not compress:
             return sql
         return re.sub(r'\s+', ' ', sql.replace('\n', ' ')).strip()
-
-    def _callproc(
-        self,
-        sql: str,
-        params: list | None = None,
-        *,
-        result_dict: bool = False,
-    ):
-        if params:
-            # print(sql, params)
-            self._cursor.callproc(sql, params)
-        else:
-            print(sql)
-            self._cursor.callproc(sql)
-        return self._fetch(result_dict)
 
     def _execute(self, sql: str, params):
 
@@ -374,6 +353,8 @@ class DatabaseErrorHandler:
     Handles database-related errors and user-facing error messages.
     Fully compatible with legacy MariaDB.execute() error handling.
     """
+    
+    EXCEPTION = None  # stores last exception data
 
     @staticmethod
     def handle_error(
@@ -417,7 +398,7 @@ class DatabaseErrorHandler:
                 information=decl.ERROR,
                 message="\n\n".join(messages)
             )
-            return errno
+            raise
         # --- LOAD statement handling -----------------------------------
         if sql and sql.upper().startswith('LOAD'):
             msg.MessageBoxInfo(
@@ -1129,41 +1110,17 @@ class MariaDBTables:
     # ------------------------------------------------------------------
     # INSERT / UPDATE / DELETE / REPLACE
     # ------------------------------------------------------------------
-
-    def execute(self, *args, **kwargs):
-
-        def _normalize_execute_args(args, kwargs):
-            """
-            Normalize positional and keyword arguments of execute()
-            into explicit named values.
-            """
-            sql = args[0] if len(args) > 0 else kwargs.get("sql")
-            params = args[1] if len(args) > 1 else kwargs.get("vars_")
-
-            duplicate = kwargs.get("duplicate", False)
-            result_dict = kwargs.get("result_dict", False)
-            compress = kwargs.get("compress", False)
-
-            return {
-                "sql": sql,
-                "params": params,
-                "duplicate": duplicate,
-                "result_dict": result_dict,
-                "compress": compress,
-            }
-
-        exec_args = _normalize_execute_args(args, kwargs)
+    def execute_insert_ignore_duplicate(self, table: str, field_dict: dict) -> None:
+        """Insert a record into a table."""
         try:
-            return self.executor.execute(*args, **kwargs)
-        except Exception as exc:
-            return DatabaseErrorHandler.handle_error(
-                title="Database error",
-                storage=self,
-                exc=exc,
-                sql=exec_args["sql"],
-                params=exec_args["params"],
-                duplicate=exec_args["duplicate"],
-            )
+            columns = ', '.join(field_dict.keys())
+            placeholders = ', '.join('?' for _ in field_dict)
+            sql = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
+            vars_=tuple(field_dict.values())
+            self.executor.execute(sql, vars_=vars_, duplicate=True)
+        except Exception:
+            raise
+             
 
     def execute_insert(self, table: str, field_dict: dict) -> None:
         """Insert a record into a table."""
@@ -1393,68 +1350,19 @@ class MariaDBImporter:
         if set_clause:
             load_sql += f"\nSET\n{set_clause}"
         load_sql += ";"
-        self.executor.execute(load_sql)
-        if commit:
-            self.executor.execute("COMMIT")
+        try:
+            self.executor.execute(load_sql)
+            if commit:
+                self.executor.execute("COMMIT")            
+        except Exception as exc:
+            return DatabaseErrorHandler.handle_error(
+                title="load_csv_to_table",
+                storage=msg.Informations.PRICES_INFORMATIONS,
+                exc=exc,
+                sql=exc.sql,
+                params=exc.params,
+             )            
 
-    def parse_decimal(self, value: str, decimal_separator=",", places=2):
-        """
-        Converts values like:
-            1.234,56
-            -1.234,56
-            1234,56
-        into Decimal.
-        """
-        if value is None:
-            return None
-        if isinstance(value, str):
-            value = value.strip()
-            if value == "":
-                return None
-            if decimal_separator == ",":  # If a comma is present → German format
-                value = value.replace(".", "")
-                value = value.replace(",", ".")
-        if places == 2:
-            return dec2.convert(value)
-        elif places == 3:
-            return dec3.convert(value)
-        elif places == 6:
-            return dec6.convert(value)
-        elif places == 10:
-            return dec10.convert(value)
-        raise "Method parse_decimal: Param places not 2, 3, 6 or 10"
-
-    def transaction_exists(self, table: str, db_fields: List[str], values: List[Any]) -> bool:
-        """
-        Build a SQL EXISTS query for checking whether a row already exists.
-
-        Args:
-            table: Name of the database table.
-            data: Dictionary containing column names and values.
-
-        Returns:
-            Tuple containing:
-            - SQL query string
-            - List of query parameters
-        """
-        where_clauses: List[str] = []
-        params: List[Any] = []
-        for field, value in zip(db_fields, values):
-            # Handle NULL values separately
-            if value is None:
-                where_clauses.append(f"`{field}` IS NULL")
-            else:
-                where_clauses.append(f"`{field}` = %s")
-                params.append(value)
-        sql: str = f"""
-        SELECT EXISTS(
-            SELECT 1
-            FROM `{table}`
-            WHERE {' AND '.join(where_clauses)}
-        ) AS row_exists
-        """
-        result = self.executor.execute(sql, params)
-        return result
 
     def load_csv_to_table(
             self,
@@ -1542,6 +1450,33 @@ class MariaDBImporter:
                     value_transformers=transformers
                 )
         """
+        def parse_decimal(value: str, decimal_separator=",", places=2):
+            """
+            Converts values like:
+                1.234,56
+                -1.234,56
+                1234,56
+            into Decimal.
+            """
+            if value is None:
+                return None
+            if isinstance(value, str):
+                value = value.strip()
+                if value == "":
+                    return None
+                if decimal_separator == ",":  # If a comma is present → German format
+                    value = value.replace(".", "")
+                    value = value.replace(",", ".")
+            if places == 2:
+                return dec2.convert(value)
+            elif places == 3:
+                return dec3.convert(value)
+            elif places == 6:
+                return dec6.convert(value)
+            elif places == 10:
+                return dec10.convert(value)
+            raise "Method parse_decimal: Param places not 2, 3, 6 or 10"
+        
         message_1st_line = False
         field_properties = declm.TABLE_FIELDS_PROPERTIES[table_name]
         if additional_fields is None:
@@ -1589,7 +1524,7 @@ class MariaDBImporter:
                     value = original_row[db_field]
                     if value is not None:
                         if field_properties[db_field].typ == decl.TYP_DECIMAL:
-                            value = self.parse_decimal(
+                            value = parse_decimal(
                                 value,
                                 decimal_separator=decimal_separator,
                                 places=field_properties[db_field].places)
@@ -1626,7 +1561,17 @@ class MariaDBImporter:
                 result_row = dict(zip(db_fields, values))
                 result = self.select_exists(table_name, date_name=declm.DB_price_date, **result_row)
                 if not result:
-                    self.executor.execute(sql, values)
+                    try:
+                        self.executor.execute(sql, values)
+                    except Exception as exc:
+                        return DatabaseErrorHandler.handle_error(
+                            title="load_csv_to_table",
+                            storage=msg.Informations.TRANSACTION_INFORMATIONS,
+                            exc=exc,
+                            sql=sql,
+                            params=values,
+                            duplicate=True,  # prevents termination and instead issues an error message
+                        )
                 else:
                     if not message_1st_line:
                         msg.MessageBoxInfo(
@@ -1649,6 +1594,7 @@ class MariaDB(
         MariaDBTables,
         MariaDBShelves,
         MariaDBImporter,
+        DatabaseErrorHandler
         ):
     """
     Singleton access layer for MariaDB.

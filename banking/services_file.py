@@ -6,10 +6,71 @@ Created on 17.05.2026
 import zipfile
 import tempfile
 import os
+import atexit
 
 from pandas import read_excel
 from pathlib import Path
-from fpdf import FPDF
+
+
+class TempFileManager:
+    """
+    Handles creation, tracking, printing, and cleanup of temporary files.
+
+    The manager keeps an internal registry of all temporary files that
+    it creates. Files can be generated from text content and optionally
+    sent to the operating system's default print service. All tracked
+    temporary files are automatically deleted when the application
+    terminates or when `cleanup()` is called explicitly.
+
+    Attributes:
+        _files (set[pathlib.Path]): Set containing paths of all tracked
+            temporary files.
+    """
+    def __init__(self):
+        self._files = set()
+        atexit.register(self.cleanup)
+
+    def register(self, filename):
+        self._files.add(filename)
+
+    def unregister(self, filename):
+        self._files.discard(filename)
+
+    def create_temp_file(self, content, suffix=".txt"):
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=suffix,
+            mode="w",
+            encoding="utf-8"
+        )
+
+        with temp_file:
+            temp_file.write(content)
+
+        path = Path(temp_file.name)
+        self._files.add(path)
+
+        return path
+
+    def print(self, content):
+        filename = self.create_temp_file(content)
+
+        if os.name == "nt":
+            os.startfile(str(filename), "print")
+        else:
+            result = os.system(f"lp '{filename}'")
+            if result != 0:
+                raise RuntimeError("Printing failed.")
+        return filename
+
+    def cleanup(self):
+        for file in self._files.copy():
+            try:
+                file.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        self._files.clear()
 
 
 class FileService:
@@ -97,107 +158,3 @@ class FileService:
                 index=index,
             )
         return str(target_file)
-
-
-class PDFService:
-    """
-    Framework:
-        with headings (H1–H3),
-        body text,
-        logs (INFO/WARN/ERROR),
-        tables and clean styling
-    Example:
-                    pdf = PDFService("report.pdf")
-                    pdf.add_page()
-                    # Titel
-                    pdf.add_heading("System Report", level=1)
-                    pdf.add_heading("Zusammenfassung", level=2)
-                    # Text
-                    pdf.add_text("Das ist ein Beispieltext.\nMit Zeilenumbruch.")
-                    # Logs
-                    pdf.add_log("System gestartet", "INFO")
-                    pdf.add_log("Speicher fast voll", "WARN")
-                    pdf.add_log("Fehler beim Laden!", "ERROR")
-                    # Tabelle
-                    headers = ["Name", "Status", "Wert"]
-                    rows = [
-                        ["CPU", "OK", "45%"],
-                        ["RAM", "WARN", "85%"],
-                        ["Disk", "ERROR", "95%"]
-                    ]
-                    pdf.add_heading("Systemwerte", level=2)
-                    pdf.add_table(headers, rows)
-                    # Seitenumbruch testen
-                    pdf.add_text("Neue Seite\fHier geht es weiter")
-                    pdf.save()
-                    pdf.show()
-    """
-    PDF_FILE_NAME = "report.pdf"
-
-    def __init__(self, filename=PDF_FILE_NAME):
-        self.pdf = FPDF()
-        self.filename = filename
-        self.pdf.set_auto_page_break(auto=True, margin=15)
-        # 🔹 Stylesystem
-        self.styles = {
-            "H1": {"size": 12, "color": (0, 0, 0), "style": "B"},
-            "H2": {"size": 10, "color": (0, 0, 0), "style": "B"},
-            "H3": {"size": 8, "color": (50, 50, 50), "style": "B"},
-            "BODY": {"size": 8, "color": (0, 0, 0), "style": ""},
-            "INFO": {"size": 8, "color": (0, 102, 204), "style": ""},
-            "WARN": {"size": 8, "color": (255, 140, 0), "style": "B"},
-            "ERROR": {"size": 8, "color": (200, 0, 0), "style": "B"},
-        }
-
-    def _apply_style(self, style_name):
-        style = self.styles.get(style_name, self.styles["BODY"])
-        self.pdf.set_font("Arial", style=style["style"], size=style["size"])
-        self.pdf.set_text_color(*style["color"])
-
-    def add_page(self):
-        self.pdf.add_page()
-
-    def add_text(self, text, style="BODY", line_height=8):
-        self._apply_style(style)
-
-        pages = text.split("\f")
-        for i, page in enumerate(pages):
-            if i > 0:
-                self.add_page()
-            self.pdf.multi_cell(0, line_height, page)
-
-    def add_heading(self, text, level=1):
-        style = f"H{level}"
-        self._apply_style(style)
-        self.pdf.ln(5)
-        self.pdf.cell(0, 10, text, ln=True)
-        self.pdf.ln(2)
-
-    def add_log(self, text, level="INFO"):
-        prefix = f"[{level}] "
-        self.add_text(prefix + text, style=level)
-
-    def add_table(self, headers, rows, col_widths=None):
-        self._apply_style("BODY")
-
-        if not col_widths:
-            col_widths = [190 / len(headers)] * len(headers)
-
-        # Header
-        self._apply_style("H3")
-        for i, header in enumerate(headers):
-            self.pdf.cell(col_widths[i], 10, str(header), border=1)
-        self.pdf.ln()
-
-        # Rows
-        self._apply_style("BODY")
-        for row in rows:
-            for i, col in enumerate(row):
-                self.pdf.cell(col_widths[i], 8, str(col), border=1)
-            self.pdf.ln()
-
-    def save(self):
-        self.pdf.output(self.filename)
-
-    def show(self):
-        os.startfile(self.filename)

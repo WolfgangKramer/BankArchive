@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-06-02"
+__updated__ = "2026-06-11"
 @author: Wolfgang Kramer
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ import sys
 import requests
 
 from pandas import Timestamp
-from typing import Dict, List 
+from typing import Dict, List
 from collections import Counter
 from tkinter import Tk, messagebox, TclError
 from datetime import date, timedelta, datetime
@@ -25,6 +25,7 @@ import banking.declarations as decl
 import banking.message_handler as msg
 
 from banking.connect_data import connectionresult
+
 
 def is_title(title, sub_menu_name):
     """
@@ -78,6 +79,16 @@ def check_class_exists(package: str, module: str, class_name: str) -> bool:
 
     # Check if class exists in the module
     return hasattr(mod, class_name) and inspect.isclass(getattr(mod, class_name))
+
+
+def enum_metadata(enum_cls):
+    values = [member.value for member in enum_cls]
+
+    return {
+        "type": type(values[0]).__name__ if values else None,
+        "length": max(len(str(v)) for v in values) if values else 0,
+        "values": values,
+    }
 
 
 def get_popup_menu_text(key):
@@ -575,13 +586,13 @@ class Datulate(object):
     def mariadb_date(self, x, csv_date_format="%d.%m.%Y"):
         """
             Converts CSV date strings or pandas Timestamps into MariaDB date format (YYYY-MM-DD)
-        """    
+        """
         if isinstance(x, str):
             x = datetime.strptime(x[:10], csv_date_format).strftime(self.date_format)
             return x
         elif isinstance(x, Timestamp):
             x = x.strftime("%Y-%m-%d")
-            return x        
+            return x
         return x
 
     def add(self, x, y, ignore_weekend=True):

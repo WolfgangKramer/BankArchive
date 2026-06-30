@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-05-27"
+__updated__ = "2026-06-13"
 @author: Wolfgang Kramer
 """
 
@@ -44,7 +44,9 @@ class InitBank(object):
             return None  # thread checking
         http_code = http_error_code(self.server)
         if http_code not in decl.HTTP_CODE_OK:
-            msg.MessageBoxError(message=msg.get_message(
+            msg.MessageBoxError(
+                title=self.bank_name,                
+                message=msg.get_message(
                 msg.MESSAGE_TEXT,
                 'HTTP',
                 http_code,
@@ -56,6 +58,7 @@ class InitBank(object):
             return None  # thread checking
         if bank_code in list(decl.SCRAPER_BANKDATA.keys()):
             msg.MessageBoxError(
+                title=self.bank_name,
                 message=msg.get_message(msg.MESSAGE_TEXT, 'LOGIN_SCRAPER', '', self.bank_code))
             return None  # thread checking
         else:
@@ -64,6 +67,7 @@ class InitBank(object):
                 self.security_function = shelve_file[decl.KEY_SECURITY_FUNCTION]
             except KeyError as key_error:
                 msg.MessageBoxError(
+                    title=self.bank_name,
                     message=msg.get_message(msg.MESSAGE_TEXT, 'LOGIN', self.bank_code, key_error))
                 return None  # thread checking
             # Checking / Installing FINTS server connection
@@ -71,7 +75,9 @@ class InitBank(object):
             # https://www.hbci-zka.de/register/prod_register.htm
             self.product_id = application_store.get(declm.DB_product_id)
             if self.product_id == '':
-                msg.MessageBoxInfo(message=msg.get_message(msg.MESSAGE_TEXT, 'decl.PRODUCT_ID'))
+                msg.MessageBoxInfo(
+                    title=self.bank_name,
+                    message=msg.get_message(msg.MESSAGE_TEXT, 'decl.PRODUCT_ID'))
                 self.product_id = decl.PRODUCT_ID
             # Getting Sychronisation Data
             try:
@@ -90,6 +96,7 @@ class InitBank(object):
                 self.upd_version = shelve_file[decl.KEY_UPD]
             except KeyError:
                 msg.MessageBoxError(
+                    title=self.bank_name,
                     message=msg.get_message(msg.MESSAGE_TEXT, 'SYNC', self.bank_code))
                 return None  # thread checking
             # Setting Dialog Variables

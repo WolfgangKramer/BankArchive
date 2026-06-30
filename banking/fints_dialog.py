@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-05-26"
+__updated__ = "2026-06-26"
 @author: Wolfgang Kramer
 """
 
@@ -34,7 +34,7 @@ import banking.declarations_mariadb as declm
 import banking.message_handler as msg
 
 from banking.fints_extension import HIKAZS6, HIKAZS7, HIWPDS5, HIWPDS6
-from banking.forms import PrintMessageCode, InputPIN
+from banking.forms import InputPIN, ProtocolViewer
 from banking.fints_message import Messages
 from banking.utils import (
     Amount, application_store,
@@ -298,7 +298,9 @@ class BPDService:
                 (decl.KEY_TAN_REQUIRED, tans_required),
             ]
         else:
-            msg.MessageBoxInfo(message=msg.get_message(msg.MESSAGE_TEXT, 'HIPINS1'))
+            msg.MessageBoxInfo(
+                title=bank.bank_name,
+                message=msg.get_message(msg.MESSAGE_TEXT, 'HIPINS1'))
             values = [
                 (decl.KEY_MIN_PIN_LENGTH, 3),
                 (decl.KEY_MAX_PIN_LENGTH, 20),
@@ -317,6 +319,7 @@ class BPDService:
 
     def _notify_bpd_update(self, bank: Any) -> None:
         msg.MessageBoxInfo(
+            title=bank.bank_name,
             message=msg.get_message(
                 msg.MESSAGE_TEXT,
                 'FINTS_UPDATE_BPD_VERSION',
@@ -630,7 +633,9 @@ class CAMT052Service:
                     declm.DB_purpose_code: (tx.get("Purp") or {}).get("Cd"),
                 })
                 if tx.get("RmtInf"):
-                    entry_obj[declm.DB_purpose] = tx["RmtInf"].get("Ustrd")
+                    entry_obj[declm.DB_purpose] = tx["RmtInf"].get("Ustrd", decl.NOT_ASSIGNED)
+                else:
+                    entry_obj[declm.DB_purpose] = decl.NOT_ASSIGNED   
                 rltd = tx.get("RltdPties", {})
                 if entry_obj[declm.DB_status] == decl.CREDIT:
                     party = rltd.get("Dbtr")
@@ -659,6 +664,7 @@ class CAMT052Service:
             )
             if closing_balance != calc:
                 msg.MessageBoxInfo(
+                    title=bank.bank_name,
                     message=msg.get_message(
                         msg.MESSAGE_TEXT, 'BANK_BALANCE_DIFFERENCE',
                         bank.account_product_name,
@@ -1095,6 +1101,7 @@ class Dialogs(object):
                 seg = response.find_segment_first(HITAN6)
                 if not seg:
                     msg.MessageBoxInfo(
+                        title=bank.bank_name,
                         message=msg.get_message(
                             msg.MESSAGE_TEXT, decl.CODE_0030, bank.bank_name, bank.account_number,
                             bank.account_product_name
@@ -1108,6 +1115,7 @@ class Dialogs(object):
                 response, hirms_codes = self._get_tan(bank, response)
             else:
                 msg.MessageBoxInfo(
+                    title=bank.bank_name,
                     message=msg.get_message(
                         msg.MESSAGE_TEXT, decl.CODE_0030, bank.bank_name, bank.account_number,
                         bank.account_product_name
@@ -1131,6 +1139,7 @@ class Dialogs(object):
             for seg in response.find_segments(HITAN7):
                 bank.task_reference = seg.task_reference
                 message_box_ask = msg.MessageBoxAsk(
+                    title=bank.bank_name,
                     message=msg.get_message(
                         msg.MESSAGE_TEXT, 'HITAN', seg.challenge)
                 )
@@ -1155,6 +1164,7 @@ class Dialogs(object):
                 elif response.code[0] == '3':
                     if response.code == '3010':    # no entries found
                         msg.MessageBoxInfo(
+                            title=bank.bank_name,
                             message=msg.get_message(
                                 msg.MESSAGE_TEXT, 'NO_TURNOVER', bank.bank_name,
                                 bank.account_number, bank.account_product_name
@@ -1192,7 +1202,7 @@ class Dialogs(object):
                 segments=base64.b64decode(r.content.decode('latin1')))
         except Exception:
             msg.MessageBoxException(message=msg.get_message(msg.MESSAGE_TEXT, 'RESPONSE'))
-            PrintMessageCode(text=msg.Informations.bankdata_informations)
+            ProtocolViewer(text=msg.Informations.bankdata_informations)
             if dialog_init:
                 return None,  []
             else:
@@ -1211,7 +1221,7 @@ class Dialogs(object):
             hirms_error, hirms_codes = fints_code(bank, seg)
             fints_codes = fints_codes + hirms_codes
         if hirmg_error or hirms_error:
-            PrintMessageCode(text=msg.Informations.bankdata_informations)
+            ProtocolViewer(text=msg.Informations.bankdata_informations)
             if dialog_init:
                 return None,  fints_codes
             else:

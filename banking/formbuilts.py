@@ -1,21 +1,26 @@
 """
 Created on 28.01.2020
-__updated__ = "2026-06-02"
+__updated__ = "2026-06-30"
 @author: Wolfgang Kramer
 """
 import re
+import os
+import shutil
 
+from typing import List
+from abc import ABC
 from inspect import stack
 from pathlib import Path
 from collections import namedtuple
 from datetime import date, timedelta
 from tkinter import (
     Tk, TclError, ttk, Toplevel, StringVar, IntVar, INSERT, Text,
-    W, E, filedialog, BOTH, BOTTOM, TOP, HORIZONTAL, Canvas,
-    END, DISABLED)
+    W, E, EW, NSEW, NS, filedialog, BOTH, BOTTOM, TOP, HORIZONTAL, VERTICAL, Canvas,
+    END, DISABLED, messagebox, Menu)
 from tkinter.ttk import (
     Entry, Frame, Label, Radiobutton, Checkbutton, Separator, Scrollbar, Progressbar)
 from tkinter.font import Font
+
 from keyboard import add_hotkey
 from pandas import to_numeric, ExcelWriter, DataFrame
 from pandastable import config
@@ -28,7 +33,7 @@ import banking.message_handler as msg
 from banking.pandastable_extension import Table, TableRowEdit, MyPlotViewer
 from banking.utils import (
     application_store,
-    Amount, dec2,
+    Amount, dec2, dec6,
     date_days,
     list_positioning
     )
@@ -802,7 +807,7 @@ class BuiltRadioButtons(BuiltBox):
         radiobutton_key_length = len(
             max(self._radiobutton_dict.keys(), key=len))
         radiobutton_val_length = len(
-            max(self._radiobutton_dict.values(), key=len))
+            max(self._radiobutton_dict.values(), key=len)) + 5
         for radiobutton_key in self._radiobutton_dict:
             radiobutton = Radiobutton(self._box_window, text=radiobutton_key,
                                       width=radiobutton_key_length,
@@ -1460,7 +1465,17 @@ class BuiltTableRowBox(BuiltEnterBox):
             else:
                 combo_insert_value = False
             # create field_defs
-            if field_name in check_fields:
+            if fields_properties[field_name].data_type == declm.ENUM:
+                # combo field with enum validation
+                enum_class = declm.REGISTERED_ENUMS.get(field_name, None)
+                self.combo_dict[field_name] = [e.value for e in enum_class]
+                field_def = FieldDefinition(definition=decl.COMBO, name=field_name,
+                                            length=fields_properties[field_name].length,
+                                            typ=fields_properties[field_name].typ,
+                                            combo_positioning=False,
+                                            combo_values=self.combo_dict[field_name])
+            
+            elif field_name in check_fields:
                 field_def = FieldDefinition(definition=decl.CHECK, name=field_name,
                                             checkbutton_text=fields_properties[field_name].comment)
             elif field_name in self.combo_dict.keys():
@@ -1510,25 +1525,55 @@ class BuiltTableRowBox(BuiltEnterBox):
 
             field_def = self.set_field_def(field_def)
             field_defs.append(field_def)
+        self.field_name_list, field_defs = self.name_field(self.field_name_list, field_defs)    
         FieldNames = namedtuple('FieldNames', self.field_name_list)
         field_defs_tuple = FieldNames(*field_defs)
         return field_defs_tuple
 
-    def set_field_def(self, field_def):
+    def name_field(self, field_name_list: List, field_defs: List):
+
+        return field_name_list, field_defs
+
+    def set_field_def(self, field_def: List):
 
         return field_def
 
 
-class BuiltText(object):
+class ProtocolViewer:
     """
-    TOP-LEVEL-WINDOW        TextBox with ScrollBars (Only Output)
+    Displays protocol/log output in a read-only text window.
 
-    PARAMETER:
-        text                String of Text Lines
+    Features:
+        * Vertical and horizontal scrolling
+        * Automatic syntax highlighting for log levels
+        * Read-only text widget
+        * Print support
+        * Monospaced font for aligned log output
+
+    Args:
+        title (str):
+            Window title.
+
+        header (str):
+            Optional header text displayed at the beginning of the log.
+
+        text (str):
+            Log content to display.
+
+    Example:
+        ProtocolViewer(
+            title="Application Protocol",
+            text=protocol_text
+        )
     """
 
-    def __init__(self, title=msg.MESSAGE_TITLE, header='', text=''):
+    def __init__(self,
+                 title=msg.MESSAGE_TITLE,
+                 header="",
+                 text=""):
 
+        if not text or not text.strip():
+            return
         self.window_id = self.__class__.__name__
         if msg.is_main_thread():
             if header == msg.Informations.TRANSACTION_INFORMATIONS:
@@ -1539,69 +1584,164 @@ class BuiltText(object):
                 msg.Informations.bankdata_informations = ''
             elif header == msg.Informations.HOLDING_INFORMATIONS:
                 msg.Informations.holding_informations = ''
+            elif header == msg.Informations.TRANSACTION_INFORMATIONS:
+                msg.Informations.transaction_informations = ''
             header = ''
-            self._builttext_window = Toplevel()
-            self._builttext_window.title(title)
-            self._builttext_window.geometry(BUILTEXT_WINDOW_POSITION)
-            if self.destroy_widget(text):  # check: discard output
-                destroy_widget(self._builttext_window)
-                return
-            # --------------------------------------------------------------
-            height = len(list(enumerate(text.splitlines()))) + 5
-            if height > decl.HEIGHT_TEXT:
-                height = decl.HEIGHT_TEXT
-            self.text_widget = Text(
-                self._builttext_window, font=('Courier', 8), wrap='none')
-            self.text_widget.grid(sticky=W)
-            scroll_x = Scrollbar(self._builttext_window, orient="horizontal",
-                                 command=self.text_widget.xview)
-            scroll_x.grid(sticky="ew")
-
-            scroll_y = Scrollbar(self._builttext_window, orient="vertical",
-                                 command=self.text_widget.yview)
-            scroll_y.grid(row=1, column=1, sticky="ns")
-
-            self.text_widget.configure(yscrollcommand=scroll_y.set,
-                                       xscrollcommand=scroll_x.set)
-            textlines = text.splitlines()
-            line_length = 1
-            for line, textline in enumerate(textlines):
-                if line_length < len(textline):
-                    line_length = len(textline)
-                self.text_widget.insert(END, textline + '\n')
-                self.set_tags(textline, line)
-            self.text_widget.configure(
-                height=decl.HEIGHT_TEXT, width=line_length+10)
-            # self.text_widget.config(state=DISABLED)
-            # --------------------------------------------------------------
-            self._builttext_window.protocol(
-                decl.WM_DELETE_WINDOW, self._wm_deletion_window)
-            self._builttext_window.lift
-            self._builttext_window.mainloop()
-            destroy_widget(self._builttext_window)
         else:
             msg.MessageBoxInfo(
                 title=title,
                 message=msg.get_message(
-                    msg.MESSAGE_TEXT, 'THREAD', self.window_id
-                    )
+                    msg.MESSAGE_TEXT,
+                    'THREAD',
+                    self.window_id
                 )
+            )
+            return
+        self._builttext_window = Toplevel()
+        self._builttext_window.title(title)
+        self._builttext_window.geometry("1200x700")
+        self._create_menu()
+        frame = Frame(self._builttext_window)
+        frame.pack(fill=BOTH, expand=True)
+
+        self.text_widget = Text(
+            frame,
+            wrap="none",
+            font=("Courier New", 10)
+        )
+
+        scroll_y = Scrollbar(
+            frame,
+            orient=VERTICAL,
+            command=self.text_widget.yview
+        )
+
+        scroll_x = Scrollbar(
+            frame,
+            orient=HORIZONTAL,
+            command=self.text_widget.xview
+        )
+
+        self.text_widget.configure(
+            yscrollcommand=scroll_y.set,
+            xscrollcommand=scroll_x.set
+        )
+
+        self.text_widget.grid(
+            row=0,
+            column=0,
+            sticky="nsew"
+        )
+
+        scroll_y.grid(
+            row=0,
+            column=1,
+            sticky="ns"
+        )
+
+        scroll_x.grid(
+            row=1,
+            column=0,
+            sticky="ew"
+        )
+
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        if header:
+            self.text_widget.insert(END, header + "\n")
+            self.text_widget.insert(END, "=" * len(header) + "\n\n")
+
+        for line_no, line in enumerate(text.splitlines()):
+            self.text_widget.insert(END, line + "\n")
+            self.set_tags(line, line_no)
+        self.content = self.text_widget.get("1.0", END)
+
+        self.text_widget.configure(state=DISABLED)
+
+        self._builttext_window.protocol(
+            "WM_DELETE_WINDOW",
+            self._wm_deletion_window
+        )
+
+    def _create_menu(self):
+        """
+        Creates the application menu.
+        """
+        menu_bar = Menu(self._builttext_window)
+
+        file_menu = Menu(menu_bar, tearoff=0)
+        file_menu.add_command(
+            label="Print",
+            command=self.print_content
+        )
+        file_menu.add_separator()
+        file_menu.add_command(
+            label="Close",
+            command=self._wm_deletion_window
+        )
+
+        menu_bar.add_cascade(
+            label="File",
+            menu=file_menu
+        )
+
+        self._builttext_window.config(menu=menu_bar)
+
+    def print_content(self):
+        try:
+            decl.temp_file_manager.print(self.content)
+
+        except Exception as exc:
+            messagebox.showerror("Print Error", str(exc))
+
+    def set_tags(self, textline, line):
+        """
+        Applies color highlighting to protocol entries.
+
+        Args:
+            textline (str):
+                Current protocol line.
+
+            line (int):
+                Line index inside the text widget.
+        """
+        start = f"{line + 1}.0"
+        end = f"{line + 1}.{len(textline)}"
+
+        if textline.startswith("ERROR"):
+            self.text_widget.tag_add("ERROR", start, end)
+            self.text_widget.tag_config(
+                "ERROR",
+                foreground="red"
+            )
+
+        elif textline.startswith("WARNING"):
+            self.text_widget.tag_add("WARNING", start, end)
+            self.text_widget.tag_config(
+                "WARNING",
+                foreground="blue"
+            )
+
+        elif textline.startswith("INFO"):
+            self.text_widget.tag_add("INFO", start, end)
+            self.text_widget.tag_config(
+                "INFO",
+                foreground="green"
+            )
 
     def _wm_deletion_window(self):
-
-        self.field = None
+        """
+        Handles window close events.
+        """
         self.quit_widget()
 
     def quit_widget(self):
-
-        quit_widget(self._builttext_window)
-
-    def set_tags(self, textline, line):
-        pass
-
-    def destroy_widget(self, text):
-        # insert text checking code
-        return False
+        """
+        Closes the protocol viewer window.
+        """
+        if self._builttext_window:
+            self._builttext_window.destroy()
 
 
 class BuiltPandasBox(Frame):
@@ -1764,7 +1904,9 @@ class BuiltPandasBox(Frame):
         last_row_index = self.pandas_table.model.df.shape[0] - 1
         if self.selected_row > last_row_index:
             self.selected_row = last_row_index
-        self.pandas_table.movetoSelection(row=self.selected_row)
+            if self.selected_row > 0:    
+                self.pandas_table.movetoSelection(row=self.selected_row)
+   
 
     def _on_scroll(self, event):
         '''
@@ -2006,6 +2148,12 @@ class BuiltPandasBox(Frame):
                 places = 2
                 color = decl.COLOR_NEGATIVE
                 typ = decl.TYP_DECIMAL
+            elif self.sepa_field86_check(column):
+                align = W
+                currency = ''
+                places = ''
+                color = ''
+                typ = decl.TYP_ALPHANUMERIC                
             elif column in declm.DATABASE_FIELDS_PROPERTIES:
                 _, places, typ,  _, _ = declm.DATABASE_FIELDS_PROPERTIES[column]
                 if typ in BuiltPandasBox.RIGHT:
@@ -2048,7 +2196,10 @@ class BuiltPandasBox(Frame):
                     self.pandas_table.setColorByMask(
                         column, self.dataframe[column] < 0, color)
                 if self.mode == decl.NUMERIC and decl.ToolbarSwitch.toolbar_switch or self.mode in [decl.NO_CURRENCY_SIGN, decl.EDIT_ROW]:
-                    if places:
+                    if places==6:
+                        self.dataframe[column] = self.dataframe[column].apply(
+                            lambda x: x if isinstance(x, str) else dec6.convert(x))
+                    else:
                         self.dataframe[column] = self.dataframe[column].apply(
                             lambda x: x if isinstance(x, str) else dec2.convert(x))
                 else:
@@ -2074,6 +2225,19 @@ class BuiltPandasBox(Frame):
                 self.pandas_table.columnformats['alignment'][column] = align
         self.pandas_table.cellwidth = self.column_width
         self.drop_currencies()
+
+    def sepa_field86_check(self, column):
+        """
+            table_name;column_name;data_type;column_type
+            holding;exchange_rate;decimal;decimal(14,6)
+            holding_view;exchange_rate;decimal;decimal(14,6)
+            statement;exchange_rate;varchar;varchar(65)  # MT940 FinTS format
+            transaction;exchange_rate;decimal;decimal(14,6)
+            transaction_view;exchange_rate;decimal;decimal(14,6)        
+        """
+        
+        window_id = decl.SEPA_FIELD86_CHECK.get(column, decl.NOT_ASSIGNED)
+        return window_id==self.window_id
 
     def drop_currencies(self):
 
@@ -2140,3 +2304,275 @@ class BuiltPandasBox(Frame):
         while None in combo_list:
             combo_list.remove(None)
         return {field_name: sorted(combo_list)}
+
+
+class BaseViewer(ABC):
+    """
+    Base class for document viewers.
+
+    This class provides a common user interface and file management
+    functionality for viewers displaying generated application data.
+
+    Features:
+        * Temporary file creation and management
+        * Automatic registration of temporary files
+        * Standard File menu
+            - Print
+            - Save As...
+            - Close
+        * Optional document header
+        * Read-only text display widget
+        * Vertical and horizontal scrolling
+        * Window lifecycle management
+
+    Subclasses are responsible for generating the document content
+    and writing it to the temporary file.
+
+    Args:
+        title (str):
+            Window title.
+        header (str):
+            Optional document header.
+        suffix (str):
+            Temporary file suffix such as '.txt' or '.pdf'.
+
+    Attributes:
+        window_id (str):
+            Viewer identifier.
+        title (str):
+            Window title.
+        header (str):
+            Optional document header.
+        temp_filename (str):
+            Temporary output filename.
+        content (str):
+            Viewer content.
+        _window (Toplevel):
+            Main viewer window.
+        frame (Frame):
+            Widget container.
+        text_widget (Text):
+            Read-only text display widget.
+    """
+
+    def __init__(
+            self,
+            title=msg.MESSAGE_TITLE,
+            header="HEADER",
+            content='CONTENT',
+            suffix=".txt"):
+        self.window_id = self.__class__.__name__
+        if not msg.is_main_thread():
+            msg.MessageBoxInfo(
+                title=title,
+                message=msg.get_message(
+                    msg.MESSAGE_TEXT,
+                    "THREAD",
+                    self.window_id
+                )
+            )
+            raise RuntimeError(
+                f"{self.window_id} must run in GUI thread"
+            )
+        self.title = title
+        self.header = header
+        self.content = content
+        self.temp_filename = (
+            decl.temp_file_manager.create_temp_file(
+                self.content,
+                suffix=suffix
+            )
+        )
+        decl.temp_file_manager.register(
+            self.temp_filename
+        )
+        self._window = Toplevel()
+        self._window.title(title)
+        self._window.geometry("1200x700")
+        self._create_menu()
+        self._create_text_area()
+        self.set_content(header, content)
+        # --------------------------------------------------------------
+        self._window.protocol(
+            decl.WM_DELETE_WINDOW, self._wm_deletion_window)
+        self._window.mainloop()
+        self.quit_widget()
+
+    def _create_menu(self):
+        """
+        Creates the application menu.
+        """
+        menu_bar = Menu(self._window, tearoff=0, bg='Lightblue')
+        menu_bar.add_command(
+            label="Print",
+            command=self.print_content
+        )
+        menu_bar.add_command(
+            label="Save As...",
+            command=self.save_as
+        )
+        menu_bar.add_command(
+            label="Close",
+            command=self._wm_deletion_window
+        )
+        self._window.config(
+            menu=menu_bar
+        )
+
+    def _create_text_area(self):
+        """
+        Creates the text display area.
+        """
+        self.frame = Frame(self._window)
+        self.frame.pack(
+            fill=BOTH,
+            expand=True
+        )
+        self.text_widget = Text(
+            self.frame,
+            wrap="none",
+            font=("Courier New", 10)
+        )
+        scroll_y = Scrollbar(
+            self.frame,
+            orient=VERTICAL,
+            command=self.text_widget.yview
+        )
+        scroll_x = Scrollbar(
+            self.frame,
+            orient=HORIZONTAL,
+            command=self.text_widget.xview
+        )
+        self.text_widget.configure(
+            yscrollcommand=scroll_y.set,
+            xscrollcommand=scroll_x.set
+        )
+        self.text_widget.grid(
+            row=0,
+            column=0,
+            sticky=NSEW
+        )
+        scroll_y.grid(
+            row=0,
+            column=1,
+            sticky=NS
+        )
+        scroll_x.grid(
+            row=1,
+            column=0,
+            sticky=EW
+        )
+        self.frame.rowconfigure(
+            0,
+            weight=1
+        )
+        self.frame.columnconfigure(
+            0,
+            weight=1
+        )
+
+    def set_content(self, header, text):
+        """
+        Displays content in the text widget.
+
+        Args:
+            text (str):
+                Text to display.
+        """
+        self.content = text
+        self.text_widget.delete(
+            "1.0",
+            END
+        )
+        if self.header:
+            self.text_widget.insert(
+                END,
+                self.header + "\n"
+            )
+            self.text_widget.insert(
+                END,
+                "=" * len(self.header)
+                + "\n\n"
+            )
+
+        self.text_widget.insert(
+            END,
+            text
+        )
+
+        self.text_widget.configure(
+            state=DISABLED
+        )
+
+    def write_temp_file(
+            self,
+            content,
+            encoding="utf-8"):
+        """
+        Writes content to the temporary file.
+
+        Args:
+            content (str):
+                File content.
+            encoding (str):
+                Output encoding.
+        """
+        with open(
+                self.temp_filename,
+                "w",
+                encoding=encoding) as file:
+
+            file.write(content)
+
+    def save_as(self):
+        """
+        Saves the generated file to a user selected location.
+        """
+        filename = filedialog.asksaveasfilename(
+            initialfile=os.path.basename(
+                self.temp_filename
+            )
+        )
+        if not filename:
+            return
+        try:
+            shutil.copy2(
+                self.temp_filename,
+                filename
+            )
+        except Exception as exc:
+            messagebox.showerror(
+                "Save Error",
+                str(exc)
+            )
+
+    def print_content(self):
+        """
+        Prints the temporary document.
+        """
+        try:
+            decl.temp_file_manager.print(
+                self.content
+            )
+        except Exception as exc:
+            messagebox.showerror(
+                "Print Error",
+                str(exc)
+            )
+
+    def _wm_deletion_window(self):
+        """
+        Handles window close events.
+        """
+        self.quit_widget()
+
+    def quit_widget(self):
+        """
+        Closes the viewer window.
+
+        The temporary file is not removed here because it is
+        managed by the application's temporary file manager and
+        will be deleted during application shutdown.
+        """
+        if self._window:
+            self._window.destroy()

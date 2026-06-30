@@ -18,9 +18,10 @@ from collections import defaultdict
 
 import banking.declarations as decl
 import banking.declarations_mariadb as declm
+import banking.currency as crny
 
 from banking.mariadb import MariaDB
-from banking.utils import date_days, dec2
+from banking.utils import date_days
 
 
 class SingletonNoLockMeta(type):
@@ -182,6 +183,116 @@ class BankIdentifierRepository(BaseRepository):
             return exc
 
 
+class BondMasterRepository(BaseRepository):
+
+    def get_bond_master_rows(self) -> dict:
+
+        result = self.db.select_rows(
+                table=declm.BOND_MASTER_VIEW,
+                fields='*',
+                result_dict=True)
+        return result
+
+    def replace_bond_master(self, row_dict: dict):
+
+        self.db.execute_replace(declm.BOND_MASTER, row_dict)
+
+    def delete_bond_master(self, isin_code):
+
+        self.db.execute_delete(declm.BOND_MASTER, isin_code=isin_code)
+
+
+class CorporateActionsRepository(BaseRepository):
+
+    def __init__(self):
+        super().__init__()
+
+    def count_corporate_actions(self) -> int:
+
+        return self.db.select_scalar(declm.CORPORATE_ACTIONS, 'COUNT(*)')
+
+    def get_corporate_actions_data(
+            self, action_type: str, selected_isins: list[str]
+        ) -> list[dict]:
+
+        result = self.db.select_table(
+            declm.CORPORATE_ACTIONS_ISIN_VIEW,
+            [declm.DB_name, declm.DB_action_date, declm.DB_action_value],
+            order=[declm.DB_name, declm.DB_action_date],
+            result_dict=True,
+            isin_code=selected_isins,
+            action_type=action_type)
+        return result
+
+    def get_dividends_of_years(
+            self, selected_isins: list[str]
+        ) -> list[dict]:
+
+        result = self.db.select_rows( 
+            table=declm.CORPORATE_ACTIONS_ISIN_VIEW,
+            fields=[declm.DB_name,
+                    f"YEAR({declm.DB_action_date}) AS year",
+                    f"SUM({declm.DB_action_value}) AS dividend"
+                    ],
+            group_by=[declm.DB_name, f"YEAR({declm.DB_action_date})"],
+            order=[declm.DB_name,f"YEAR({declm.DB_action_date})"],
+            sort="ASC",
+            action_type='DIVIDEND',
+            isin_code=selected_isins,
+            result_dict=True,            
+            )
+        return result    
+
+    def delete_corporate_actions_data(self, isin_code):
+
+        self.db.execute_delete(declm.CORPORATE_ACTIONS,  isin_code=isin_code)
+
+    def replace_corporate_actions_data(self, actions_list: list[dict]):
+
+        for actions in actions_list:
+            self.db.execute_replace(declm.CORPORATE_ACTIONS, actions)
+
+
+class CurrencyRepository(BaseRepository):
+
+    def __init__(self):
+        super().__init__()    
+
+    def insert_curreny_content(self):
+        
+        self.db.executor.execute(crny.sql_insert_currency)
+
+    def insert_currency(self, field_dict):
+
+        self.db.execute_insert(declm.CURRENCY, field_dict)
+
+    def replace_currency(self, field_dict):
+
+        self.db.execute_replace(declm.CURRENCY, field_dict)
+
+    def delete_currency(self, iso_code):
+
+        self.db.execute_delete(declm.CURRENCY, iso_code=iso_code)
+
+    def exist_currency(self, iso_code):
+
+        return self.db.select_exists(declm.CURRENCY, iso_code=iso_code)
+
+    def get_enabled_currencies(self):
+        
+        result = self.db.select_table(declm.CURRENCY, declm.DB_iso_code, enabled=True)
+        return list(map(lambda x: x[0], result))
+
+    def get_currency(self) -> List[Dict]:
+
+        result = self.db.select_table(
+            declm.CURRENCY,
+            declm.TABLE_FIELDS[declm.CURRENCY],
+            result_dict=True
+            )
+        return result
+
+
 class CustomizingRepository(BaseRepository):
 
     def __init__(self):
@@ -300,7 +411,7 @@ class HoldingRepository(BaseRepository):
 
         WHERE h_curr.{declm.DB_price_date} = ? and h_curr.{declm.DB_iban} = ?;
         """
-        self.db.execute(sql_statement, vars_=(price_date, price_date, iban))
+        self.db.executor.execute(sql_statement, vars_=(price_date, price_date, iban))
 
     def _select_holding_all_total(self, *, result_dict: bool = False, **kwargs):
         return self.db.select_rows(
@@ -505,7 +616,7 @@ class HoldingRepository(BaseRepository):
 
         sql_statement = ("UPDATE " + declm.HOLDING +
                          " SET acquisition_amount=? WHERE iban=? AND isin_code=? AND price_date=?")
-        self.db.execute(sql_statement, vars_=(acquisition_amount, iban, isin_code, price_date))
+        self.db.executor.execute(sql_statement, vars_=(acquisition_amount, iban, isin_code, price_date))
 
     def update_holding_aquisition_with_price(
             self,
@@ -518,7 +629,7 @@ class HoldingRepository(BaseRepository):
 
         sql_statement = ("UPDATE " + declm.HOLDING + " SET acquisition_price=?, "
                          " acquisition_amount=? WHERE iban=? AND isin_code=?  AND price_date=?")
-        self.db.execute(sql_statement, vars_=(acquisition_price, acquisition_amount, iban, isin_code, price_date))
+        self.db.executor.execute(sql_statement, vars_=(acquisition_price, acquisition_amount, iban, isin_code, price_date))
 
     def get_holding_aquisition_data(self, iban, isin_code):
 
@@ -892,7 +1003,7 @@ class IsinRepository(BaseRepository):
         result = [x[0] for x in tuples_list]
         return result
 
-    def isin_names_with_ticker(self, origin_symbol=decl.YAHOO) -> list:
+    def isin_names_with_ticker(self, origin_symbol=decl.YAHOO) -> List:
 
         tuples_list = self.db.select_table(
             declm.ISIN,
@@ -903,6 +1014,17 @@ class IsinRepository(BaseRepository):
             origin_symbol=origin_symbol
             )
         result = [x[0] for x in tuples_list]
+        return result
+
+    def names_isin_dict_only_bonds(self) -> Dict:
+
+        result = self.db.select_dict(
+            declm.ISIN,
+            declm.DB_name,
+            declm.DB_ISIN,
+            order=declm.DB_name,
+            type=declm.IsinType.BOND.value,
+            )
         return result
 
     def isin_with_ticker(self) -> Dict:
@@ -1896,7 +2018,7 @@ class MariaDBRepository(BaseRepository):
 
     def get_database_name(self):
 
-        result = self.db.execute("SELECT DATABASE()")
+        result = self.db.executor.execute("SELECT DATABASE()")
         return result[0][0]
 
     def commit(self):
@@ -1986,10 +2108,9 @@ class PricesRepository(BaseRepository):
             )
         return result
 
-    def replace_corporate_actions_data(self, actions_list: list[dict]):
+    def delete_prices(self, isin_code):
 
-        for actions in actions_list:
-            self.db.execute_replace(declm.CORPORATE_ACTIONS, actions)
+        self.db.execute_delete(declm.PRICES,  isin_code=isin_code)
 
     def import_prices_batch(self, dataframe) -> None:
         """
@@ -2030,7 +2151,6 @@ class PricesRepository(BaseRepository):
                 local=True,
                 commit=True,
             )
-            return None
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
@@ -2592,9 +2712,21 @@ class TransactionRepository(BaseRepository):
             order=declm.DB_name
             )
 
+    def exist_transaction_identical(self, field_dict):
+
+        self.db.select_exists(declm.TRANSACTION, date_name=declm.DB_price_date, **field_dict)
+
     def exist_transaction(self, iban, isin_code, price_date, counter):
 
         self.db.select_exists(declm.TRANSACTION, iban=iban, isin_code=isin_code, price_date=price_date, counter=counter)
+
+    def insert_transaction_ignore_duplicate(self, field_dict):
+
+        try:         
+            self.db.execute_insert_ignore_duplicate(declm.TRANSACTION, field_dict)
+        except Exception:
+            # Executor does NOT decide how to display errors
+            raise        
 
     def insert_transaction(self, field_dict):
 
@@ -2796,81 +2928,6 @@ class TransactionRepository(BaseRepository):
         except Exception as exc:
             return exc
 
-    def import_transaction_consors(self, iban: str, filename: str) -> None:
-        mapping = {
-            "Ausführungsdatum": declm.DB_price_date,
-            "ISIN": declm.DB_ISIN,
-            "Stück/Nominal": declm.DB_pieces,
-            "Ausführungskurs": declm.DB_price,
-            "Ausführungskurs Währung": declm.DB_price_currency,
-            "Ordernummer": declm.DB_transaction_no,
-            "Orderart": declm.DB_comments
-        }
-        additional_fields = {
-            declm.DB_iban: iban,
-            declm.DB_counter: 0,
-            declm.DB_transaction_type: decl.TRANSACTION_RECEIPT,
-            declm.DB_posted_amount: 0
-        }
-        transformers = {
-            declm.DB_transaction_type: lambda value, row:
-                decl.TRANSACTION_RECEIPT
-                if row[declm.DB_comments] == "Kauf"
-                else decl.TRANSACTION_DELIVERY,
-            declm.DB_posted_amount: lambda value, row:
-                dec2.multiply(row[declm.DB_pieces], row[declm.DB_price])
-                if row[declm.DB_price_currency] != '%'
-                else
-                dec2.divide(
-                    dec2.multiply(row[declm.DB_pieces], row[declm.DB_price]),
-                    100
-                    ),
-            declm.DB_price_currency: lambda value, row:
-                decl.PERCENT if value == '%' else decl.EURO
-        }
-        self.db.load_csv_to_table(
-            csv_file=filename,
-            start_line=8,
-            encoding='utf-8',
-            decimal_separator='.',
-            table_name=declm.TRANSACTION,
-            field_mapping=mapping,
-            additional_fields=additional_fields,
-            value_transformers=transformers
-        )
-
-    def import_transaction_flatex(self, iban: str, filename: str) -> None:
-        mapping = {
-            "Buchungstag": declm.DB_price_date,
-            "ISIN": declm.DB_ISIN,
-            "Nominal (Stk.)": declm.DB_pieces,
-            "Betrag": declm.DB_posted_amount,
-            "Kurs": declm.DB_price,
-            "Devisenkurs": declm.DB_exchange_rate,
-            "TA.-Nr.": declm.DB_transaction_no,
-            "Buchungsinformation": declm.DB_comments
-        }
-        additional_fields = {
-            declm.DB_iban: iban,
-            declm.DB_counter: 0,
-            declm.DB_transaction_type: decl.TRANSACTION_RECEIPT,
-        }
-        transformers = {
-            declm.DB_transaction_type: lambda value, row:
-                decl.TRANSACTION_RECEIPT
-                if row[declm.DB_posted_amount] > 0
-                else decl.TRANSACTION_DELIVERY,
-            declm.DB_price: lambda value, row: abs(value),
-            declm.DB_posted_amount: lambda value, row: abs(value),
-            declm.DB_pieces: lambda value, row: abs(value),
-        }
-        self.db.load_csv_to_table(
-            csv_file=filename,
-            table_name=declm.TRANSACTION,
-            field_mapping=mapping,
-            additional_fields=additional_fields,
-            value_transformers=transformers
-        )
 
     def get_transaction(self, iban, isin_code, price_date, counter):
 
@@ -2993,7 +3050,7 @@ class TransactionRepository(BaseRepository):
             HAVING difference != 0
             ORDER BY h.isin_code, h.price_date
         """
-        return self.db.execute(sql, (iban, holding_date), result_dict=True)
+        return self.db.executor.execute(sql, (iban, holding_date), result_dict=True)
 
     def get_transactions_of_iban_isin_code(self, iban, isin_code, period):
 
@@ -3009,7 +3066,7 @@ class TransactionRepository(BaseRepository):
     def get_transactions_delta_of_iban_isin_code(self, iban, isin_code):
 
         pieces = f"""
-            SUM(   
+            SUM(
                 CASE transaction_type
                     WHEN '{decl.TRANSACTION_RECEIPT}' THEN pieces
                     WHEN '{decl.TRANSACTION_DELIVERY}' THEN -pieces
@@ -3017,7 +3074,7 @@ class TransactionRepository(BaseRepository):
                 END
             ) AS {declm.DB_pieces}
             """
-        pieces = re.sub(r'\s+', ' ', pieces.replace('\n', ' ')).strip()    
+        pieces = re.sub(r'\s+', ' ', pieces.replace('\n', ' ')).strip()
         field_list = [
             declm.DB_iban,
             declm.DB_ISIN,
@@ -3034,7 +3091,6 @@ class TransactionRepository(BaseRepository):
                 iban=iban,
                 isin_code=isin_code
                 )
-
 
 
 def forward_methods(repo_names, debug=False):
@@ -3060,6 +3116,9 @@ def forward_methods(repo_names, debug=False):
 REPOSITORIES = {
     "application": ApplicationRepository,
     "bank_identifier": BankIdentifierRepository,
+    "bond_master": BondMasterRepository,
+    "corporate actions": CorporateActionsRepository,
+    "currency": CurrencyRepository,
     "customizing": CustomizingRepository,
     "geometry": GeometryRepository,
     "holding": HoldingRepository,

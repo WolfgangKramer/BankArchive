@@ -1,13 +1,12 @@
-"""0
+"""
 Created on 09.12.2019
-__updated__ = "2026-06-02"
+__updated__ = "2026-06-30"
 Author: Wolfang Kramer
 """
 import sys
 import logging
 
 from PIL import ImageTk
-from pathlib import Path
 
 from tkinter import Tk, Menu, TclError, GROOVE, ttk, Canvas, StringVar, font
 from tkinter.ttk import Label
@@ -22,7 +21,6 @@ from banking.utils import application_store, dict_get_first_key, get_menu_text
 from banking.repository import Repository
 from banking.services import Services
 from banking.connect_data import connectionresult
-from banking.services_file import PDFService
 
 
 class BankMenu:
@@ -133,7 +131,6 @@ class Menue:
             self.repo.destroy_connection()
         except AttributeError:
             pass
-        Path(PDFService.PDF_FILE_NAME).unlink(missing_ok=True)
         sys.exit()
 
     def _safe_callback(self, func):
@@ -159,8 +156,13 @@ class Menue:
 
     def create_menu(self, window):
 
-        menu_font = font.Font(family='Arial', size=11)
-        self.menu = Menu(window)
+        menu_font = font.Font(family='Arial', size=11, weight='bold')
+        """
+        Menubar item. On many systems,
+        its appearance is not determined by the Menu widget's `font` option
+         but is instead rendered by the native operating system.
+        """
+        self.menu = Menu(window, font=menu_font)
         window.config(menu=self.menu, borderwidth=10, relief=GROOVE)
         self.bank_owner_account = self.repo.get_bank_owner_accounts()
         if application_store.get(declm.DB_ledger):
@@ -308,6 +310,8 @@ class Menue:
                 get_menu_text("Database"), bank_owner_account, database_menu, menu_font)
         database_menu.add_command(
             label=get_menu_text("ISIN Table"), command=self.w_db.data_isin_table)
+        database_menu.add_command(
+            label=get_menu_text("Bond_Master Table"), command=self.w_db.data_bond_master_table)
         if self.repo.isin_with_ticker():
             database_menu.add_separator()
             database_menu.add_command(
@@ -319,6 +323,13 @@ class Menue:
             database_menu.add_command(
                 label=get_menu_text("Prices ISINs") + '%',
                 command=(lambda x=decl.PERCENT: self.w_db.data_prices(x)))
+            database_menu.add_separator()
+            database_menu.add_command(
+                label=get_menu_text("Corporate Actions"),
+                command=self.w_db.data_corporate_actions)
+            database_menu.add_command(
+                label=get_menu_text("Corporate Dividends"),
+                command=self.w_db.data_corporate_dividends)
 
     def _create_menu_customizing(self, menu, menu_font):
         """
@@ -336,6 +347,8 @@ class Menue:
                                        command=self.w_cust.import_server)
             customize_menu.add_command(label="Import Tickers",
                                        command=self.w_cust.import_tickers)
+            customize_menu.add_command(label="Currency Table",
+                                       command=self.w_cust.currency_table)
             customize_menu.add_separator()
             customize_menu.add_command(label=get_menu_text("Reset Screen Positions"),
                                        command=self.w_cust.reset)
@@ -374,6 +387,8 @@ class Menue:
                                                    command=lambda x=bank_code: self.w_cust.bank_sync(x))
                     cust_bank_menu.add_command(label=get_menu_text("Show Data"),
                                                command=lambda x=bank_code: self.w_cust.bank_show_shelve(x))
+                    cust_bank_menu.add_command(label=get_menu_text("Show Data BPD/UPD"),
+                                               command=lambda x=bank_code: self.w_cust.bank_show_shelve_bpd_upd(x))
                     customize_menu.add_separator()
                     customize_menu.add_cascade(
                         label=bank_name, menu=cust_bank_menu, underline=0)

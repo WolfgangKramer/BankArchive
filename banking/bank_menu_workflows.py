@@ -1,10 +1,11 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-06-02"
+__updated__ = "2026-06-30"
 Author: Wolfang Kramer
 """
 import requests
 import webbrowser
+import textwrap
 
 from time import sleep
 from datetime import date, timedelta, datetime
@@ -15,12 +16,11 @@ import banking.declarations as decl
 import banking.declarations_mariadb as declm
 import banking.message_handler as msg
 
-from banking.services_file import PDFService
 from banking.formatters import ShelveFormatter
 from banking.connect_data import connectionresult
 from banking.bank import InitBank, InitBankSync, InitBankAnonymous
 from banking.formbuilts import (
-    BuiltPandasBox, BuiltRadioButtons,
+    BuiltPandasBox, BuiltRadioButtons, BaseViewer,
     destroy_widget,
     FileDialogue,
 )
@@ -29,17 +29,19 @@ from banking.forms import (
     BankDataChange, BankDataNew, BankDelete,
     InputISIN,
     InputDate, InputPeriod, InputDateHolding,
+    InputDateCorporateActions, InputDateCorporateDividends,
     InputIsins, InputDateTable, InputDateTransactions, InputDatePrices,
     PandasBoxLedgerCoaTable, PandasBoxLedgerTable,
     PandasBoxIsinComparision, PandasBoxIsinComparisionPercent,
     PandasBoxStatementTable, PandasBoxHoldingTable, PandasBoxIsinTable,
     PandasBoxStatementNoLedgerTable,
+    PandasBoxCorporateActionsTable, PandasBoxCorporateDividendsTable,
     PandasBoxHoldingPercent, PandasBoxTotals, PandasBoxTransactionDetail,
     PandasBoxHoldingPortfolios, PandasBoxBalanceAll, PandasBoxBalance,
     PandasBoxTransactionTable, PandasBoxTransactionTableShow, PandasBoxTransactionProfit,
     PandasBoxPrices, PandasBoxLedgerAccountCategory, PandasBoxPiecesConsistency,
+    ProtocolViewer, PandasBoxBondMasterTable, PandasBoxCurrencyTable,
     LedgerTableSearchRowBox, StatementTableSearchRowBox,
-    PrintMessageCode,
     SelectFields, SelectLedgerAccount, SelectLedgerAccountCategory,
     SelectLedgerDailyBalanceAccounts, SelectDownloadPrices, SelectBuildHoldings,
     TechnicalIndicator,
@@ -116,36 +118,39 @@ class BankProcessor:
         processor.process("ing")
     """
 
-    def process_consors(self, title, iban, filename, repo):
+    def process_consors(self, title, iban, filename, service):
 
         if filename:
-            result = repo.import_transaction_consors(iban, filename)
+            result = service.import_transaction_consors(iban, filename)
             return result
         else:
-            msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TRANSACTION_BANK_CSV'))
+            msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TRANSACTION_BANK_CONSORS'))
 
-    def process_flatex(self, title, iban, filename, repo):
+    def process_flatex(self, title, iban, filename, service):
 
         if filename:
-            result = repo.import_transaction_flatex(iban, filename)
+            result = service.import_transaction_flatex(iban, filename)
             return result
         else:
-            msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TRANSACTION_BANK_CSV'))
+            msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TRANSACTION_BANK_BIW'))
 
-    def process_default(self, title, iban, filename, repo):
+    def process_default(self, title, iban, filename, service):
 
         if filename:
-            result = repo.import_transaction(iban, filename)
+            result = service.import_transaction(iban, filename)
             return result
         else:
             msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'IMPORT_TEXT_TRANSACTION'))
 
-    def process(self, bank_name, title, iban, filename, repo):
+    def process(self, bank_name, title, iban, filename, service):
         methods = {
             "Consors": self.process_consors,
             "BIW": self.process_flatex,
         }
-        methods.get(bank_name, self.process_default)(title, iban, filename, repo)
+        result = methods.get(bank_name, self.process_default)(title, iban, filename, service)
+        if result:
+            BuiltPandasBox(title=title, dataframe=DataFrame(result))
+        
 
 
 class BaseWorkflow:
@@ -204,21 +209,21 @@ class BaseWorkflow:
         show informations of threads, if exist
         """
         # download transaction
-        title = ' '.join([get_menu_text("Download"), get_menu_text("Transaction")])
-        PrintMessageCode(title=title, header=msg.Informations.TRANSACTION_INFORMATIONS,
-                         text=msg.Informations.transaction_informations)
+        title = ' '.join([get_menu_text("Download"), get_menu_text("Transaction"), date_days.today()])
+        ProtocolViewer(title=title, header=msg.Informations.TRANSACTION_INFORMATIONS,
+                       text=msg.Informations.transaction_informations)
         # downloaad prices
-        title = ' '.join([get_menu_text("Download"), get_menu_text("Prices")])
-        PrintMessageCode(title=title, header=msg.Informations.PRICES_INFORMATIONS,
-                         text=msg.Informations.prices_informations)
+        title = ' '.join([get_menu_text("Download"), get_menu_text("Prices"), date_days.today()])
+        ProtocolViewer(title=title, header=msg.Informations.PRICES_INFORMATIONS,
+                       text=msg.Informations.prices_informations)
         # download bankdata
-        title = ' '.join([get_menu_text("Download"), get_menu_text("All_Banks")])
-        PrintMessageCode(title=title, header=msg.Informations.BANKDATA_INFORMATIONS,
-                         text=msg.Informations.bankdata_informations)
+        title = ' '.join([get_menu_text("Download"), date_days.today()])
+        ProtocolViewer(title=title, header=msg.Informations.BANKDATA_INFORMATIONS,
+                       text=msg.Informations.bankdata_informations)
         # update market_price in holding
-        title = ' '.join([get_menu_text("Update"), get_menu_text("Holding")])
-        PrintMessageCode(title=title, header=msg.Informations.HOLDING_INFORMATIONS,
-                         text=msg.Informations.holding_informations)
+        title = ' '.join([get_menu_text("Update"), get_menu_text("Holding"), date_days.today()])
+        ProtocolViewer(title=title, header=msg.Informations.HOLDING_INFORMATIONS,
+                       text=msg.Informations.holding_informations)
 
     def _delete_footer(self):
 
@@ -233,7 +238,7 @@ class BaseWorkflow:
         show messages of FINTS dialogue
         """
         if msg.Informations.bankdata_informations:
-            PrintMessageCode(text=msg.Informations.bankdata_informations)
+            ProtocolViewer(text=msg.Informations.bankdata_informations)
             msg.Informations.bankdata_informations = ''
         if bank.warning_message:
             self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'TASK_WARNING'))
@@ -507,45 +512,118 @@ class CustomizingWorkFlow(BaseWorkflow):
         self._show_message(bank, message=message)
 
     @_wrapper(before="_delete_footer", after="_show_informations")
+    def bank_show_shelve_bpd_upd(self, bank_code):
+
+        title = f"{connectionresult.database.upper()} {self.bank_names[bank_code]} {get_menu_text('Customize')} {get_menu_text('Show Data BPD/UPD')}"
+        shelve_keys = decl.SHELVE_KEYS
+        shelve_data = self.repo.shelve_get_shelve_keys(bank_code)
+        formatter = ShelveFormatter(
+            shelve_data,
+            shelve_keys,
+            account_fields=[
+                decl.KEY_ACC_IBAN,
+                decl.KEY_ACC_OWNER_NAME,
+                decl.KEY_ACC_PRODUCT_NAME,
+            ]
+        )
+        header = (
+            f"{connectionresult.database.upper()} "
+            f"{self.bank_names[bank_code]}"
+        )
+        content = (
+            f"{header}\n"
+            f"{'=' * len(header)}\n\n"
+            f"{formatter.format()}"
+        )
+        BaseViewer(
+            title=title,
+            header='',
+            content=content,
+        )
+
+    @_wrapper(before="_delete_footer", after="_show_informations")
     def bank_show_shelve(self, bank_code):
 
         title = f"{connectionresult.database.upper()} {self.bank_names[bank_code]} {get_menu_text('Customize')} {get_menu_text('Show Data')}"
-        pdf = PDFService()
-        pdf.add_page()
-        pdf.add_heading(title, level=1)
-        header = msg.get_message(msg.MESSAGE_TEXT, 'SHELVE', bank_code)
-        pdf.add_heading(header, level=2)
+        shelve_keys = [
+            decl.KEY_BANK_CODE,
+            decl.KEY_BANK_NAME,
+            decl.KEY_USER_ID,
+            decl.KEY_PIN,
+            decl.KEY_BIC,
+            decl.KEY_SERVER,
+            decl.KEY_IDENTIFIER_DELIMITER,
+            decl.KEY_LOGIN_ONLINE_BANKING,
+            decl.KEY_ACCOUNTS,
+        ]
         shelve_data = self.repo.shelve_get_shelve_keys(bank_code)
-        formatter = ShelveFormatter(shelve_data, decl.SHELVE_KEYS)
-        pdf.add_text(formatter.format())
-        pdf.add_page()
-        pdf.save()
-        pdf.show()
+        formatter = ShelveFormatter(
+            shelve_data,
+            shelve_keys,
+            account_fields=[
+                decl.KEY_ACC_IBAN,
+                decl.KEY_ACC_OWNER_NAME,
+                decl.KEY_ACC_PRODUCT_NAME,
+            ]
+        )
+        header = (
+            f"{connectionresult.database.upper()} "
+            f"{self.bank_names[bank_code]}"
+        )
+        content = (
+            f"{header}\n"
+            f"{'=' * len(header)}\n\n"
+            f"{formatter.format()}"
+        )
+        BaseViewer(
+            title=title,
+            header='',
+            content=content,
+        )
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def bank_show_all_shelve(self):
-
         title = f"{connectionresult.database.upper()} {get_menu_text('Customize')} {get_menu_text('Show All Data')}"
-        pdf = PDFService()
-        pdf.add_page()
-        pdf.add_heading(title, level=1)
+        sections = []
         shelve_keys = [
-            decl.KEY_BANK_CODE, decl.KEY_BANK_NAME,
-            decl.KEY_USER_ID, decl.KEY_PIN, decl.KEY_BIC,
-            decl.KEY_SERVER, decl.KEY_ACCOUNTS
-            ]
+            decl.KEY_BANK_CODE,
+            decl.KEY_BANK_NAME,
+            decl.KEY_USER_ID,
+            decl.KEY_PIN,
+            decl.KEY_BIC,
+            decl.KEY_SERVER,
+            decl.KEY_IDENTIFIER_DELIMITER,
+            decl.KEY_LOGIN_ONLINE_BANKING,
+            decl.KEY_ACCOUNTS,
+        ]
         for bank_code in self.bank_names:
-
             shelve_data = self.repo.shelve_get_shelve_keys(bank_code)
-            header = msg.get_message(msg.MESSAGE_TEXT, 'SHELVE', bank_code)
-            formatter = ShelveFormatter(shelve_data, shelve_keys,
-                                        account_fields=[decl.KEY_ACC_IBAN, decl.KEY_ACC_OWNER_NAME, decl.KEY_ACC_PRODUCT_NAME])
-            header = f"{connectionresult.database.upper()} {self.bank_names[bank_code]}"
-            pdf.add_heading(header, level=2)
-            pdf.add_text(formatter.format())
-            pdf.add_page()
-        pdf.save()
-        pdf.show()
+            formatter = ShelveFormatter(
+                shelve_data,
+                shelve_keys,
+                account_fields=[
+                    decl.KEY_ACC_IBAN,
+                    decl.KEY_ACC_OWNER_NAME,
+                    decl.KEY_ACC_PRODUCT_NAME,
+                ]
+            )
+            header = (
+                f"{connectionresult.database.upper()} "
+                f"{self.bank_names[bank_code]}"
+            )
+            sections.append(
+                f"\n\n"
+                f"{'_' * 100}\n\n"
+                f"\n\n"
+                f"{header}\n"
+                f"{'=' * len(header)}\n\n"
+                f"{formatter.format()}"
+            )
+        BaseViewer(
+            title=title,
+            header=title,
+            content="\n\n".join(sections),
+        )
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def bank_sync(self, bank_code):
@@ -572,8 +650,27 @@ class CustomizingWorkFlow(BaseWorkflow):
         for key in transaction_version_box.field_dict.keys():
             transaction_versions[key[2:5]
                                  ] = transaction_version_box.field_dict[key]
+        if bank_code==decl.CONSORS_BANK_CODE:                         
+            msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'HKKAZ CONSOR'))
+            transaction_versions['KAZ']='6'                     
         data = (decl.KEY_VERSION_TRANSACTION, transaction_versions)
         self.repo.shelve_put_key(bank_code, data)
+
+    @_wrapper(before="_delete_footer", after="_show_informations")
+    def currency_table(self):
+
+        title = get_menu_text("Currency Table")
+        message = msg.get_message(msg.MESSAGE_TEXT, 'HELP_PANDASTABLE')
+        selected_row = 0
+        while True:
+            data = self.repo.get_currency()
+            ledger_currency = PandasBoxCurrencyTable(
+                title, data, message, mode=decl.EDIT_ROW, selected_row=selected_row)
+            message = ledger_currency.message
+            selected_row = ledger_currency.selected_row
+            if ledger_currency.button_state == decl.WM_DELETE_WINDOW:
+                return
+
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def import_bankidentifier(self):
@@ -878,6 +975,21 @@ class DatabaseWorkFlow(BaseWorkflow):
                 self.srv.import_prices_and_corporate_actions(title, [isin_table.selected_row_dict[declm.DB_name]], state=decl.BUTTON_REPLACE)
             self._show_informations()
 
+    def data_bond_master_table(self):
+
+        title = ' '.join([get_menu_text("Database"), get_menu_text("Bond_Master Table")])
+        selected_row = 0
+        message = msg.get_message(msg.MESSAGE_TEXT, 'HELP_PANDASTABLE')
+        while True:
+            data = self.repo.get_bond_master_rows()
+            bond_master_table = PandasBoxBondMasterTable(
+                title, data, message, mode=decl.EDIT_ROW, selected_row=selected_row)
+            selected_row = bond_master_table.selected_row
+            message = bond_master_table.message
+            if bond_master_table.button_state == decl.WM_DELETE_WINDOW:
+                break
+            self._show_informations()
+
     @_wrapper(before="_delete_footer", after="_show_informations")
     def data_holding_table(self, bank_name, iban):
 
@@ -907,7 +1019,11 @@ class DatabaseWorkFlow(BaseWorkflow):
                     message = holding_table.message
                     if holding_table.button_state == decl.WM_DELETE_WINDOW:
                         break
-
+                    data = self.repo.select_holding_view_table_of_iban(
+                        field_list=[declm.DB_iban, declm.DB_price_date, declm.DB_ISIN] + selected_check_button,
+                        iban=iban, period=(data_dict[decl.FN_FROM_DATE], data_dict[decl.FN_TO_DATE]))
+                    if not data:
+                        break                    
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def data_insert_holding_from_transaction(self, bank_name, iban):
@@ -925,7 +1041,6 @@ class DatabaseWorkFlow(BaseWorkflow):
                 for seleted_isin_name in field_list:
                     isin_code = name_isin_code[seleted_isin_name]
                     self.srv.build_holdings(title, select_isins.button_state, iban, isin_code)
-     
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def data_update_holding_and_prices(self, bank_name, iban):
@@ -1186,6 +1301,75 @@ class DatabaseWorkFlow(BaseWorkflow):
                 msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', ', '.join(selected_isins), ''))
 
     @_wrapper(before="_delete_footer", after="_show_informations")
+    def data_corporate_actions(self):
+
+        title = get_menu_text("Corporate Actions")
+        data_dict = {}
+        if not self.repo.count_corporate_actions():
+            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'CORPORATE_ACTIONS_IS_EMPTY'))
+            return
+        while True:
+            date_input_corporate_actions = InputDateCorporateActions(title=title, data_dict=data_dict)
+            if date_input_corporate_actions.button_state == decl.WM_DELETE_WINDOW:
+                return
+            data_dict = date_input_corporate_actions.field_dict
+            selected_isins = list(
+                filter(lambda x: data_dict[x] == 1, list(data_dict.keys())))
+            if not selected_isins:
+                msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'SELECT_INCOMPLETE'))
+            else:
+                title_action = ' '.join([title, data_dict[declm.DB_action_type]])
+                select_data = self.repo.get_corporate_actions_data(
+                    data_dict[declm.DB_action_type],selected_isins)
+                if select_data:
+                    self.footer.set('')
+                    message = ''
+                    while True:
+                        corporate_actions_table = PandasBoxCorporateActionsTable(
+                            title_action, select_data, message,  mode=decl.EDIT_ROW)
+                        if corporate_actions_table.button_state == decl.WM_DELETE_WINDOW:
+                            break
+                else:
+                    msg.MessageBoxInfo(
+                        title=title_action,
+                        message=msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', '\n'.join(list(map(self.repo.get_name_of_isin_code, selected_isins))), ''))
+                    break
+
+    @_wrapper(before="_delete_footer", after="_show_informations")
+    def data_corporate_dividends(self):
+
+        title = get_menu_text("Corporate Dividends")
+        data_dict = {}
+        if not self.repo.count_corporate_actions():
+            self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'CORPORATE_ACTIONS_IS_EMPTY'))
+            return
+        while True:
+            date_input_corporate_actions = InputDateCorporateDividends(title=title, data_dict=data_dict)
+            if date_input_corporate_actions.button_state == decl.WM_DELETE_WINDOW:
+                return
+            data_dict = date_input_corporate_actions.field_dict
+            selected_isins = list(
+                filter(lambda x: data_dict[x] == 1, list(data_dict.keys())))
+            if not selected_isins:
+                msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'SELECT_INCOMPLETE'))
+            else:
+
+                select_data = self.repo.get_dividends_of_years(selected_isins)
+                if select_data:
+                    self.footer.set('')
+                    message = ''
+                    while True:
+                        corporate_actions_table = PandasBoxCorporateDividendsTable(
+                            title, select_data, message,  mode=decl.EDIT_ROW)
+                        if corporate_actions_table.button_state == decl.WM_DELETE_WINDOW:
+                            break
+                else:
+                    msg.MessageBoxInfo(
+                        title=title,
+                        message=msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', '\n'.join(list(map(self.repo.get_name_of_isin_code, selected_isins))), ''))
+                    break
+
+    @_wrapper(before="_delete_footer", after="_show_informations")
     def import_transaction(self, bank_name, iban):
         """
         import transactions from CSV_File.
@@ -1197,7 +1381,7 @@ class DatabaseWorkFlow(BaseWorkflow):
             last_price_date = self.repo.get_max_price_date_of_transaction(iban)
             if not last_price_date:
                 last_price_date = decl.START_DATE_TRANSACTIONS
-            result = self.bank_processor.process(bank_name, title, iban, file_dialogue.filename, self.repo)
+            result = self.bank_processor.process(bank_name, title, iban, file_dialogue.filename, self.srv)
             if result is None:
                 msg.MessageBoxInfo(
                     title=title,
@@ -1307,7 +1491,7 @@ class DatabaseWorkFlow(BaseWorkflow):
                         msg.MESSAGE_TEXT, 'TRANSACTION_NO', data_dict[decl.FN_FROM_DATE], data_dict[decl.FN_TO_DATE]
                         )
                     )
-                self._transactions_profit_closed(
+                self.transactions_profit_closed(
                     bank_name, iban, data_dict[decl.FN_FROM_DATE], data_dict[decl.FN_TO_DATE])
     @_wrapper(before="_delete_footer", after="_show_informations")
     def update_holding_total_amount_portfolio(self, bank_name, iban):
@@ -1554,8 +1738,8 @@ class ShowWorkFlow(BaseWorkflow):
                     if table.button_state == decl.WM_DELETE_WINDOW:
                         break
             else:
-                self.footer.set(
-                    msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', title_period, selected_check_button))
+                text = msg.get_message(msg.MESSAGE_TEXT, 'DATA_NO', title_period, selected_check_button)
+                self.footer.set(textwrap.fill(text, width=80))
                 break
     @_wrapper(before="_delete_footer", after="_show_informations")
     def show_transactions(self, bank_code, account):
@@ -1933,7 +2117,7 @@ class LedgerWorkFlow(BaseWorkflow):
         combo_positioning_dict = {
             **self._create_combo_list(declm.LEDGER, declm.DB_category, date_name=declm.DB_entry_date),
             **self._create_combo_list(declm.LEDGER, declm.DB_applicant_name, date_name=declm.DB_entry_date),
-            declm.DB_currency: decl.CURRENCIES,
+            declm.DB_currency: self.repo.get_enabled_currencies(),
             declm.DB_credit_account: accounts_list,
             declm.DB_debit_account: accounts_list,
         }

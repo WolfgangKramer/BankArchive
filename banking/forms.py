@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: latin-1 -*-
 """
 Created on 28.01.2020
     __updated__ = "2024-11-28"
@@ -16,7 +14,7 @@ from decimal import Decimal
 from bisect import bisect_left
 from collections import namedtuple
 from datetime import date, timedelta, datetime
-from tkinter import filedialog, Menu
+from tkinter import filedialog, Menu, END, DISABLED
 from fints.formals import CreditDebit2
 from pandas import DataFrame, to_numeric, concat, to_datetime, set_option
 from pandastable import TableModel
@@ -29,13 +27,14 @@ import banking.message_handler as msg
 from banking.repository import Repository
 from banking.services import Services
 from banking.formbuilts import (
-    BuiltTableRowBox, BuiltPandasBox, BuiltCheckButton, BuiltEnterBox, BuiltText, BuiltSelectBox,
+    BuiltTableRowBox, BuiltPandasBox, BuiltCheckButton, BuiltEnterBox, BaseViewer, BuiltSelectBox,
     FieldDefinition, destroy_widget, )
 from banking.utils import (
     application_store,
     Calculate,
     dec2,
     date_days,
+    enum_metadata,
     get_popup_menu_text, get_menu_text,
     http_error_code)
 from banking.trading_calendar import xetra_cls
@@ -331,11 +330,13 @@ class InputDateHolding(InputPeriod):
             if _date:
                 getattr(self._field_defs, decl.FN_TO_DATE).textvar.set(
                     _date)  # adjusted date returned
+            """    
             if from_date == to_date:
                 from_date = date_days.subtract(from_date, 1)
                 getattr(self._field_defs, decl.FN_FROM_DATE).textvar.set(
                     from_date)  # adjusted date returned
                 self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE_ADJUSTED'))
+            """    
             if (from_date > to_date):
                 self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE', from_date))
 
@@ -346,7 +347,7 @@ class InputDateHolding(InputPeriod):
             if not data_exists:
                 _date = self._get_prev_date(_date)
                 self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE_ADJUSTED'))
-            else:    
+            else:
                 return trading_date
         return _date
 
@@ -388,6 +389,41 @@ class InputIsins(BuiltSelectBox):
         return field_defs_list
 
 
+class InputDateCorporateDividends(BuiltSelectBox):
+    """
+    Selction: Period and Isins
+    """
+
+    def create_field_defs_list(self):
+
+        field_defs_list = []
+        # selection ISIN name
+        isin_names = self.repo.get_isin_names()
+        for isin_dict in isin_names:
+            field_defs_list.append(self.create_check_field(
+                isin_dict[declm.DB_ISIN], isin_dict[declm.DB_name]))
+        return field_defs_list
+
+
+class InputDateCorporateActions(BuiltSelectBox):
+    """
+    Selction: Period and Isins
+    """
+
+    def create_field_defs_list(self):
+
+        field_defs_list = []
+        # action_type
+        metadata = enum_metadata(declm.ActionType)
+        field_defs_list.append(self.create_combo_field(declm.DB_action_type, metadata["length"], decl.TYP_ALPHANUMERIC, metadata["values"]))
+        self.separator = [declm.ActionType]        
+        # selection ISIN name
+        isin_names = self.repo.get_isin_names()
+        for isin_dict in isin_names:
+            field_defs_list.append(self.create_check_field(
+                isin_dict[declm.DB_ISIN], isin_dict[declm.DB_name]))
+        return field_defs_list
+
 class InputDatePrices(BuiltSelectBox):
     """
     Selction: Period and Isins
@@ -409,7 +445,7 @@ class InputDatePrices(BuiltSelectBox):
                 if field_name not in self.data_dict.keys():
                     self.data_dict[field_name] = 0
         # separator line
-        self.separator = [decl.FN_TO_DATE, declm.DB_splits]
+        self.separator = [decl.FN_TO_DATE]
         # selection ISIN name
         isin_names = self.repo.get_isin_names()
         for isin_dict in isin_names:
@@ -465,7 +501,7 @@ class InputDateTransactions(BuiltSelectBox):
                     msg.MESSAGE_TEXT,
                     'DATA_NO',
                     '',
-                    self.data_dict[declm.DB_iban]
+                    self.data_dict.get(declm.DB_iban,'')
                     )
                 )
             combo_values = []
@@ -791,6 +827,20 @@ class BankDelete(BuiltEnterBox):
             )
 
 
+class BondMasterTableRowBox(BuiltTableRowBox):
+    """
+    TOP-LEVEL-WINDOW        EnterBox Bond_master Table Values
+    """
+
+    def focus_out_action(self, event):
+        
+        if event.widget.myId == declm.DB_name:
+            isin_name = getattr(self._field_defs, declm.DB_name).widget.get()
+            isin_code = self.repo.get_isin_of_name(isin_name)
+            if isin_code:
+                getattr(self._field_defs, declm.DB_ISIN).textvar.set(isin_code)
+
+
 class IsinTableRowBox(BuiltTableRowBox):
     """
     TOP-LEVEL-WINDOW        EnterBox Isin Table Values
@@ -874,8 +924,8 @@ class IsinTableRowBox(BuiltTableRowBox):
                             message = message + \
                                 2 * '\n' + '   '.join(str_dict_symbols)
                     msg.prices_informations_append(decl.INFORMATION, message)
-                    PrintMessageCode(title=self.title, header=msg.Informations.PRICES_INFORMATIONS,
-                                     text=msg.Informations.prices_informations)
+                    ProtocolViewer(title=self.title, header=msg.Informations.PRICES_INFORMATIONS,
+                                   text=msg.Informations.prices_informations)
             elif decl.YAHOO == getattr(self._field_defs, declm.DB_origin_symbol).widget.get():
                 name = getattr(self._field_defs, declm.DB_name).widget.get()
                 self.yahoo_symbols = self.repo.get_yahoo_symbols(name)
@@ -1264,8 +1314,9 @@ class SelectDownloadPrices(BuiltCheckButton):
                 self.field_list.append(self.checkbutton_texts[idx])
         self.quit_widget()
 
+
 class SelectBuildHoldings(SelectDownloadPrices):
-    
+
     def __init__(self,  title=msg.MESSAGE_TITLE,
                  button1_text=decl.BUTTON_INSERT, button2_text=decl.BUTTON_REPLACE, button3_text=None,
                  checkbutton_texts=['Description of Checkbox1',
@@ -1279,22 +1330,6 @@ class SelectBuildHoldings(SelectDownloadPrices):
             button2_text=button2_text, button3_text=button3_text,
             checkbutton_texts=checkbutton_texts
             )
-
-
-class PrintList(BuiltText):
-    """
-    TOP-LEVEL-WINDOW        TextBox with ScrollBars (Only Output)
-
-    PARAMETER:
-        header              Header Line (Column Desscription)
-        text                String of Text Lines
-    """
-
-    def set_tags(self, textline, line):
-        if not line % 2:
-            self.text_widget.tag_add(decl.LIGHTBLUE, str(line + 1) + '.0',
-                                     str(line + 1) + '.' + str(len(textline)))
-            self.text_widget.tag_config(decl.LIGHTBLUE, background=decl.LIGHTBLUE)
 
 
 class PandasBoxBalance(BuiltPandasBox):
@@ -1392,6 +1427,230 @@ class PandasBoxBalanceAll(BuiltPandasBox):
                 self.pandas_table.setRowColors(
                     rows=[i], clr='lightgreen', cols='all')
         self.pandas_table.model.df = self.dataframe.drop(columns=["level"])
+
+class PandasBoxCorporateDividendsTable(BuiltPandasBox):
+    """
+    TOP-LEVEL-WINDOW        Corporate Dividends Pandastable
+                            Row Actions: Show
+    """
+
+    def __init__(self, title, data, message, mode=decl.EDIT_ROW):
+
+        self.repo = Repository()
+        self.title = title
+        self.data = data
+
+        self.message = message
+        if data:
+            decl.ToolbarSwitch.toolbar_switch = False
+            super().__init__(title=title, dataframe=data, message=message, mode=mode)
+
+    def create_dataframe(self):
+
+
+        df = DataFrame(data=self.data)
+        self.dataframe = df.pivot(
+            index='year',
+            columns='name',
+            values='dividend'
+)
+
+    def drop_currencies(self):
+
+        pass
+
+    def show_row(self):
+
+        row_dict = self.get_selected_row()
+        corporate_actions = BuiltTableRowBox(declm.CORPORATE_ACTIONS, declm.CORPORATE_ACTIONS_ISIN_VIEW, row_dict,
+                                   protected=declm.TABLE_FIELDS[declm.CORPORATE_ACTIONS_ISIN_VIEW],
+                                   title=self.title,  button1_text=None, button2_text=None)
+        self.button_state = corporate_actions.button_state
+        if corporate_actions.button_state == decl.WM_DELETE_WINDOW:
+            return
+        self.quit_widget()
+
+
+class PandasBoxCorporateActionsTable(BuiltPandasBox):
+    """
+    TOP-LEVEL-WINDOW        Corporate Actions Pandastable
+                            Row Actions: Show
+    """
+
+    def __init__(self, title, data, message, mode=decl.EDIT_ROW):
+
+        self.repo = Repository()
+        self.title = title
+        self.data = data
+
+        self.message = message
+        if data:
+            decl.ToolbarSwitch.toolbar_switch = False
+            super().__init__(title=title, dataframe=data, message=message, mode=mode)
+
+    def create_dataframe(self):
+
+
+        df = DataFrame(data=self.data)
+        df['idx'] = df.groupby('name').cumcount()
+        
+        df_wide = df.pivot(
+            index='idx',
+            columns='name',
+            values=[declm.DB_action_date, declm.DB_action_value]
+        )
+        
+        # Reihenfolge: Name -> Feld
+        df_wide = df_wide.swaplevel(0, 1, axis=1)
+        
+        # Nach Name sortieren
+        df_wide = df_wide.sort_index(axis=1, level=0)
+        
+        self.dataframe = df_wide
+
+    def drop_currencies(self):
+
+        pass
+
+    def show_row(self):
+
+        row_dict = self.get_selected_row()
+        corporate_actions = BuiltTableRowBox(declm.CORPORATE_ACTIONS, declm.CORPORATE_ACTIONS_ISIN_VIEW, row_dict,
+                                   protected=declm.TABLE_FIELDS[declm.CORPORATE_ACTIONS_ISIN_VIEW],
+                                   title=self.title,  button1_text=None, button2_text=None)
+        self.button_state = corporate_actions.button_state
+        if corporate_actions.button_state == decl.WM_DELETE_WINDOW:
+            return
+        self.quit_widget()
+
+
+class PandasBoxCurrencyTable(BuiltPandasBox):
+    """
+    TOP-LEVEL-WINDOW        Currency Pandastable
+                            Row Actions: Show, Delete, Update, New
+    """
+
+    def __init__(self, title, data, message, mode=decl.EDIT_ROW, selected_row=0):
+
+        self.repo = Repository()
+        self.title = title
+        self.data = data
+        self.message = message
+        self.selected_row = selected_row
+        if data:
+            super().__init__(title=title, dataframe=data,
+                             message=message, mode=mode, selected_row=self.selected_row)
+        else:
+            self.repo = Repository().insert_curreny_content()
+            self.button_state = decl.BUTTON_INSERT
+
+    def create_dataframe(self):
+
+        self.dataframe = DataFrame(data=self.data)
+
+    def show_row(self):
+
+        row_dict = self.get_selected_row()
+        currency = BuiltTableRowBox(declm.CURRENCY, declm.CURRENCY, row_dict,
+                                          protected=declm.TABLE_FIELDS[declm.CURRENCY],
+                                          title=self.title,  button1_text=None, button2_text=None)
+        self.button_state = currency.button_state
+        if currency.button_state == decl.WM_DELETE_WINDOW:
+            return
+        self.quit_widget()
+
+    def del_row(self):
+
+        row_dict = self.get_selected_row()
+        if row_dict:
+            currency = BuiltTableRowBox(
+                declm.CURRENCY, declm.CURRENCY, row_dict, protected=declm.TABLE_FIELDS[declm.CURRENCY],
+                title=self.title, button1_text=decl.BUTTON_DELETE, button2_text=None
+                )
+            self.button_state = currency.button_state
+            if currency.button_state == decl.WM_DELETE_WINDOW:
+                return
+            elif currency.button_state == decl.BUTTON_DELETE:
+                self.repo.delete_currency(currency.field_dict[declm.DB_iso_code])
+                self.message = msg.get_message(
+                    msg.MESSAGE_TEXT,
+                    'DATA_DELETED',
+                    ' '.join([self.title, '\n', declm.DB_iso_code.upper(), currency.field_dict[declm.DB_iso_code]])
+                    )
+        self.quit_widget()
+
+    def update_row(self):
+
+        row_dict = self.get_selected_row()
+        if row_dict:
+            protected = [declm.DB_iso_code]
+            currency = BuiltTableRowBox(declm.CURRENCY, declm.CURRENCY, row_dict,
+                                              protected=protected,
+                                              title=self.title, button1_text=decl.BUTTON_UPDATE)
+
+            self.button_state = currency.button_state
+            if currency.button_state == decl.WM_DELETE_WINDOW:
+                return
+            elif currency.button_state == decl.BUTTON_UPDATE:
+                self.repo.replace_currency(currency.field_dict)
+                self.message = msg.get_message(
+                    msg.MESSAGE_TEXT,
+                    'DATA_CHANGED',
+                    ' '.join(
+                        [
+                            self.title,
+                            '\n',
+                            declm.DB_iso_code.upper(),
+                            currency.field_dict[declm.DB_iso_code]
+                            ]
+                        )
+                    )
+        self.quit_widget()
+
+    def new_row(self):
+
+        row_dict = self.get_selected_row()
+        self.new_row_insert(row_dict)
+        self.quit_widget()
+
+    def new_row_insert(self, row_dict):
+
+        mandatory = [declm.DB_iso_code]
+        currency = BuiltTableRowBox(declm.CURRENCY, declm.CURRENCY, row_dict,
+                                          mandatory=mandatory,
+                                          title=self.title, button1_text=decl.BUTTON_NEW)
+        self.button_state = currency.button_state
+        if currency.button_state == decl.WM_DELETE_WINDOW:
+            return currency
+        elif currency.button_state == decl.BUTTON_NEW:
+            if self.repo.exist_currency(currency.field_dict[declm.DB_iso_code]):
+                self.message = msg.get_message(
+                    msg.MESSAGE_TEXT,
+                    'DATA_ROW_EXIST',
+                    ' '.join(
+                        [
+                            declm.CURRENCY.upper(),
+                            '\n',
+                            declm.DB_iso_code.upper(),
+                            currency.field_dict[declm.DB_iso_code]
+                            ]
+                        )
+                    )
+            else:
+                self.repo.insert_currency(currency.field_dict)
+                self.message = msg.get_message(
+                    msg.MESSAGE_TEXT,
+                    'DATA_INSERTED',
+                    ' '.join(
+                        [
+                            self.title,
+                            '\n',
+                            declm.DB_iso_code.upper(),
+                            currency.field_dict[declm.DB_iso_code]
+                            ]
+                        )
+                    )
+        return currency
 
 
 class PandasBoxHolding(BuiltPandasBox):
@@ -1799,17 +2058,16 @@ class PandasBoxIsinTable(BuiltPandasBox):
 
     def _create_combo_dict(self, name=None):
 
-        currency_dict = {declm.DB_currency: decl.CURRENCIES}
-        type_dict = {declm.DB_type: declm.DB_TYPES}
+        currency_dict = {declm.DB_currency: self.repo.get_enabled_currencies()}
         origin_symbol_dict = {declm.DB_origin_symbol: decl.ORIGIN_SYMBOLS}
         industry_list = self.repo.get_isin_industries()
         industry_dict = {declm.DB_industry: industry_list}
         if name:
             yahoo_symbols = self.repo.get_yahoo_symbols(name)
             symbol_dict = {declm.DB_symbol: yahoo_symbols}
-            return {**currency_dict, **type_dict, **origin_symbol_dict, **industry_dict, **symbol_dict}
+            return {**currency_dict, **origin_symbol_dict, **industry_dict, **symbol_dict}
         else:
-            return {**currency_dict, **type_dict, **origin_symbol_dict, **industry_dict}
+            return {**currency_dict, **origin_symbol_dict, **industry_dict}
 
 
 class PandasBoxIsinComparision(BuiltPandasBox):
@@ -1919,9 +2177,6 @@ class PandasBoxHoldingTable(BuiltPandasBox):
         if data:
             decl.ToolbarSwitch.toolbar_switch = False
             super().__init__(title=title, dataframe=data, message=message, mode=mode)
-        else:
-            holding = self.new_row_insert({declm.DB_iban: iban})
-            self.button_state = holding.button_state
 
     def create_dataframe(self):
 
@@ -2086,10 +2341,10 @@ class PandasBoxHoldingTable(BuiltPandasBox):
     def new_row_properties(self):
 
         protected = [declm.DB_iban, declm.DB_name, declm.DB_symbol]
-        price_currency_dict = {declm.DB_price_currency: decl.CURRENCIES}
-        amount_currency_dict = {declm.DB_amount_currency: decl.CURRENCIES}
-        exchange_currency_1_dict = {declm.DB_exchange_currency_1: decl.CURRENCIES}
-        exchange_currency_2_dict = {declm.DB_exchange_currency_2: decl.CURRENCIES}
+        price_currency_dict = {declm.DB_price_currency: self.repo.get_enabled_currencies()}
+        amount_currency_dict = {declm.DB_amount_currency: self.repo.get_enabled_currencies()}
+        exchange_currency_1_dict = {declm.DB_exchange_currency_1: self.repo.get_enabled_currencies()}
+        exchange_currency_2_dict = {declm.DB_exchange_currency_2: self.repo.get_enabled_currencies()}
         origin_dict = self.create_combo_list(declm.HOLDING, declm.DB_origin)
         combo_dict = {**price_currency_dict, **amount_currency_dict, **
                       exchange_currency_1_dict, **exchange_currency_2_dict, **origin_dict}
@@ -2427,7 +2682,7 @@ class PandasBoxLedgerTable(BuiltPandasBox):
         combo_dict = {**origin_dict}
         combo_insert_value = [declm.DB_category, declm.DB_applicant_name]
         combo_positioning_dict = {**category_dict, **applicant_name_dict}
-        combo_positioning_dict[declm.DB_currency] = decl.CURRENCIES
+        combo_positioning_dict[declm.DB_currency] = self.repo.get_enabled_currencies()
         combo_positioning_dict[declm.DB_credit_account] = accounts_list
         combo_positioning_dict[declm.DB_debit_account] = accounts_list
         return combo_dict,  combo_insert_value, combo_positioning_dict, protected, mandatory
@@ -3060,8 +3315,8 @@ class PandasBoxTransactionTable(PandasBoxTransactionTableShow):
             mandatory = [declm.DB_transaction_type, declm.DB_price_currency,
                          declm.DB_price, declm.DB_pieces, declm.DB_amount_currency]
             transaction_type_dict = {declm.DB_transaction_type: decl.TRANSACTION_TYPES}
-            price_currency_dict = {declm.DB_price_currency: decl.CURRENCIES}
-            amount_currency_dict = {declm.DB_amount_currency: decl.CURRENCIES}
+            price_currency_dict = {declm.DB_price_currency: self.repo.get_enabled_currencies()}
+            amount_currency_dict = {declm.DB_amount_currency: self.repo.get_enabled_currencies()}
             origin_dict = self.create_combo_list(declm.TRANSACTION, declm.DB_origin)
             combo_dict = origin_dict
             combo_positioning_dict = {**transaction_type_dict,
@@ -3166,8 +3421,8 @@ class PandasBoxTransactionTable(PandasBoxTransactionTableShow):
         mandatory = [declm.DB_ISIN, declm.DB_price_date, declm.DB_counter, declm.DB_transaction_type, declm.DB_price_currency,
                      declm.DB_price, declm.DB_pieces, declm.DB_amount_currency]
         transaction_type_dict = {declm.DB_transaction_type: decl.TRANSACTION_TYPES}
-        price_currency_dict = {declm.DB_price_currency: decl.CURRENCIES}
-        amount_currency_dict = {declm.DB_amount_currency: decl.CURRENCIES}
+        price_currency_dict = {declm.DB_price_currency: self.repo.get_enabled_currencies()}
+        amount_currency_dict = {declm.DB_amount_currency: self.repo.get_enabled_currencies()}
         origin_dict = self.create_combo_list(declm.TRANSACTION, declm.DB_origin)
         combo_dict = origin_dict
         combo_positioning_dict = {**transaction_type_dict,
@@ -3394,50 +3649,6 @@ class SelectCloseVolume(BuiltCheckButton):
         self.quit_widget()
 
 
-class PrintMessageCode(BuiltText):
-    """
-    TOP-LEVEL-WINDOW        TextBox with ScrollBars (Only Output)
-
-    PARAMETER:
-        header              Header Line (Column Description)
-        text                String of Text Lines
-
-    SHOWS Text Sheet if one of following text line qualifiers exist:
-
-        INFORMATION = 'INFORMATION: '
-        WARNING = 'WARNING:     '
-        ERROR = 'ERROR:       '
-    """
-
-    def set_tags(self, textline, line):
-        if len(textline) > 13:
-            if textline[0:12] == decl.ERROR:
-                self.text_widget.tag_add(decl.ERROR, str(line + 1) + '.0',
-                                         str(line + 1) + '.' + str(len(textline)))
-                self.text_widget.tag_config(decl.ERROR, foreground='RED')
-            elif textline[0:12] == decl.WARNING:
-                self.text_widget.tag_add(decl.WARNING, str(line + 1) + '.0',
-                                         str(line + 1) + '.' + str(len(textline)))
-                self.text_widget.tag_config(decl.WARNING, foreground='BLUE')
-            elif textline[0:12] == decl.INFORMATION:
-                self.text_widget.tag_add(decl.INFORMATION, str(line + 1) + '.0',
-                                         str(line + 1) + '.' + str(len(textline)))
-                self.text_widget.tag_config(decl.INFORMATION, foreground='GREEN')
-
-    def destroy_widget(self, text):
-
-        info = re.compile(decl.INFORMATION)
-        if info.search(text):
-            return False
-        warn = re.compile(decl.WARNING)
-        if warn.search(text):
-            return False
-        err = re.compile(decl.ERROR)
-        if err.search(text):
-            return False
-        return True
-
-
 class VersionTransaction(BuiltEnterBox):
     """
     Top-level window to select transaction versions (e.g. HKKAZ, HKCAZ, HKWPD).
@@ -3557,3 +3768,237 @@ class VersionTransaction(BuiltEnterBox):
                 self.field_dict[key] = int(self.field_dict[key])
 
             self.quit_widget()
+
+
+class ProtocolViewer(BaseViewer):
+    """
+    Displays protocol/log output in a read-only text window.
+
+    Features:
+        * Vertical and horizontal scrolling
+        * Automatic syntax highlighting for log levels
+        * Read-only text widget
+        * Print support
+        * Monospaced font for aligned log output
+
+    Args:
+        title (str):
+            Window title.
+
+        header (str):
+            Optional header text displayed at the beginning of the log.
+
+        text (str):
+            Log content to display.
+
+    Example:
+        ProtocolViewer(
+            title="Application Protocol",
+            text=protocol_text
+        )
+    """
+
+    def __init__(self,
+                 title=msg.MESSAGE_TITLE,
+                 header="",
+                 text=""):
+
+        if not text or not text.strip():
+            return
+        if msg.is_main_thread():
+            if header == msg.Informations.TRANSACTION_INFORMATIONS:
+                msg.Informations.transaction_informations = ''
+            if header == msg.Informations.PRICES_INFORMATIONS:
+                msg.Informations.prices_informations = ''
+            elif header == msg.Informations.BANKDATA_INFORMATIONS:
+                msg.Informations.bankdata_informations = ''
+            elif header == msg.Informations.HOLDING_INFORMATIONS:
+                msg.Informations.holding_informations = ''
+            elif header == msg.Informations.TRANSACTION_INFORMATIONS:
+                msg.Informations.transaction_informations = ''
+            header = ''
+        super().__init__(title=title, header=header, content=text)
+
+    def set_content(self, header, text):
+        """
+        Displays content in the text widget.
+
+        Args:
+            text (str):
+                Text to display.
+        """
+
+        if header:
+            self.text_widget.insert(END, header + "\n")
+            self.text_widget.insert(END, "=" * len(header) + "\n\n")
+
+        for line_no, line in enumerate(text.splitlines()):
+            self.text_widget.insert(END, line + "\n")
+            self.set_tags(line, line_no)
+        self.content = self.text_widget.get("1.0", END)
+
+        self.text_widget.configure(state=DISABLED)
+
+    def set_tags(self, textline, line):
+        """
+        Applies color highlighting to protocol entries.
+
+        Args:
+            textline (str):
+                Current protocol line.
+
+            line (int):
+                Line index inside the text widget.
+        """
+        start = f"{line + 1}.0"
+        end = f"{line + 1}.{len(textline)}"
+
+        if textline.startswith("ERROR"):
+            self.text_widget.tag_add("ERROR", start, end)
+            self.text_widget.tag_config(
+                "ERROR",
+                foreground="red"
+            )
+
+        elif textline.startswith("WARNING"):
+            self.text_widget.tag_add("WARNING", start, end)
+            self.text_widget.tag_config(
+                "WARNING",
+                foreground="blue"
+            )
+
+        elif textline.startswith("INFO"):
+            self.text_widget.tag_add("INFO", start, end)
+            self.text_widget.tag_config(
+                "INFO",
+                foreground="green"
+            )
+
+
+class PandasBoxBondMasterTable(BuiltPandasBox):
+    """
+    TOP-LEVEL-WINDOW        Bond_Master Pandastable
+                            Row Actions: Show, Delete, Update, New
+    """
+
+    def __init__(self, title, data, message, mode=decl.EDIT_ROW, selected_row=0):
+
+        self.repo = Repository()
+        self.button_state = ''
+        self.title = title
+        self.data = data
+
+        self.selected_row = selected_row
+        self.repo = Repository()
+
+        self.message = message
+        if data:
+            super().__init__(title=title, dataframe=data, message=message,
+                             mode=mode, selected_row=self.selected_row)
+        else:
+            self.new_row_insert({})
+
+    def create_dataframe(self):
+
+        self.dataframe = DataFrame(data=self.data)
+
+
+    def show_row(self):
+
+        row_dict = self.get_selected_row()
+        bond_master = BondMasterTableRowBox(declm.BOND_MASTER, declm.BOND_MASTER_VIEW, row_dict,
+                                   protected=declm.TABLE_FIELDS[declm.BOND_MASTER_VIEW],
+                                   title=self.title,  button1_text=None, button2_text=None)
+        self.message = ''
+        if bond_master.button_state == decl.WM_DELETE_WINDOW:
+            return
+        self.quit_widget()
+
+    def del_row(self):
+
+        row_dict = self.get_selected_row()
+        self.message = ''
+        if row_dict:
+            bond_master = BondMasterTableRowBox(declm.BOND_MASTER, declm.BOND_MASTER_VIEW, row_dict,
+                             protected=declm.TABLE_FIELDS[declm.BOND_MASTER_VIEW],
+                             title=self.title,  button1_text=decl.BUTTON_DELETE, button2_text=None)
+            if bond_master.button_state == decl.WM_DELETE_WINDOW:
+                return
+            elif bond_master.button_state == decl.BUTTON_DELETE:
+                self.repo.delete_bond_master(bond_master.field_dict[declm.DB_ISIN])
+                self.message = msg.get_message(
+                    msg.MESSAGE_TEXT,
+                    'DATA_DELETED',
+                    row_dict[declm.DB_name]
+                    )
+        self.quit_widget()
+
+    def update_row(self):
+
+        row_dict = self.get_selected_row()
+        self.message = ''
+        if row_dict:
+            mandatory = declm.TABLE_FIELDS[declm.BOND_MASTER]
+            try:
+                mandatory.remove(declm.DB_description)
+            except ValueError:
+                pass                   
+            bond_master = BondMasterTableRowBox(declm.BOND_MASTER, declm.BOND_MASTER_VIEW, row_dict,
+                                       title=self.title, button1_text=decl.BUTTON_UPDATE,
+                                       combo_dict={declm.DB_currency: self.repo.get_enabled_currencies(),
+                                                   declm.DB_bond_type: declm.BOND_TYPES,},
+                                       protected=[declm.DB_ISIN, declm.DB_name],
+                                       mandatory=mandatory)
+            if bond_master.button_state == decl.WM_DELETE_WINDOW:
+                return
+            elif bond_master.button_state == decl.BUTTON_UPDATE:
+                bond_master.field_dict.pop(declm.DB_name)
+                self.repo.replace_bond_master(bond_master.field_dict)
+                self.message = msg.get_message(
+                    msg.MESSAGE_TEXT,
+                    'DATA_CHANGED',
+                    row_dict[declm.DB_name]
+                    )
+        self.quit_widget()
+
+    def new_row(self):
+
+        row_dict = self.get_selected_row()
+        if row_dict:
+            self.new_row_insert(row_dict)
+        self.quit_widget()
+
+    def new_row_insert(self, row_dict):
+
+        combo_dict = self.new_row_properties()
+        mandatory = declm.TABLE_FIELDS[declm.BOND_MASTER]
+        try:
+            mandatory.remove(declm.DB_description)
+        except ValueError:
+            pass        
+        bond_master = BondMasterTableRowBox(declm.BOND_MASTER, declm.BOND_MASTER_VIEW, {},
+                                   title=self.title, button1_text=decl.BUTTON_NEW,
+                                   protected=[declm.DB_ISIN],
+                                   mandatory=mandatory,
+                                   focus_out=[declm.DB_name],
+                                   combo_dict=combo_dict)
+        self.button_state = bond_master.button_state
+        if bond_master.button_state == decl.WM_DELETE_WINDOW:
+            return
+        if bond_master.button_state == decl.BUTTON_NEW:
+            bond_master.field_dict.pop(declm.DB_name, None)
+            self.repo.replace_bond_master(bond_master.field_dict)
+            self.message = msg.get_message(
+                msg.MESSAGE_TEXT,
+                'DATA_INSERTED',
+                row_dict[declm.DB_name]
+                )
+
+    def new_row_properties(self):
+
+        names_isin_dict = self.repo.names_isin_dict_only_bonds()
+        combo_dict = {declm.DB_name: list(names_isin_dict.keys()),
+                      declm.DB_bond_type: declm.BOND_TYPES,
+                      declm.DB_currency: self.repo.get_enabled_currencies()}
+        return combo_dict
+

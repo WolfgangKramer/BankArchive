@@ -56,6 +56,7 @@ MESSAGE_TEXT = {
     'CREDENTIALS_CHECK': '{} Checking Credentials',
     'CHECKBOX': 'Select at least one of the Check Box Icons',
     'CONN': 'Database Connection failed  \nMariaDBuser: {} \nMariaDBname: {}',
+    'CORPORATE_ACTIONS_IS_EMPTY': 'Corporate_Actions table is empty',
     'DATA_INSERTED': '{}       Data inserted',
     'DATA_CHANGED': '{}       Data changed',
     'DATA_DELETED': '{}       Data deleted',
@@ -87,11 +88,12 @@ MESSAGE_TEXT = {
     'FINTS_UPDATE_UPD_VERSION': 'Bank: {} \n Version of the user parameter data updated.\n  New version: {}',
     'HELP_PANDASTABLE': 'Show Row Menu: \n          Select row\n          Click on row number with the right mouse button',
     'HELP_CHECK_UPLOAD': 'Start with FIRST row to be checked\n\n Show Row Menu: \n          Select row\n          Click on row number with the right mouse button\n          Then select Update Selected Row and UPDATE if the row and all previous rows are OK',
-    'HITAN6': 'Bank: {} \n Bank Account: {}  {}       \n     Could not find HITAN6/7 task_reference',
+    'HITAN6': 'Bank: {} \n Bank sync: {}  {}       \n     Could not find HITAN6/7 task_reference',
     'HIKAZ':  'Response {} missing: bank_name {}, account_number {}, account_product_name {}',
     'HITAN': 'Security clearance is provided via another channel\n{}',
     'HITAN_MISSED': 'Response HITAN missing: bank_name {}, account_number {}, account_product_name {}',
     'HIUPD_EXTENSION': 'Bank: {} \n Bank Account: {}  {}       \n     IBAN {} received Bank Information: \n     {}',
+    'HKKAZ CONSOR': 'Consors currently supports only version 6 for FINTS HKKAZ Segment.',
     'HOLDING_INSERT': 'Holding data for date {} does not exist. Insert?',
     'HOLDING_TRANSACTION_ERROR': 'Holding not created: {}',
     'HOLDING_TRANSACTION_CREATED': 'Holding row {} {} inserted',
@@ -211,7 +213,18 @@ MESSAGE_TEXT = {
 
         {decl.BUNDEBANK_BLZ_DOWNLOAD}
     """,
-    'IMPORT_TEXT_TRANSACTION_BANK_CSV': 'Loads transaction data from the bank downloaded CSV file.',
+    'IMPORT_TEXT_TRANSACTION_BANK_CONSORS': """
+        Import transaction data via CSV File
+
+            Download CSV File via Bank App Menu Tab:
+                                "ORDERÜBERSICHT"
+    """,   
+    'IMPORT_TEXT_TRANSACTION_BANK_BIW': """
+        Import transaction data via CSV File
+
+            Download CSV File via Bank App Menu Tab:
+                                "DEPOTUMSÄTZE"
+    """,   
     'IMPORT_TEXT_TRANSACTION': """
         CSV format
         ----------
@@ -264,7 +277,6 @@ MESSAGE_TEXT = {
     'LOGIN': 'LOGIN Data incomplete.   \nCustomizing e.g. synchronization LOGIN Data must be done \nBank_Code: {} (Key Error: {})',
     'LOGIN_SCRAPER': 'LOGIN Data incomplete.   \nCustomizing LOGIN Data/Scraping must be done \nBank: {} ({})',
     'MANDATORY': '{} is mandatory',
-    'MARIADB_DUPLICATE': 'Duplicate Entry ignored\nSQL Statement: \n{} \n Error: \n{} \n Vars: \n{}',
     'MARIADB_ERROR_SQL': 'SQL_Statement\n {} \n\nVars\n {}',
     'MARIADB_ERROR': 'MariaDB Error\n{} \n {}',
     'MIN_LENGTH': '{} Must have a Length OF {} Characters',
@@ -295,7 +307,7 @@ MESSAGE_TEXT = {
     'PRICES_NO': '{}:  No new Prices found\n\n Used Ticker Symbol {} {}\n ISIN: {}  {}',
     'PRODUCT_ID': 'Product_ID missing, No Bank Access possible\n Get your Product_Id: https://www.hbci-zka.de/register/prod_register.htm',
     'RADIOBUTTON': 'Select one of SELECT the RadioButtons',
-    'RESPONSE': 'Got unvalid response from bank',
+    'RESPONSE': 'Got invalid response from bank',
     'SCRAPER_BALANCE': 'Last closing balance from database: {} \n Opening balance from the transaction overview: {}',
     'SCRAPER_NO_TRANSACTION_TO_STORE': '{} {} All transactions already saved in database',
     'SCRAPER_PAGE_ERROR': 'Connection interrupted!',
@@ -315,7 +327,7 @@ MESSAGE_TEXT = {
     'SYMBOL_MISSING': 'No ticker/symbol (symbol_origin) found. \n ISIN: {}  /  {} \n\n You must add ticker symbol in Table ISIN',
     'SYMBOL_USED': 'Symbol already used in {}',
     'SYNC': 'Synchronization Data incomplete    \nSynchronization must be done \nBank: {} ',
-    'SYNC_START': 'Next Stepp: You must start Synchronization Bank: {} ',
+    'SYNC_START': 'Next Step: You must start Synchronization Bank: {} ',
     'SUPPORTED_CAMT_MESSAGES': 'Refresh Bank_parameter: Supported camt_message_name missed',
     'TA_OTHER_PARAMETER': 'function contains additional parameters: \n  {}',
     'TA_NO_RESULT': 'Technical Analysis no result!\n Category: {}  Indicator: {}',
@@ -341,8 +353,8 @@ MESSAGE_TEXT = {
     'TWOSTEP': 'Select one of the Security Functions \n Only Two-Step TAN Procedure \n SCA Strong Customer Authentication',
     'UNEXCEPTED_ERROR': 'E X C E P T I O N    E R R O R  !\n\nMODULE: {}\n\nLINE  of EXCEPTION ERROR Call: {}\n\nMETHOD: {}\n\nTYPE:\n {} \n\nVALUE:  {} \n\nTRACEBACK:\n {}',
     'VERSION_TRANSACTION': 'TRANSACTION HK{}{} not available',
-    'VOP_HHDUC': 'Verfication of Payee: No PNG header found in challenge_hhduc',
-    'VOP_FAILED': 'Verfication of Payee failed',
+    'VOP_HHDUC': 'Verification of Payee: No PNG header found in challenge_hhduc',
+    'VOP_FAILED': 'Verification of Payee failed',
     'WEBDRIVER': 'Installing {} WEB Driver failed\n\n{}',
     'WEBDRIVER_INSTALL': '{} WEB Driver installed to project.root/.wdm'
 }
