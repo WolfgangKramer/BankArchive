@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2026-06-30"
+__updated__ = "2026-07-12"
 @author: Wolfgang Kramer
 """
 
@@ -110,6 +110,7 @@ MENU_TEXT = {
     'Corporate Dividends': 'Corporate Dividends',
     'Delete Bank': 'Delete Bank',
     'Holding': 'Holding',
+    'Holding Missing Trading Day': 'Holding Missing Trading Day',
     'Holding Performance': 'Holding Performance',
     'Holding ISIN Comparision': 'Holding ISIN Comparision',
     'Holding ISIN Comparision %': 'Holding ISIN Comparision %',
@@ -154,6 +155,7 @@ MENU_TEXT = {
 }
 
 POPUP_MENU_TEXT = {
+    'Show Holding': 'Show_Holding',
     'Show selected Row': 'Show selected Row',
     'Show credit data': 'Show selected Row credit data',
     'Show debit data': 'Show selected Row debit data',
@@ -161,6 +163,9 @@ POPUP_MENU_TEXT = {
     'Update selected Row': 'Update selected Row',
     'Delete selected Row': 'Delete selected Row',
     'Export to Excel': 'Export to Excel',
+    # specials
+    'Show Holding Changed': 'Show Holding Changed',    
+    'Show Holding Daily': 'Show_Holding Daily',    
 }
 
 CODE_3010 = '3010'  # Download bank data,    no entries exist'
@@ -278,7 +283,7 @@ ORIGIN_BANKDATA_CHANGED = '_BANKDATA_CHANGED_'
 ORIGINS = [ORIGIN, ORIGIN_LEDGER, ORIGIN_INSERTED]
 DEBIT = 'D'
 CREDIT = 'C'
-PERCENT = '%  '
+PERCENT = 'PCT'
 EURO = 'EUR'
 FAMT = 'FAMT'
 UNIT = 'UNIT'
@@ -413,9 +418,6 @@ FN_FIELD_NAME = 'Field_Name'
 FN_PROCUDURE_NAME = 'Procedure_Name'
 FN_PERCENTAGE = 'Percentage'
 FN_DATA_MODE = 'DATA_MODE'
-FN_BOND = 'BOND'
-FN_SHARE = 'SHARE'
-FN_INDEX = 'INDEX'
 FN_PROPORTIONAL = 'PROPORTIONAL'
 FN_ABSOLUTE = 'ABSOLUTE'
 FN_TOTAL = 'TOTAL'

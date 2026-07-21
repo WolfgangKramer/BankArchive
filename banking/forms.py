@@ -252,6 +252,41 @@ class SelectLedgerDailyBalanceAccounts(BuiltSelectBox):
         return field_defs_list
 
 
+class SelectMissingTradingDays(BuiltCheckButton):
+    """
+    TOP-LEVEL-WINDOW        Select missing trading days in table holding
+
+    PARAMETER:
+        checkbutton_texts    List  of Fields
+
+        default_text         initialization of checkbox
+    INSTANCE ATTRIBUTES:
+        button_state        Text of selected Button
+        self.field_list     contains selected check_fields
+    """
+
+    def __init__(self,  title=msg.MESSAGE_TITLE,
+                 button1_text=decl.BUTTON_APPEND, button2_text=decl.BUTTON_REPLACE, button3_text=decl.BUTTON_DELETE,
+                 checkbutton_texts=['2026-12-31',
+                                    '2026-12-01']
+                 ):
+
+        super().__init__(
+            title=title, header=msg.get_message(msg.MESSAGE_TEXT, 'HOLDING_MISSING_TRADING_DAYS'),
+            button1_text=decl.BUTTON_CREATE,
+            checkbutton_texts=checkbutton_texts
+        )
+
+    def button_1_button2(self, event):
+
+        self.button_state = self._button2_text
+        self.field_list = []
+        for idx, check_var in enumerate(self._check_vars):
+            if check_var.get() == 1:
+                self.field_list.append(self.checkbutton_texts[idx])
+        self.quit_widget()
+
+
 class InputPeriod(BuiltSelectBox):
     """
     Selection: Period
@@ -330,13 +365,13 @@ class InputDateHolding(InputPeriod):
             if _date:
                 getattr(self._field_defs, decl.FN_TO_DATE).textvar.set(
                     _date)  # adjusted date returned
-            """    
+            """
             if from_date == to_date:
                 from_date = date_days.subtract(from_date, 1)
                 getattr(self._field_defs, decl.FN_FROM_DATE).textvar.set(
                     from_date)  # adjusted date returned
                 self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE_ADJUSTED'))
-            """    
+            """
             if (from_date > to_date):
                 self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE', from_date))
 
@@ -416,13 +451,14 @@ class InputDateCorporateActions(BuiltSelectBox):
         # action_type
         metadata = enum_metadata(declm.ActionType)
         field_defs_list.append(self.create_combo_field(declm.DB_action_type, metadata["length"], decl.TYP_ALPHANUMERIC, metadata["values"]))
-        self.separator = [declm.ActionType]        
+        self.separator = [declm.ActionType]
         # selection ISIN name
         isin_names = self.repo.get_isin_names()
         for isin_dict in isin_names:
             field_defs_list.append(self.create_check_field(
                 isin_dict[declm.DB_ISIN], isin_dict[declm.DB_name]))
         return field_defs_list
+
 
 class InputDatePrices(BuiltSelectBox):
     """
@@ -501,7 +537,7 @@ class InputDateTransactions(BuiltSelectBox):
                     msg.MESSAGE_TEXT,
                     'DATA_NO',
                     '',
-                    self.data_dict.get(declm.DB_iban,'')
+                    self.data_dict.get(declm.DB_iban, '')
                     )
                 )
             combo_values = []
@@ -833,7 +869,7 @@ class BondMasterTableRowBox(BuiltTableRowBox):
     """
 
     def focus_out_action(self, event):
-        
+
         if event.widget.myId == declm.DB_name:
             isin_name = getattr(self._field_defs, declm.DB_name).widget.get()
             isin_code = self.repo.get_isin_of_name(isin_name)
@@ -862,7 +898,7 @@ class IsinTableRowBox(BuiltTableRowBox):
     def focus_out_action(self, event):
 
         if event.widget.myId == declm.DB_ISIN:
-            if getattr(self._field_defs, declm.DB_type).widget.get() == decl.FN_INDEX:
+            if getattr(self._field_defs, declm.DB_type).widget.get() == declm.IsinType.INDEX:
                 isin_name = getattr(self._field_defs, declm.DB_name).widget.get()
                 getattr(self._field_defs, declm.DB_ISIN).textvar.set(isin_name.ljust(12, "0"))
             else:
@@ -893,7 +929,7 @@ class IsinTableRowBox(BuiltTableRowBox):
                 getattr(self._field_defs, declm.DB_price_currency_valid).textvar.set(result[declm.DB_price_currency_valid])
                 getattr(self._field_defs, declm.DB_last_check).textvar.set(result[declm.DB_last_check])
                 getattr(self._field_defs, declm.DB_industry).textvar.set(result[declm.DB_industry])
-        if event.widget.myId == declm.DB_type and getattr(self._field_defs, declm.DB_type).widget.get() == decl.FN_INDEX:
+        if event.widget.myId == declm.DB_type and getattr(self._field_defs, declm.DB_type).widget.get() == declm.IsinType.INDEX:
             isin_name = getattr(self._field_defs, declm.DB_name).widget.get()
             getattr(self._field_defs, declm.DB_ISIN).textvar.set(isin_name[:12].ljust(12, "_"))
         if event.widget.myId == declm.DB_symbol:
@@ -1315,23 +1351,6 @@ class SelectDownloadPrices(BuiltCheckButton):
         self.quit_widget()
 
 
-class SelectBuildHoldings(SelectDownloadPrices):
-
-    def __init__(self,  title=msg.MESSAGE_TITLE,
-                 button1_text=decl.BUTTON_INSERT, button2_text=decl.BUTTON_REPLACE, button3_text=None,
-                 checkbutton_texts=['Description of Checkbox1',
-                                    'Description of Checkbox2',
-                                    'Description of Checkbox3']
-                 ):
-
-        super().__init__(
-            title=title,
-            button1_text=button1_text,
-            button2_text=button2_text, button3_text=button3_text,
-            checkbutton_texts=checkbutton_texts
-            )
-
-
 class PandasBoxBalance(BuiltPandasBox):
     """
     TOP-LEVEL-WINDOW        Shows Dataframe of  Bank Balances
@@ -1428,6 +1447,7 @@ class PandasBoxBalanceAll(BuiltPandasBox):
                     rows=[i], clr='lightgreen', cols='all')
         self.pandas_table.model.df = self.dataframe.drop(columns=["level"])
 
+
 class PandasBoxCorporateDividendsTable(BuiltPandasBox):
     """
     TOP-LEVEL-WINDOW        Corporate Dividends Pandastable
@@ -1447,13 +1467,12 @@ class PandasBoxCorporateDividendsTable(BuiltPandasBox):
 
     def create_dataframe(self):
 
-
         df = DataFrame(data=self.data)
         self.dataframe = df.pivot(
             index='year',
             columns='name',
             values='dividend'
-)
+            )
 
     def drop_currencies(self):
 
@@ -1462,9 +1481,15 @@ class PandasBoxCorporateDividendsTable(BuiltPandasBox):
     def show_row(self):
 
         row_dict = self.get_selected_row()
-        corporate_actions = BuiltTableRowBox(declm.CORPORATE_ACTIONS, declm.CORPORATE_ACTIONS_ISIN_VIEW, row_dict,
-                                   protected=declm.TABLE_FIELDS[declm.CORPORATE_ACTIONS_ISIN_VIEW],
-                                   title=self.title,  button1_text=None, button2_text=None)
+        corporate_actions = BuiltTableRowBox(
+            declm.CORPORATE_ACTIONS,
+            declm.CORPORATE_ACTIONS_ISIN_VIEW,
+            row_dict,
+            protected=declm.TABLE_FIELDS[declm.CORPORATE_ACTIONS_ISIN_VIEW],
+            title=self.title,
+            button1_text=None,
+            button2_text=None
+            )
         self.button_state = corporate_actions.button_state
         if corporate_actions.button_state == decl.WM_DELETE_WINDOW:
             return
@@ -1490,22 +1515,21 @@ class PandasBoxCorporateActionsTable(BuiltPandasBox):
 
     def create_dataframe(self):
 
-
         df = DataFrame(data=self.data)
         df['idx'] = df.groupby('name').cumcount()
-        
+
         df_wide = df.pivot(
             index='idx',
             columns='name',
             values=[declm.DB_action_date, declm.DB_action_value]
         )
-        
+
         # Reihenfolge: Name -> Feld
         df_wide = df_wide.swaplevel(0, 1, axis=1)
-        
+
         # Nach Name sortieren
         df_wide = df_wide.sort_index(axis=1, level=0)
-        
+
         self.dataframe = df_wide
 
     def drop_currencies(self):
@@ -1515,9 +1539,15 @@ class PandasBoxCorporateActionsTable(BuiltPandasBox):
     def show_row(self):
 
         row_dict = self.get_selected_row()
-        corporate_actions = BuiltTableRowBox(declm.CORPORATE_ACTIONS, declm.CORPORATE_ACTIONS_ISIN_VIEW, row_dict,
-                                   protected=declm.TABLE_FIELDS[declm.CORPORATE_ACTIONS_ISIN_VIEW],
-                                   title=self.title,  button1_text=None, button2_text=None)
+        corporate_actions = BuiltTableRowBox(
+            declm.CORPORATE_ACTIONS,
+            declm.CORPORATE_ACTIONS_ISIN_VIEW,
+            row_dict,
+            protected=declm.TABLE_FIELDS[declm.CORPORATE_ACTIONS_ISIN_VIEW],
+            title=self.title,
+            button1_text=None,
+            button2_text=None
+            )
         self.button_state = corporate_actions.button_state
         if corporate_actions.button_state == decl.WM_DELETE_WINDOW:
             return
@@ -1551,9 +1581,15 @@ class PandasBoxCurrencyTable(BuiltPandasBox):
     def show_row(self):
 
         row_dict = self.get_selected_row()
-        currency = BuiltTableRowBox(declm.CURRENCY, declm.CURRENCY, row_dict,
-                                          protected=declm.TABLE_FIELDS[declm.CURRENCY],
-                                          title=self.title,  button1_text=None, button2_text=None)
+        currency = BuiltTableRowBox(
+            declm.CURRENCY,
+            declm.CURRENCY,
+            row_dict,
+            protected=declm.TABLE_FIELDS[declm.CURRENCY],
+            title=self.title,
+            button1_text=None,
+            button2_text=None
+            )
         self.button_state = currency.button_state
         if currency.button_state == decl.WM_DELETE_WINDOW:
             return
@@ -1584,9 +1620,14 @@ class PandasBoxCurrencyTable(BuiltPandasBox):
         row_dict = self.get_selected_row()
         if row_dict:
             protected = [declm.DB_iso_code]
-            currency = BuiltTableRowBox(declm.CURRENCY, declm.CURRENCY, row_dict,
-                                              protected=protected,
-                                              title=self.title, button1_text=decl.BUTTON_UPDATE)
+            currency = BuiltTableRowBox(
+                declm.CURRENCY,
+                declm.CURRENCY,
+                row_dict,
+                protected=protected,
+                title=self.title,
+                button1_text=decl.BUTTON_UPDATE
+                )
 
             self.button_state = currency.button_state
             if currency.button_state == decl.WM_DELETE_WINDOW:
@@ -1616,9 +1657,14 @@ class PandasBoxCurrencyTable(BuiltPandasBox):
     def new_row_insert(self, row_dict):
 
         mandatory = [declm.DB_iso_code]
-        currency = BuiltTableRowBox(declm.CURRENCY, declm.CURRENCY, row_dict,
-                                          mandatory=mandatory,
-                                          title=self.title, button1_text=decl.BUTTON_NEW)
+        currency = BuiltTableRowBox(
+            declm.CURRENCY,
+            declm.CURRENCY,
+            row_dict,
+            mandatory=mandatory,
+            title=self.title,
+            button1_text=decl.BUTTON_NEW
+            )
         self.button_state = currency.button_state
         if currency.button_state == decl.WM_DELETE_WINDOW:
             return currency
@@ -1945,7 +1991,7 @@ class PandasBoxIsinTable(BuiltPandasBox):
 
         row_dict = self.get_selected_row()
         if row_dict:
-            if row_dict[declm.DB_type] == decl.FN_INDEX:
+            if row_dict[declm.DB_type] == declm.IsinType.INDEX:
                 protected = [declm.DB_ISIN, declm.DB_wkn, declm.DB_industry]
             else:
                 protected = [declm.DB_ISIN]
@@ -1993,7 +2039,7 @@ class PandasBoxIsinTable(BuiltPandasBox):
         focus_out = [declm.DB_ISIN, declm.DB_name, declm.DB_type, declm.DB_origin_symbol]
         upper = [declm.DB_symbol]
         row_dict = {}
-        row_dict[declm.DB_type] = decl.FN_SHARE
+        row_dict[declm.DB_type] = declm.IsinType.SHARE
         row_dict[declm.DB_validity] = decl.VALIDITY_DEFAULT
         row_dict[declm.DB_wkn] = decl.NOT_ASSIGNED
         row_dict[declm.DB_origin_symbol] = decl.NOT_ASSIGNED
@@ -3443,7 +3489,7 @@ class PandasBoxPiecesConsistency(BuiltPandasBox):
     def create_dataframe(self):
 
         self.dataframe = DataFrame(self.dataframe)
-        cols_to_check = [declm.DB_ISIN, "holding_pieces", "transaction_cum_pieces"]
+        cols_to_check = [declm.DB_ISIN, "holding_pieces", "calculated_pieces"]
         self.dataframe = self.dataframe.loc[~self.dataframe[cols_to_check].eq(self.dataframe[cols_to_check].shift()).all(axis=1)]
         self.dataframe = self.dataframe.sort_values(by=declm.DB_price_date)
 
@@ -3455,13 +3501,74 @@ class PandasBoxPiecesConsistency(BuiltPandasBox):
         name = row_dict[declm.DB_name]
         period = (decl.START_DATE_TRANSACTIONS, date_days.today())
         message = msg.get_message(msg.MESSAGE_TEXT, 'HELP_PANDASTABLE')
+        title = msg.get_message(msg.MESSAGE_TEXT, 'TRANSACTION_PIECES', name)
         while True:
             data = self.repo.get_transactions_of_iban_isin_code(iban, isin_code, period)
             transaction_table = PandasBoxTransactionTable(
-                self.title, data, message, iban, isin_code, name, mode=decl.EDIT_ROW)
+                title, data, message, iban, isin_code, name, mode=decl.EDIT_ROW)
             message = transaction_table.message
             if transaction_table.button_state == decl.WM_DELETE_WINDOW:
                 break
+
+    def show_holding_changed(self):
+
+        row_dict = self.get_selected_row()
+        iban = row_dict[declm.DB_iban]
+        isin_code = row_dict[declm.DB_ISIN]
+        name = row_dict[declm.DB_name]
+        message = msg.get_message(msg.MESSAGE_TEXT, 'HELP_PANDASTABLE')
+        title = msg.get_message(msg.MESSAGE_TEXT, 'HOLDING_PIECES', name)
+        while True:
+            data = self.repo.get_rows_with_pieces_change(iban, isin_code)
+            holding_table = PandasBoxPiecesConsistencyHolding(
+                title, data, message, iban, mode=decl.EDIT_ROW)
+            message = holding_table.message
+            if holding_table.button_state == decl.WM_DELETE_WINDOW:
+                break
+
+    def show_holding_daily(self):
+
+        row_dict = self.get_selected_row()
+        iban = row_dict[declm.DB_iban]
+        isin_code = row_dict[declm.DB_ISIN]
+        name = row_dict[declm.DB_name]
+        title = msg.get_message(msg.MESSAGE_TEXT, 'HOLDING_PIECES', name)
+        data_dict = {}
+        message = msg.get_message(msg.MESSAGE_TEXT, 'HELP_PANDASTABLE')
+        while True:
+            input_period = InputPeriod(title=title, data_dict=data_dict)
+            if input_period.button_state == decl.WM_DELETE_WINDOW:
+                return
+            data_dict = input_period.field_dict
+            period = ' '.join(
+                [data_dict[decl.FN_FROM_DATE], '-', data_dict[decl.FN_TO_DATE]])
+            title_period = ' '.join([title, period])
+            data = self.repo.get_holding_pieces_of_isin_code(
+                iban, isin_code, (data_dict[decl.FN_FROM_DATE], data_dict[decl.FN_TO_DATE]))
+            if data:
+                while True:
+                    holding_table = PandasBoxHoldingTable(
+                        title_period, data, message, iban, mode=decl.EDIT_ROW)
+                    message = holding_table.message
+                    if holding_table.button_state == decl.WM_DELETE_WINDOW:
+                        break
+                    data = self.repo.select_holding_view_table_of_iban(
+                        iban=iban, period=(data_dict[decl.FN_FROM_DATE], data_dict[decl.FN_TO_DATE]))
+                    if not data:
+                        break
+
+
+class PandasBoxPiecesConsistencyHolding(PandasBoxHoldingTable):
+    """
+    TOP-LEVEL-WINDOW        Shows Dataframe Holdings Consistency
+
+    """
+
+    def create_dataframe(self):
+
+        self.dataframe = DataFrame(self.dataframe)
+        self.dataframe = self.dataframe.loc[:, :declm.DB_origin]
+        return
 
 
 class TechnicalIndicator(InputISIN):
@@ -3902,13 +4009,18 @@ class PandasBoxBondMasterTable(BuiltPandasBox):
 
         self.dataframe = DataFrame(data=self.data)
 
-
     def show_row(self):
 
         row_dict = self.get_selected_row()
-        bond_master = BondMasterTableRowBox(declm.BOND_MASTER, declm.BOND_MASTER_VIEW, row_dict,
-                                   protected=declm.TABLE_FIELDS[declm.BOND_MASTER_VIEW],
-                                   title=self.title,  button1_text=None, button2_text=None)
+        bond_master = BondMasterTableRowBox(
+            declm.BOND_MASTER,
+            declm.BOND_MASTER_VIEW,
+            row_dict,
+            protected=declm.TABLE_FIELDS[declm.BOND_MASTER_VIEW],
+            title=self.title,
+            button1_text=None,
+            button2_text=None
+            )
         self.message = ''
         if bond_master.button_state == decl.WM_DELETE_WINDOW:
             return
@@ -3919,9 +4031,15 @@ class PandasBoxBondMasterTable(BuiltPandasBox):
         row_dict = self.get_selected_row()
         self.message = ''
         if row_dict:
-            bond_master = BondMasterTableRowBox(declm.BOND_MASTER, declm.BOND_MASTER_VIEW, row_dict,
-                             protected=declm.TABLE_FIELDS[declm.BOND_MASTER_VIEW],
-                             title=self.title,  button1_text=decl.BUTTON_DELETE, button2_text=None)
+            bond_master = BondMasterTableRowBox(
+                declm.BOND_MASTER,
+                declm.BOND_MASTER_VIEW,
+                row_dict,
+                protected=declm.TABLE_FIELDS[declm.BOND_MASTER_VIEW],
+                title=self.title,
+                button1_text=decl.BUTTON_DELETE,
+                button2_text=None
+                )
             if bond_master.button_state == decl.WM_DELETE_WINDOW:
                 return
             elif bond_master.button_state == decl.BUTTON_DELETE:
@@ -3942,13 +4060,16 @@ class PandasBoxBondMasterTable(BuiltPandasBox):
             try:
                 mandatory.remove(declm.DB_description)
             except ValueError:
-                pass                   
-            bond_master = BondMasterTableRowBox(declm.BOND_MASTER, declm.BOND_MASTER_VIEW, row_dict,
-                                       title=self.title, button1_text=decl.BUTTON_UPDATE,
-                                       combo_dict={declm.DB_currency: self.repo.get_enabled_currencies(),
-                                                   declm.DB_bond_type: declm.BOND_TYPES,},
-                                       protected=[declm.DB_ISIN, declm.DB_name],
-                                       mandatory=mandatory)
+                pass
+            bond_master = BondMasterTableRowBox(
+                declm.BOND_MASTER,
+                declm.BOND_MASTER_VIEW, row_dict,
+                title=self.title, button1_text=decl.BUTTON_UPDATE,
+                combo_dict={declm.DB_currency: self.repo.get_enabled_currencies(),
+                            declm.DB_bond_type: declm.BOND_TYPES},
+                protected=[declm.DB_ISIN, declm.DB_name],
+                mandatory=mandatory
+                )
             if bond_master.button_state == decl.WM_DELETE_WINDOW:
                 return
             elif bond_master.button_state == decl.BUTTON_UPDATE:
@@ -3975,13 +4096,16 @@ class PandasBoxBondMasterTable(BuiltPandasBox):
         try:
             mandatory.remove(declm.DB_description)
         except ValueError:
-            pass        
-        bond_master = BondMasterTableRowBox(declm.BOND_MASTER, declm.BOND_MASTER_VIEW, {},
-                                   title=self.title, button1_text=decl.BUTTON_NEW,
-                                   protected=[declm.DB_ISIN],
-                                   mandatory=mandatory,
-                                   focus_out=[declm.DB_name],
-                                   combo_dict=combo_dict)
+            pass
+        bond_master = BondMasterTableRowBox(
+            declm.BOND_MASTER,
+            declm.BOND_MASTER_VIEW, {},
+            title=self.title, button1_text=decl.BUTTON_NEW,
+            protected=[declm.DB_ISIN],
+            mandatory=mandatory,
+            focus_out=[declm.DB_name],
+            combo_dict=combo_dict
+            )
         self.button_state = bond_master.button_state
         if bond_master.button_state == decl.WM_DELETE_WINDOW:
             return
@@ -4001,4 +4125,3 @@ class PandasBoxBondMasterTable(BuiltPandasBox):
                       declm.DB_bond_type: declm.BOND_TYPES,
                       declm.DB_currency: self.repo.get_enabled_currencies()}
         return combo_dict
-

@@ -90,5 +90,5 @@ INSERT INTO currency (iso_code, name, numeric_code, minor_unit, symbol, country,
 ('XAG','Silver (troy ounce)','961',0,'XAG','Precious Metal',0),
 ('XPT','Platinum','962',0,'XPT','Precious Metal',0),
 ('XPD','Palladium','964',0,'XPD','Precious Metal',0),
-('%  ','Percent',NULL,NULL,'%  ','Bond Price Percentage',1);
+('PCT  ','Percent',NULL,2,'%','Bond Price Percentage',1);
 """

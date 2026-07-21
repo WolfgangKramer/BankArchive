@@ -7,6 +7,7 @@ import os
 import tempfile
 import json
 import re
+import pandas as pd
 
 
 from pathlib import Path
@@ -16,9 +17,11 @@ from typing import Dict, Optional, Iterable, List, Tuple, Any, Union
 from datetime import date
 from collections import defaultdict
 
+
 import banking.declarations as decl
 import banking.declarations_mariadb as declm
 import banking.currency as crny
+from banking.connect_data import connectionresult
 
 from banking.mariadb import MariaDB
 from banking.utils import date_days
@@ -213,7 +216,7 @@ class CorporateActionsRepository(BaseRepository):
 
     def get_corporate_actions_data(
             self, action_type: str, selected_isins: list[str]
-        ) -> list[dict]:
+            ) -> list[dict]:
 
         result = self.db.select_table(
             declm.CORPORATE_ACTIONS_ISIN_VIEW,
@@ -225,23 +228,24 @@ class CorporateActionsRepository(BaseRepository):
         return result
 
     def get_dividends_of_years(
-            self, selected_isins: list[str]
-        ) -> list[dict]:
+            self,
+            selected_isins: list[str]
+            ) -> list[dict]:
 
-        result = self.db.select_rows( 
+        result = self.db.select_rows(
             table=declm.CORPORATE_ACTIONS_ISIN_VIEW,
             fields=[declm.DB_name,
                     f"YEAR({declm.DB_action_date}) AS year",
                     f"SUM({declm.DB_action_value}) AS dividend"
                     ],
             group_by=[declm.DB_name, f"YEAR({declm.DB_action_date})"],
-            order=[declm.DB_name,f"YEAR({declm.DB_action_date})"],
+            order=[declm.DB_name, f"YEAR({declm.DB_action_date})"],
             sort="ASC",
             action_type='DIVIDEND',
             isin_code=selected_isins,
-            result_dict=True,            
+            result_dict=True,
             )
-        return result    
+        return result
 
     def delete_corporate_actions_data(self, isin_code):
 
@@ -256,10 +260,10 @@ class CorporateActionsRepository(BaseRepository):
 class CurrencyRepository(BaseRepository):
 
     def __init__(self):
-        super().__init__()    
+        super().__init__()
 
     def insert_curreny_content(self):
-        
+
         self.db.executor.execute(crny.sql_insert_currency)
 
     def insert_currency(self, field_dict):
@@ -279,7 +283,7 @@ class CurrencyRepository(BaseRepository):
         return self.db.select_exists(declm.CURRENCY, iso_code=iso_code)
 
     def get_enabled_currencies(self):
-        
+
         result = self.db.select_table(declm.CURRENCY, declm.DB_iso_code, enabled=True)
         return list(map(lambda x: x[0], result))
 
@@ -363,6 +367,75 @@ class HoldingRepository(BaseRepository):
 
     def __init__(self):
         super().__init__()
+
+    def get_price_dates(self, period: tuple[str, str]) -> list[str]:
+
+        sql = """
+            SELECT DISTINCT price_date
+            FROM holding
+            WHERE price_date IS NOT NULL
+              AND price_date BETWEEN %s AND %s
+            ORDER BY price_date
+        """
+
+        df = pd.read_sql(
+            sql,
+            connectionresult.engine,
+            params=period
+        )
+
+        return (
+            pd.to_datetime(df["price_date"])
+              .dt.strftime("%Y-%m-%d")
+              .tolist()
+        )
+
+    def get_holding_pieces_of_isin_code(self, iban, isin_code, period):
+
+        field_list = [declm.DB_price_date, declm.DB_pieces, declm.DB_origin]
+        return self.select_holding_view_table_of_iban(field_list=field_list, iban=iban, isin_code=isin_code, period=period)
+
+    def get_rows_with_pieces_change(self, iban, isin_code):
+
+        sql_statement = f"""
+        WITH changes AS (
+            SELECT
+                h.*,
+                CASE
+                    WHEN LAG(pieces) OVER (ORDER BY price_date) IS NULL
+                      OR LAG(pieces) OVER (ORDER BY price_date) <> pieces
+                    THEN 1
+                    ELSE 0
+                END AS new_grp
+            FROM holding h
+            WHERE iban = '{iban}'
+              AND isin_code = '{isin_code}'
+        ),
+        grp AS (
+            SELECT
+                *,
+                SUM(new_grp) OVER (ORDER BY price_date) AS grp_no
+            FROM changes
+        )
+        SELECT *
+        FROM (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY grp_no
+                    ORDER BY price_date
+                ) AS rn_first,
+                ROW_NUMBER() OVER (
+                    PARTITION BY grp_no
+                    ORDER BY price_date DESC
+                ) AS rn_last
+            FROM grp
+        ) t
+        WHERE rn_first = 1
+           OR rn_last = 1
+        ORDER BY price_date;
+        """
+        return self.db.executor.execute(sql_statement, result_dict=True)
 
     def get_holding_market_price(self, iban, price_date, isin_code):
 
@@ -804,13 +877,14 @@ class HoldingRepository(BaseRepository):
     def select_holding_view_table_of_iban(
             self,
             *,
-            field_list: Union[str, Iterable[str]],
+            field_list: Union[str, Iterable[str]] = '*',
             iban: str,
+            isin_code: str = '*',
             period: tuple
             ) -> List[dict]:
         return self.db.select_table(
                 declm.HOLDING_VIEW, field_list=field_list, result_dict=True, date_name=declm.DB_price_date,
-                iban=iban, period=period)
+                iban=iban, isin_code=isin_code, period=period)
 
     def holding_max_date(
         self,
@@ -834,6 +908,51 @@ class HoldingRepository(BaseRepository):
         return self.db.select_table(
                 declm.HOLDING, field_list=field_list, result_dict=True, date_name=declm.DB_price_date,
                 iban=iban, period=period)
+
+    def duplicate_holding_row(self, iban, isin_code, price_date):
+
+        sql = f"""
+            INSERT INTO holding (
+                iban,
+                price_date,
+                isin_code,
+                price_currency,
+                market_price,
+                acquisition_price,
+                pieces,
+                amount_currency,
+                total_amount,
+                total_amount_portfolio,
+                acquisition_amount,
+                exchange_rate,
+                exchange_currency_1,
+                exchange_currency_2,
+                origin
+            )
+            SELECT
+                iban,
+                '{price_date}',
+                isin_code,
+                price_currency,
+                market_price,
+                acquisition_price,
+                pieces,
+                amount_currency,
+                total_amount,
+                total_amount_portfolio,
+                acquisition_amount,
+                exchange_rate,
+                exchange_currency_1,
+                exchange_currency_2,
+                origin
+            FROM holding
+            WHERE iban = '{iban}'
+              AND isin_code = '{isin_code}'
+              AND price_date < '{price_date}'
+            ORDER BY price_date DESC
+            LIMIT 1;
+                    """
+        return self.db.executor.execute(sql)
 
     def insert_holding(self, field_dict: Dict):
         self.db.execute_insert(declm.HOLDING, field_dict)
@@ -2065,6 +2184,35 @@ class PricesRepository(BaseRepository):
             declm.PRICES_ISIN_VIEW, [declm.DB_ISIN, declm.DB_name], result_dict=True, order=declm.DB_name)
         return isin_names
 
+    def get_close_prices(
+            self,
+            isin_code: str,
+            trading_days: list[date]
+    ) -> dict[date, Decimal]:
+        """
+        Returns all available closing prices for the specified trading days.
+        Args:
+            isin_code (str):
+                Security ISIN.
+            trading_days (list[date]):
+                Trading days for which prices are requested.
+        Returns:
+            dict[date, Decimal]:
+                    price_date -> closing_price
+        """
+        if not trading_days:
+            return {}
+
+        trading_days = ", ".join(date_days.convert_to_str(x) for x in trading_days)
+        rows = self.db.select_dict(
+            declm.PRICES,
+            declm.DB_price_date,
+            declm.DB_close,
+            isin_code=isin_code,
+            clause=f"""{declm.DB_price_date} IN ({trading_days})""",
+              )
+        return rows
+
     def get_close_price(
         self,
         isin_code: str,
@@ -2698,6 +2846,56 @@ class TransactionRepository(BaseRepository):
     def __init__(self):
         super().__init__()
 
+    def get_transaction_isin_code_of_iban_in_period(self, iban, period):
+        return self.db.select_table_distinct(declm.TRANSACTION, declm.DB_ISIN, iban=iban, period=period)
+
+    def get_isin_codes_with_position_in_trading_day(
+            self,
+            iban: str,
+            price_date: date
+    ) -> list[str]:
+        """
+        Returns all ISINs whose end-of-day position is greater than zero
+        on the specified trading day.
+
+        Args:
+            iban (str):
+                Account IBAN.
+
+            price_date (date):
+                Trading day.
+
+        Returns:
+            list[str]:
+                ISIN codes with an open position.
+        """
+
+        sql = """
+            WITH position AS
+            (
+                SELECT
+                    isin_code,
+                    SUM(
+                        CASE transaction_type
+                            WHEN 'RECE' THEN pieces
+                            WHEN 'DELI' THEN -pieces
+                            ELSE 0
+                        END
+                    ) AS end_of_day_pieces
+                FROM transaction
+                WHERE iban = ?
+                  AND price_date <= ?
+                GROUP BY isin_code
+            )
+            SELECT isin_code
+            FROM position
+            WHERE end_of_day_pieces > 0
+            ORDER BY isin_code;
+        """
+
+        rows = self.db.executor.execute(sql, (iban, price_date))
+        return [row[0] for row in rows]
+
     def get_max_price_date_of_transaction(self, iban):
 
         result = self.db.select_scalar(declm.TRANSACTION, f"MAX({declm.DB_price_date})", iban=iban)
@@ -2722,11 +2920,11 @@ class TransactionRepository(BaseRepository):
 
     def insert_transaction_ignore_duplicate(self, field_dict):
 
-        try:         
+        try:
             self.db.execute_insert_ignore_duplicate(declm.TRANSACTION, field_dict)
         except Exception:
             # Executor does NOT decide how to display errors
-            raise        
+            raise
 
     def insert_transaction(self, field_dict):
 
@@ -2928,7 +3126,6 @@ class TransactionRepository(BaseRepository):
         except Exception as exc:
             return exc
 
-
     def get_transaction(self, iban, isin_code, price_date, counter):
 
         result = self.db.select_table(
@@ -3000,6 +3197,104 @@ class TransactionRepository(BaseRepository):
         )
 
     def check_pieces_consistency_for_iban(self, iban, holding_date):
+        """
+        Checks whether the holdings for a specific IBAN are consistent with the
+        transaction history.
+
+        The first available holding for each ISIN is treated as the baseline.
+        Since holdings represent end-of-day positions, transactions on the
+        baseline date are already included in the holding and must not be
+        counted again.
+
+        Returns only positions where a discrepancy exists.
+        """
+
+        sql = """
+        WITH first_holding AS (
+            SELECT
+                iban,
+                isin_code,
+                MIN(price_date) AS first_date
+            FROM holding_view
+            WHERE iban = %s
+            GROUP BY iban, isin_code
+        ),
+        baseline AS (
+            SELECT
+                h.iban,
+                h.isin_code,
+                h.price_date AS baseline_date,
+                h.pieces AS baseline_pieces
+            FROM holding_view h
+            JOIN first_holding f
+              ON h.iban = f.iban
+             AND h.isin_code = f.isin_code
+             AND h.price_date = f.first_date
+        )
+
+        SELECT
+            h.price_date,
+            h.iban,
+            h.name,
+            h.isin_code,
+            h.pieces AS holding_pieces,
+
+            b.baseline_pieces
+            + COALESCE((
+                SELECT SUM(
+                    CASE
+                        WHEN t.transaction_type = 'DELI'
+                            THEN -t.pieces
+                        ELSE t.pieces
+                    END
+                )
+                FROM transaction t
+                WHERE t.iban = h.iban
+                  AND t.isin_code = h.isin_code
+                  -- Holdings are end-of-day positions, therefore transactions
+                  -- on the baseline date are already reflected in the baseline.
+                  AND t.price_date > b.baseline_date
+                  AND t.price_date <= h.price_date
+            ), 0) AS calculated_pieces,
+
+            (
+                b.baseline_pieces
+                + COALESCE((
+                    SELECT SUM(
+                        CASE
+                            WHEN t.transaction_type = 'DELI'
+                                THEN -t.pieces
+                            ELSE t.pieces
+                        END
+                    )
+                    FROM transaction t
+                    WHERE t.iban = h.iban
+                      AND t.isin_code = h.isin_code
+                      AND t.price_date > b.baseline_date
+                      AND t.price_date <= h.price_date
+                ), 0)
+            ) - h.pieces AS difference
+
+        FROM holding_view h
+        JOIN baseline b
+          ON h.iban = b.iban
+         AND h.isin_code = b.isin_code
+
+        WHERE h.iban = %s
+          AND h.price_date = %s
+
+        HAVING difference <> 0
+
+        ORDER BY h.isin_code;
+        """
+
+        return self.db.executor.execute(
+            sql,
+            (iban, iban, holding_date),
+            result_dict=True,
+        )
+
+    def old_check_pieces_consistency_for_iban(self, iban, holding_date):
         """
         For a specific IBAN within a given period, checks
         whether the accumulated pieces from TRANSACTION table

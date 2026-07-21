@@ -131,9 +131,7 @@ class TradingCalendar:
 
         # Validate resulting range
         if start > end:
-            start = end
-            raise ValueError("No valid trading period")
-
+            end = start
         # Return formatted strings if requested
         if as_str:
             return (

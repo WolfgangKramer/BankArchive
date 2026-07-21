@@ -1,6 +1,6 @@
 """
 Created on 12.04.2021
-__updated__ = "2026-05-19"
+__updated__ = "2026-07-05"
 @author: Wolfgang Kramer
 
     Modified code of:
@@ -402,6 +402,12 @@ class RowHeaderCallForms(RowHeader):
         if hasattr(self.root, 'show_row'):
             defaultactions.update(
                 {decl.POPUP_MENU_TEXT['Show selected Row']: lambda: self.root.show_row()})
+        if hasattr(self.root, 'show_holding_changed'):
+            defaultactions.update(
+                {decl.POPUP_MENU_TEXT['Show Holding Changed']: lambda: self.root.show_holding_changed()})
+        if hasattr(self.root, 'show_holding_daily'):
+            defaultactions.update(
+                {decl.POPUP_MENU_TEXT['Show Holding Daily']: lambda: self.root.show_holding_daily()})
         if hasattr(self.root, 'show_credit_data'):
             defaultactions.update(
                 {decl.POPUP_MENU_TEXT['Show credit data']: lambda: self.root.show_credit_data()})

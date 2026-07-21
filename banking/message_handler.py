@@ -94,9 +94,11 @@ MESSAGE_TEXT = {
     'HITAN_MISSED': 'Response HITAN missing: bank_name {}, account_number {}, account_product_name {}',
     'HIUPD_EXTENSION': 'Bank: {} \n Bank Account: {}  {}       \n     IBAN {} received Bank Information: \n     {}',
     'HKKAZ CONSOR': 'Consors currently supports only version 6 for FINTS HKKAZ Segment.',
+    'HOLDING_MISSING_TRADING_DAYS': 'Select the trading days for which holding positions are to be created.',
     'HOLDING_INSERT': 'Holding data for date {} does not exist. Insert?',
     'HOLDING_TRANSACTION_ERROR': 'Holding not created: {}',
-    'HOLDING_TRANSACTION_CREATED': 'Holding row {} {} inserted',
+    'HOLDING_TRANSACTION_CREATED': 'Holding row {} {} inserted: {}',
+    'HOLDING_PIECES': '  {}:    Holding positions with pieces changes',
     'HTTP': 'Server not connected! HTTP Status Code: {}\nBank: {}  Server: {}',
     'HTTP_INPUT': 'Server not valid or not available! HTTP Status Code: {}',
     'IBAN': 'IBAN invalid',
@@ -218,13 +220,13 @@ MESSAGE_TEXT = {
 
             Download CSV File via Bank App Menu Tab:
                                 "ORDERÜBERSICHT"
-    """,   
+    """,
     'IMPORT_TEXT_TRANSACTION_BANK_BIW': """
         Import transaction data via CSV File
 
             Download CSV File via Bank App Menu Tab:
                                 "DEPOTUMSÄTZE"
-    """,   
+    """,
     'IMPORT_TEXT_TRANSACTION': """
         CSV format
         ----------
@@ -285,6 +287,7 @@ MESSAGE_TEXT = {
     'NO_TURNOVER': 'Bank: {} \n Bank Account: {}  {}       \n     No new turnover',
     'NOTALLOWED': '{} Value not allowed, select from list \n {}',
     'NOT_FOUND': 'MESSAGE_TEXT not found',
+    'NO_MISSING_TRADING_DAY': 'There are no missing trading days in the period {}',
     'SHELVE_NAME_MISSED': 'Shelve name  {} not found',
     'OPENING_ACCOUNT_MISSED': 'Opening balance account is missing/multiple in Chart of Accounts',
     'OPENING_LEDGER_MISSED': 'Opening balances missed in {}. Account: {}',
@@ -295,6 +298,7 @@ MESSAGE_TEXT = {
     'PIN_INVALID': 'Invalid PIN.',
     'PIN': 'PIN missing! \nBank: {} ({})',
     'PIN_INPUT': 'Enter PIN   {} ({}) ',
+    'PRICE_ADJUSTMENT_NEEDED': '{} {} Closing prices not found',
     'PRICES_DELETED': '{}:  Prices deleted\n\n Used Ticker Symbol {} \n ISIN: {}',
     'PRICES_CLOSE_ZERO': '{} has not yet updated ClosePrice: {} {}',
     'PRICES_EMPTY': 'Price table is empty',
@@ -341,8 +345,13 @@ MESSAGE_TEXT = {
     'TAN_INPUT': 'Enter TAN  {} ({}): ',
     'TAN_CANCEL': 'Input TAN canceled, request aborted',
     'TERMINATION': 'FinTS MariaDB Banking Termination',
+    'TEXT_TRANSACTION': 'Created from Transaction Data',
+    'TEXT_PREVIOUS_HOLDING': 'Copy of the previous Trading-day Holding Data',
+    'TEXT_FIRST_HOLDING_PRICE': 'Create 1st Holding row from Transaction and Price Data',
+    'TEXT_FIRST_HOLDING_TRANSACTION': 'Create 1st Holding row from Transaction Acquisition Data',
     'THREAD': 'Task {} aborted. No Dialogue. Its no mainthread',
     'THREADING_ACTIVE': 'Threading activated',
+    'TRANSACTION_PIECES': '  {}:    Transanctions with pieces changes in period',
     'TRANSACTION_CHECK': '{} Difference Pieces of Transactions / Pieces of Portfolio',
     'TRANSACTION_CLOSED_EMPTY': ' No Closed Transactions in Period {} - {}',
     'TRANSACTION_HEADER_SYNC_TABLE': 'SYNCHRONIZE TRANSACTIONS',

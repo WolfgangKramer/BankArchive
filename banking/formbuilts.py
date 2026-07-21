@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2026-06-30"
+__updated__ = "2026-07-14"
 @author: Wolfgang Kramer
 """
 import re
@@ -2395,8 +2395,7 @@ class BaseViewer(ABC):
         # --------------------------------------------------------------
         self._window.protocol(
             decl.WM_DELETE_WINDOW, self._wm_deletion_window)
-        self._window.mainloop()
-        self.quit_widget()
+        self._window.wait_window()
 
     def _create_menu(self):
         """
@@ -2576,3 +2575,4 @@ class BaseViewer(ABC):
         """
         if self._window:
             self._window.destroy()
+            self._window = None

@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-06-30"
+__updated__ = "2026-07-20"
 Author: Wolfang Kramer
 """
 import requests
@@ -43,7 +43,8 @@ from banking.forms import (
     ProtocolViewer, PandasBoxBondMasterTable, PandasBoxCurrencyTable,
     LedgerTableSearchRowBox, StatementTableSearchRowBox,
     SelectFields, SelectLedgerAccount, SelectLedgerAccountCategory,
-    SelectLedgerDailyBalanceAccounts, SelectDownloadPrices, SelectBuildHoldings,
+    SelectLedgerDailyBalanceAccounts, SelectDownloadPrices,
+    SelectMissingTradingDays,
     TechnicalIndicator,
     VersionTransaction,
 )
@@ -150,7 +151,6 @@ class BankProcessor:
         result = methods.get(bank_name, self.process_default)(title, iban, filename, service)
         if result:
             BuiltPandasBox(title=title, dataframe=DataFrame(result))
-        
 
 
 class BaseWorkflow:
@@ -206,24 +206,46 @@ class BaseWorkflow:
 
     def _show_informations(self):
         """
-        show informations of threads, if exist
+        Show all available information protocols one after another.
         """
-        # download transaction
-        title = ' '.join([get_menu_text("Download"), get_menu_text("Transaction"), date_days.today()])
-        ProtocolViewer(title=title, header=msg.Informations.TRANSACTION_INFORMATIONS,
-                       text=msg.Informations.transaction_informations)
-        # downloaad prices
-        title = ' '.join([get_menu_text("Download"), get_menu_text("Prices"), date_days.today()])
-        ProtocolViewer(title=title, header=msg.Informations.PRICES_INFORMATIONS,
-                       text=msg.Informations.prices_informations)
-        # download bankdata
-        title = ' '.join([get_menu_text("Download"), date_days.today()])
-        ProtocolViewer(title=title, header=msg.Informations.BANKDATA_INFORMATIONS,
-                       text=msg.Informations.bankdata_informations)
-        # update market_price in holding
-        title = ' '.join([get_menu_text("Update"), get_menu_text("Holding"), date_days.today()])
-        ProtocolViewer(title=title, header=msg.Informations.HOLDING_INFORMATIONS,
-                       text=msg.Informations.holding_informations)
+
+        viewers = [
+            (
+                ' '.join([get_menu_text("Download"),
+                          get_menu_text("Transaction"),
+                          date_days.today()]),
+                msg.Informations.TRANSACTION_INFORMATIONS,
+                msg.Informations.transaction_informations,
+            ),
+            (
+                ' '.join([get_menu_text("Download"),
+                          get_menu_text("Prices"),
+                          date_days.today()]),
+                msg.Informations.PRICES_INFORMATIONS,
+                msg.Informations.prices_informations,
+            ),
+            (
+                ' '.join([get_menu_text("Download"),
+                          date_days.today()]),
+                msg.Informations.BANKDATA_INFORMATIONS,
+                msg.Informations.bankdata_informations,
+            ),
+            (
+                ' '.join([get_menu_text("Update"),
+                          get_menu_text("Holding"),
+                          date_days.today()]),
+                msg.Informations.HOLDING_INFORMATIONS,
+                msg.Informations.holding_informations,
+            ),
+        ]
+
+        for title, header, text in viewers:
+            if text:
+                ProtocolViewer(
+                    title=title,
+                    header=header,
+                    text=text,
+                )
 
     def _delete_footer(self):
 
@@ -650,9 +672,9 @@ class CustomizingWorkFlow(BaseWorkflow):
         for key in transaction_version_box.field_dict.keys():
             transaction_versions[key[2:5]
                                  ] = transaction_version_box.field_dict[key]
-        if bank_code==decl.CONSORS_BANK_CODE:                         
+        if bank_code == decl.CONSORS_BANK_CODE:
             msg.MessageBoxInfo(title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'HKKAZ CONSOR'))
-            transaction_versions['KAZ']='6'                     
+            transaction_versions['KAZ'] = '6'
         data = (decl.KEY_VERSION_TRANSACTION, transaction_versions)
         self.repo.shelve_put_key(bank_code, data)
 
@@ -670,7 +692,6 @@ class CustomizingWorkFlow(BaseWorkflow):
             selected_row = ledger_currency.selected_row
             if ledger_currency.button_state == decl.WM_DELETE_WINDOW:
                 return
-
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def import_bankidentifier(self):
@@ -1023,24 +1044,70 @@ class DatabaseWorkFlow(BaseWorkflow):
                         field_list=[declm.DB_iban, declm.DB_price_date, declm.DB_ISIN] + selected_check_button,
                         iban=iban, period=(data_dict[decl.FN_FROM_DATE], data_dict[decl.FN_TO_DATE]))
                     if not data:
-                        break                    
+                        break
 
     @_wrapper(before="_delete_footer", after="_show_informations")
-    def data_insert_holding_from_transaction(self, bank_name, iban):
+    def data_missing_trading_days(self, bank_name, iban):
+        # inserts missing holding trading days in table holding
         title = ' '.join(
-            [bank_name, get_menu_text("Insert Holding Positions from Transactions")])
-        name_isin_code = self.repo.get_transactions_name_isin_of_iban(iban)
-        if name_isin_code:
-            names = list(name_isin_code.keys())
-            while True:
-                select_isins = SelectBuildHoldings(title=title, checkbutton_texts=names)
-                if select_isins.button_state == decl.WM_DELETE_WINDOW:
-                    self._show_informations()
-                    return
-                field_list = select_isins.field_list
-                for seleted_isin_name in field_list:
-                    isin_code = name_isin_code[seleted_isin_name]
-                    self.srv.build_holdings(title, select_isins.button_state, iban, isin_code)
+            [bank_name, get_menu_text("Holding Missing Trading Day")])
+        data_dict = {decl.FN_FROM_DATE: date_days.subtract(date.today(), 60),
+                     decl.FN_TO_DATE: date_days.today()}
+        while True:
+            input_period = InputPeriod(title=title, data_dict=data_dict)
+            if input_period.button_state == decl.WM_DELETE_WINDOW:
+                return
+            data_dict = input_period.field_dict
+            period = (data_dict.get(decl.FN_FROM_DATE, date_days.subtract(date.today(), 60)),
+                      data_dict.get(decl.FN_TO_DATE, date_days.today())
+                      )
+            _, missing = self.srv.compare_dates(self.repo.get_price_dates(period))
+            if missing:
+                while True:
+                    missing_days = SelectMissingTradingDays(title=title, checkbutton_texts=missing)
+                    if missing_days.button_state == decl.WM_DELETE_WINDOW:
+                        self._show_informations()
+                        return
+                    for trading_day in missing_days.field_list:
+                        isin_codes = self.repo.get_isin_codes_with_position_in_trading_day(
+                            iban,
+                            trading_day
+                        )
+                        build_holding = True
+                        for isin_code in isin_codes:
+                            name = self.repo.get_name_of_isin_code(isin_code)
+                            # import price data
+                            import_prices = self.srv.import_prices_and_corporate_actions(
+                                msg.MESSAGE_TITLE,
+                                [name],
+                                state=decl.BUTTON_APPEND
+                                )
+                            if not import_prices:
+                                build_holding = False
+                        if build_holding:
+                            for isin_code in isin_codes:
+                                self.srv.build_holdings(
+                                    title=title,
+                                    state=decl.BUTTON_INSERT,
+                                    iban=iban,
+                                    isin_code=isin_code,
+                                    trading_days=[trading_day]
+                                )
+                        else:
+                            msg.MessageBoxInfo(
+                                title=title,
+                                information=decl.WARNING,
+                                info_storage=msg.Informations.HOLDING_INFORMATIONS,
+                                message=msg.get_message(
+                                    msg.MESSAGE_TEXT,
+                                    "PRICE_ADJUSTMENT_NEEDED",
+                                    name,
+                                    trading_day
+                                )
+                            )
+            else:
+                msg.MessageBoxInfo(
+                    title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'NO_MISSING_TRADING_DAY', period))
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def data_update_holding_and_prices(self, bank_name, iban):
@@ -1320,7 +1387,7 @@ class DatabaseWorkFlow(BaseWorkflow):
             else:
                 title_action = ' '.join([title, data_dict[declm.DB_action_type]])
                 select_data = self.repo.get_corporate_actions_data(
-                    data_dict[declm.DB_action_type],selected_isins)
+                    data_dict[declm.DB_action_type], selected_isins)
                 if select_data:
                     self.footer.set('')
                     message = ''
@@ -1407,26 +1474,25 @@ class DatabaseWorkFlow(BaseWorkflow):
 
         title = ' '.join([bank_name, get_menu_text("Check Transactions Pieces")])
         price_dates = self.repo.get_price_dates_of_transactions(iban=iban)
+        result = []
         if price_dates:
             for price_date in price_dates:
                 price_date = date_days.convert_to_str(price_date[0])
-                result = self.repo.check_pieces_consistency_for_iban(
+                result += self.repo.check_pieces_consistency_for_iban(
                     iban, price_date)
-                if result:
-                    title_period = ' '.join(
-                        [title, msg.get_message(msg.MESSAGE_TEXT, 'PERIOD', decl.START_DATE_TRANSACTIONS, price_date)])
-                    table = PandasBoxPiecesConsistency(
-                        dataframe=result, title=title_period, cellwidth_resizeable=False, mode=decl.EDIT_ROW)
-                    if table.button_state == decl.WM_DELETE_WINDOW:
-                        break
-        else:
-            msg.MessageBoxInfo(title=title,
-                               message=msg.get_message(
-                                   msg.MESSAGE_TEXT,
-                                   'TRANSACTION_CHECK',
-                                   'NO '
+            if result:
+                title_period = ' '.join(
+                    [title, msg.get_message(msg.MESSAGE_TEXT, 'PERIOD', decl.START_DATE_TRANSACTIONS, price_date)])
+                PandasBoxPiecesConsistency(
+                    dataframe=result, title=title_period, cellwidth_resizeable=False, mode=decl.EDIT_ROW)
+            else:
+                msg.MessageBoxInfo(title=title,
+                                   message=msg.get_message(
+                                       msg.MESSAGE_TEXT,
+                                       'TRANSACTION_CHECK',
+                                       'NO '
+                                       )
                                    )
-                               )
     @_wrapper(before="_delete_footer", after="_show_informations")
     def transactions_profit(self, bank_name, iban):
 

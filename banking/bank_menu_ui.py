@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-06-30"
+__updated__ = "2026-07-20"
 Author: Wolfang Kramer
 """
 import sys
@@ -527,10 +527,10 @@ class Menue:
                                  y=acc[decl.KEY_ACC_IBAN]: self.w_db.data_holding_table(x, y)))
                     account_menu.add_separator()
                     account_menu.add_command(
-                        label=get_menu_text("Insert Holding Positions from Transactions"),
+                        label=get_menu_text("Holding Missing Trading Day"),
                         command=(lambda x=bank_name,
                                  y=acc[decl.KEY_ACC_IBAN]:
-                                 self.w_db.data_insert_holding_from_transaction(x, y)))
+                                 self.w_db.data_missing_trading_days(x, y)))
                     account_menu.add_command(
                         label=get_menu_text("Update Holding Market Price by Closing Price"),
                         command=(lambda x=bank_name,

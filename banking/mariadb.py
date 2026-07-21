@@ -1,6 +1,6 @@
 """
 Created on 26.11.2019
-__updated__ = "2026-06-28"
+__updated__ = "2026-07-13"
 @author: Wolfgang Kramer
 """
 import sqlalchemy
@@ -256,7 +256,6 @@ class MariaDBConnection:
             connectionresult.cursor.close()
             connectionresult.conn.close()
 
-
 class MariaDBExecutor:
     """
     Centralized SQL execution layer.
@@ -268,7 +267,6 @@ class MariaDBExecutor:
 
     def __init__(self):
 
-        self._cursor = connectionresult.cursor
         self._conn = connectionresult.conn
 
     def execute(
@@ -278,53 +276,67 @@ class MariaDBExecutor:
         *,
         duplicate: bool = False,
         result_dict: bool = False,
-        compress: bool = False
+        compress: bool = False,
     ):
         """
         Execute SQL statement.
 
         Parameters:
-            sql_statement: SQL string
+            sql: SQL string
             vars_: bind parameters
-            duplicate: ignore duplicate key error (1062)
+            duplicate: ignore duplicate key error (reserved)
             result_dict: return list of dicts instead of tuples
             compress: normalize whitespace in SQL
 
         Returns:
             SELECT/WITH   -> list[tuple] | list[dict]
             INSERT/UPDATE/DELETE/REPLACE -> affected row count
-            otherwise    -> None
+            otherwise -> None
         """
+
         sql = self._prepare_sql(sql, compress)
+
         try:
             DatabaseErrorHandler.EXCEPTION = None
-            # print(sql, vars_)
-            self._execute(sql, vars_)
-            if self._is_select(sql):
-                return self._fetch(result_dict)
-            if self._is_modify(sql):
-                return self._row_count()
-            return None
+
+            with self._conn.cursor(dictionary=result_dict) as cursor:
+
+                self._execute(cursor, sql, vars_)
+
+                if self._is_select(sql):
+                    return self._fetch(cursor)
+
+                if self._is_modify(sql):
+                    return cursor.rowcount
+
+                return cursor.rowcount
 
         except Exception as exc:
-            # Executor does NOT decide how to display errors
             exc.statement = sql
             exc.params = vars_
             DatabaseErrorHandler.EXCEPTION = exc            
+            DatabaseErrorHandler.handle_error(
+                            title="load_csv_to_table",
+                            storage=msg.Informations.PRICES_INFORMATIONS,
+                            exc=exc,
+                            sql=sql,
+                            params=vars_,
+                         )                        
             raise
 
     def _prepare_sql(self, sql: str, compress: bool) -> str:
 
         if not compress:
             return sql
-        return re.sub(r'\s+', ' ', sql.replace('\n', ' ')).strip()
+        return re.sub(r"\s+", " ", sql.replace("\n", " ")).strip()
 
-    def _execute(self, sql: str, params):
+    def _execute(self, cursor, sql: str, params):
 
-        if params:
-            self._cursor.execute(sql, params)
+        #print(sql, "\n", params)
+        if params is None:
+            cursor.execute(sql)
         else:
-            self._cursor.execute(sql)
+            cursor.execute(sql, params)
 
     def _is_select(self, sql: str) -> bool:
 
@@ -334,18 +346,9 @@ class MariaDBExecutor:
 
         return bool(self.MODIFY_RE.match(sql))
 
-    def _fetch(self, result_dict: bool):
+    def _fetch(self, cursor):
 
-        rows = self._cursor.fetchall()
-        if not result_dict:
-            return rows
-        columns = [c[0] for c in self._cursor.description]
-        return [dict(zip(columns, row)) for row in rows]
-
-    def _row_count(self) -> int:
-
-        self._cursor.execute('SELECT ROW_COUNT()')
-        return self._cursor.fetchone()[0]
+        return cursor.fetchall()
 
 
 class DatabaseErrorHandler:

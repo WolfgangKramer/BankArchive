@@ -1,13 +1,13 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-06-30"
+__updated__ = "2026-07-20"
 @author: Wolfgang Kramer
 """
 from collections import namedtuple
 from enum import Enum
 
 TINYINT = 'tinyint'  # data_type only used as check button fields
-ENUM = 'enum' # data_type used  enum classes, generates combo_fields
+ENUM = 'enum'  # data_type used  enum classes, generates combo_fields
 # allowed integer data_types in database
 INTEGER = ['bigint', 'smallint', 'int']
 DATABASE_TYP_DECIMAL = 'decimal'
@@ -71,7 +71,7 @@ SHELVES = 'shelves'
 # CREATE_...   copied from HEIDI SQL Create-Tab and IF NOT EXISTS added
 # additionally with VIEWs: ALTER ALGORITHM changed to CREATE ALGORITHM and IF NOT EXISTS added
 
-CREATE_APPLICATION = f"""CREATE TABLE IF NOT EXISTS `application` (
+CREATE_APPLICATION = """CREATE TABLE IF NOT EXISTS `application` (
     `row_id` TINYTEXT NOT NULL DEFAULT '1' COMMENT 'row_id: application values, fields 1-9\r\nrow_id: alpha_vantage values fields 10-11' COLLATE 'utf8mb4_uca1400_ai_ci',
     `product_id` VARCHAR(50) NULL DEFAULT NULL COMMENT 'Registration ID of FinTS software products' COLLATE 'utf8mb4_uca1400_ai_ci',
     `alpha_vantage` VARCHAR(50) NULL DEFAULT NULL COMMENT 'Free key for the Alpha Vantage Stock API © with lifetime access' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -93,11 +93,11 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_APPLICATION_VIEW = f"""CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `application_view`
+CREATE_APPLICATION_VIEW = """CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `application_view`
  AS SELECT product_id, alpha_vantage, directory, show_messages, logging, threading, ledger, alpha_vantage_price_period FROM application WHERE row_id=1  ;
 """
 
-CREATE_BANKIDENTIFIER = f"""CREATE TABLE IF NOT EXISTS `bankidentifier` (
+CREATE_BANKIDENTIFIER = """CREATE TABLE IF NOT EXISTS `bankidentifier` (
     `code` CHAR(8) NOT NULL COMMENT 'Bank_Code (BLZ)' COLLATE 'utf8mb4_uca1400_ai_ci',
     `payment_provider` CHAR(1) NOT NULL COMMENT 'Merkmal, ob bankleitzahlführender Zahlungsdienstleister >1< oder nicht >2<. Maßgeblich sind nur Datensätze mit dem Merkmal >1<' COLLATE 'utf8mb4_uca1400_ai_ci',
     `payment_provider_name` VARCHAR(70) NOT NULL COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -120,7 +120,7 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_BOND_MASTER = f"""CREATE TABLE IF NOT EXISTS `bond_master` (
+CREATE_BOND_MASTER = """CREATE TABLE IF NOT EXISTS `bond_master` (
     `isin_code` CHAR(12) NOT NULL COMMENT 'Reference to ISIN master record' COLLATE 'utf8mb4_uca1400_ai_ci',
     `issuer_name` VARCHAR(255) NOT NULL COMMENT 'Legal name of issuer' COLLATE 'utf8mb4_uca1400_ai_ci',
     `bond_type` VARCHAR(30) NOT NULL COMMENT 'Bond type code. See table bond_type' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -143,11 +143,11 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_BOND_MASTER_VIEW = f"""CREATE OR REPLACE ALGORITHM  = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bond_master_view`
+CREATE_BOND_MASTER_VIEW = """CREATE OR REPLACE ALGORITHM  = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bond_master_view`
  AS SELECT t2.name, t1.isin_code, t1.issuer_name, t1.bond_type, t1.currency, t1.issue_date, t1.maturity_date, t1.coupon_rate, t1.coupon_type, t1.coupon_frequency, t1.denomination, t1.bond_status, t1.description FROM bond_master AS t1 INNER JOIN isin AS t2 USING(isin_code)  ;
 """
 
-CREATE_CORPORATE_ACTIONS = f"""CREATE TABLE IF NOT EXISTS `corporate_actions` (\
+CREATE_CORPORATE_ACTIONS = """CREATE TABLE IF NOT EXISTS `corporate_actions` (\
     `isin_code` CHAR(12) NOT NULL DEFAULT '0' COMMENT 'Isin_Code' COLLATE 'utf8mb4_uca1400_ai_ci',
     `action_date` DATE NOT NULL COMMENT 'Action_date',
     `action_type` ENUM('DIVIDEND','SPLIT') NOT NULL COMMENT 'Action type: Dividend / Split' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -161,11 +161,11 @@ ENGINE=InnoDB
 
 """
 
-CREATE_CORPORATE_ACTIONS_ISIN_VIEW = f"""CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `corporate_actions_isin_view` 
+CREATE_CORPORATE_ACTIONS_ISIN_VIEW = """CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `corporate_actions_isin_view`
 AS SELECT *  FROM corporate_actions INNER JOIN isin USING (isin_code)  ;
 """
 
-CREATE_CURRENCY = f"""
+CREATE_CURRENCY = """
 CREATE TABLE IF NOT EXISTS `currency` (
     `iso_code` CHAR(3) NOT NULL COMMENT ' e.g., EUR, USD, JPY' COLLATE 'utf8mb4_uca1400_ai_ci',
     `name` VARCHAR(100) NOT NULL COMMENT 'e.g., Euro, US Dollar' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -182,7 +182,7 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_GEOMETRY = f"""
+CREATE_GEOMETRY = """
 CREATE TABLE IF NOT EXISTS `geometry` (
     `caller` VARCHAR(200) NOT NULL COMMENT 'name of called tkinter form' COLLATE 'utf8mb4_uca1400_ai_ci',
     `geometry` VARCHAR(50) NULL DEFAULT NULL COMMENT '>width<x>height<+>x-position<+>y-position<' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -195,7 +195,7 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_HOLDING = f"""
+CREATE_HOLDING = """
 CREATE TABLE IF NOT EXISTS `holding` (
     `iban` CHAR(22) NOT NULL COMMENT ':97A:: DepotKonto' COLLATE 'utf8mb4_uca1400_ai_ci',
     `price_date` DATE NOT NULL DEFAULT '2000-01-01' COMMENT ':98A:: M Datum (und Uhrzeit), auf dem/der die Aufstellung basiert',
@@ -222,12 +222,12 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_HOLDING_VIEW = f"""
+CREATE_HOLDING_VIEW = """
 CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `holding_view`
  AS SELECT t1.iban, t1.price_date, t1.isin_code, t2.name, t2.symbol, t1.price_currency, t1.market_price, t1.acquisition_price, t1.pieces, t1.amount_currency, t1.total_amount, t1.total_amount_portfolio, t1.acquisition_amount, t1.exchange_rate, t1.exchange_currency_1, t1.exchange_currency_2, t1.origin  FROM holding AS t1 INNER JOIN isin AS t2 USING(isin_code)  ;
 """
 
-CREATE_ISIN = f"""
+CREATE_ISIN = """
 CREATE TABLE IF NOT EXISTS `isin` (
     `name` VARCHAR(35) NOT NULL DEFAULT 'NA' COMMENT ':35B:: Wertpapierbezeichnung' COLLATE 'utf8mb4_uca1400_ai_ci',
     `isin_code` CHAR(12) NOT NULL DEFAULT '0' COMMENT ':35B:: ISIN-Kennung' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -252,7 +252,7 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_LEDGER = f"""
+CREATE_LEDGER = """
 CREATE TABLE IF NOT EXISTS `ledger` (
     `id_no` INT(10) UNSIGNED NOT NULL COMMENT 'Position 1-4: Ledger year, Position 5-10: Ledger document number',
     `entry_date` DATE NULL DEFAULT NULL COMMENT 'Entry date',
@@ -279,7 +279,7 @@ ROW_FORMAT=DYNAMIC
 ;
 """
 
-CREATE_LEDGER_COA = f"""
+CREATE_LEDGER_COA = """
 CREATE TABLE IF NOT EXISTS `ledger_coa` (
     `account` CHAR(4) NOT NULL COMMENT 'Account Number(4 digits)' COLLATE 'utf8mb4_uca1400_ai_ci',
     `name` VARCHAR(50) NOT NULL COMMENT 'Account Name' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -305,7 +305,7 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_LEDGER_DAILY_BALANCE = f"""
+CREATE_LEDGER_DAILY_BALANCE = """
 CREATE TABLE IF NOT EXISTS `ledger_daily_balance` (
     `account` CHAR(4) NOT NULL DEFAULT 'NA' COMMENT 'Account Number(4 digits)' COLLATE 'utf8mb4_uca1400_ai_ci',
     `entry_date` DATE NOT NULL COMMENT 'Entry date',
@@ -320,7 +320,7 @@ ROW_FORMAT=DYNAMIC
 ;
 """
 
-CREATE_LEDGER_DELETE = f"""
+CREATE_LEDGER_DELETE = """
 CREATE TABLE IF NOT EXISTS `ledger_delete` (
     `id_no` INT(10) UNSIGNED NOT NULL DEFAULT '0' COMMENT 'Position 1-4: Ledger year, Position 5-10: Ledger document number',
     `entry_date` DATE NULL DEFAULT NULL COMMENT 'Entry date',
@@ -345,7 +345,7 @@ ROW_FORMAT=DYNAMIC
 ;
 """
 
-CREATE_LEDGER_STATEMENT = f"""
+CREATE_LEDGER_STATEMENT = """
 CREATE TABLE IF NOT EXISTS `ledger_statement` (
     `iban` CHAR(22) NOT NULL COMMENT 'key of table statement ' COLLATE 'utf8mb4_uca1400_ai_ci',
     `entry_date` DATE NOT NULL COMMENT 'key of table statement ',
@@ -364,12 +364,15 @@ ROW_FORMAT=DYNAMIC
 ;
 """
 
-CREATE_LEDGER_VIEW = f"""
-CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `ledger_view` 
-AS SELECT t1.id_no, t1.entry_date, t1.date, t1.purpose_wo_identifier,  t1.amount, t1.currency, t1.category, t1.credit_account, credit_name, t1.debit_account, t2.name AS debit_name, t1.applicant_name, t1.vat_amount, t1.vat_rate, t1.upload_check, t1.bank_statement_checked, t1.origin FROM (SELECT t2.name as credit_name, t1.*  FROM ledger as t1 LEFT JOIN (ledger_coa as t2)    ON (t1.credit_account=t2.account) ) as t1 LEFT JOIN (ledger_coa as t2)    ON (t1.debit_account=t2.account)  ;
+CREATE_LEDGER_VIEW = """
+CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `ledger_view`
+ AS SELECT t1.id_no, t1.entry_date, t1.date, t1.purpose_wo_identifier,  t1.amount, t1.currency, t1.category, t1.credit_account, credit_name,
+ t1.debit_account, t2.name AS debit_name, t1.applicant_name, t1.vat_amount, t1.vat_rate, t1.upload_check, t1.bank_statement_checked,
+ t1.origin FROM (SELECT t2.name as credit_name, t1.*  FROM ledger as t1 LEFT JOIN (ledger_coa as t2)
+ ON (t1.credit_account=t2.account) ) as t1 LEFT JOIN (ledger_coa as t2)    ON (t1.debit_account=t2.account)  ;
 """
 
-CREATE_PRICES = f"""
+CREATE_PRICES = """
 CREATE TABLE IF NOT EXISTS `prices` (
     `isin_code` CHAR(12) NOT NULL COMMENT 'Isin_Code' COLLATE 'utf8mb4_uca1400_ai_ci',
     `price_date` DATE NOT NULL DEFAULT '2000-01-01' COMMENT 'Date of Prices',
@@ -389,12 +392,12 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_PRICES_ISIN_VIEW = f"""
-CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `prices_isin_view` 
+CREATE_PRICES_ISIN_VIEW = """
+CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `prices_isin_view`
 AS SELECT * FROM prices INNER JOIN isin USING (isin_code)  ;
 """
 
-CREATE_SELECTION = f"""
+CREATE_SELECTION = """
 CREATE TABLE IF NOT EXISTS `selection` (
     `name` VARCHAR(200) NOT NULL COMMENT 'selection name e.g. title of form' COLLATE 'utf8mb4_uca1400_ai_ci',
     `data` LONGTEXT NULL DEFAULT NULL COMMENT 'contains recently used selection values in JSON format' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -406,7 +409,7 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_SERVER = f"""
+CREATE_SERVER = """
 CREATE TABLE IF NOT EXISTS `server` (
     `code` CHAR(8) NOT NULL COMMENT 'Bankleitzahl' COLLATE 'utf8mb4_uca1400_ai_ci',
     `server` VARCHAR(100) NULL DEFAULT NULL COMMENT 'PIN/TAN-Access URL' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -418,7 +421,7 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_SHELVES =  f"""
+CREATE_SHELVES = """
 CREATE TABLE IF NOT EXISTS `shelves` (
     `code` CHAR(8) NOT NULL COMMENT 'Bank_Code (BLZ)' COLLATE 'utf8mb4_uca1400_ai_ci',
     `bankdata` LONGTEXT NULL DEFAULT NULL COMMENT 'bank data stored in JSON format' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -430,7 +433,7 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_STATEMENT = f"""
+CREATE_STATEMENT = """
 CREATE TABLE IF NOT EXISTS `statement` (
     `iban` CHAR(22) NOT NULL COMMENT 'IBAN' COLLATE 'utf8mb4_uca1400_ai_ci',
     `entry_date` DATE NOT NULL COMMENT ':61: Buchungsdatum MMTT',
@@ -499,7 +502,7 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_TICKERS = f"""
+CREATE_TICKERS = """
 CREATE TABLE IF NOT EXISTS `tickers` (
     `symbol` VARCHAR(14) NOT NULL COMMENT 'Ticker' COLLATE 'utf8mb4_uca1400_ai_ci',
     `company_name` VARCHAR(255) NOT NULL COMMENT 'Company Name' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -514,7 +517,7 @@ ENGINE=InnoDB
 ;
 """
 
-CREATE_TRANSACTION = f"""
+CREATE_TRANSACTION = """
 CREATE TABLE IF NOT EXISTS `transaction` (
     `iban` CHAR(22) NOT NULL COMMENT ':97A:: DepotKonto' COLLATE 'utf8mb4_uca1400_ai_ci',
     `isin_code` CHAR(12) NOT NULL DEFAULT '0' COMMENT ':35B:: ISIN Kennung' COLLATE 'utf8mb4_uca1400_ai_ci',
@@ -537,12 +540,14 @@ COLLATE='utf8mb4_uca1400_ai_ci'
 ENGINE=InnoDB
 ;
 """
-CREATE_TRANSACTION_VIEW = f"""
-CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `transaction_view` 
-AS SELECT t1.iban, t1.isin_code, t2.name, t1.price_date, t1.counter, t1.transaction_type, t1.price_currency, t1.price, t1.pieces, t1.amount_currency, t1.posted_amount, t1.exchange_rate, t1.origin, t1.comments, t1.transaction_no  FROM transaction AS t1 INNER JOIN isin AS t2 USING(isin_code)  ;
+CREATE_TRANSACTION_VIEW = """
+CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `transaction_view`
+    AS SELECT t1.iban, t1.isin_code, t2.name, t1.price_date, t1.counter, t1.transaction_type, t1.price_currency, t1.price,
+    t1.pieces, t1.amount_currency, t1.posted_amount, t1.exchange_rate, t1.origin, t1.comments, t1.transaction_no
+    FROM transaction AS t1 INNER JOIN isin AS t2 USING(isin_code) ;
 """
 
-CREATE_TRIGGER_trg_ledger_after_update = f"""
+CREATE_TRIGGER_trg_ledger_after_update = """
 CREATE OR REPLACE TRIGGER trg_ledger_after_update
 AFTER UPDATE ON ledger
 FOR EACH ROW
@@ -559,7 +564,7 @@ BEGIN
 END
 """
 
-CREATE_TRIGGER_trg_ledger_after_delete = f"""
+CREATE_TRIGGER_trg_ledger_after_delete = """
 CREATE OR REPLACE TRIGGER trg_ledger_after_delete
 AFTER DELETE ON ledger
 FOR EACH ROW
@@ -571,7 +576,7 @@ BEGIN
 END
 """
 
-CREATE_TRIGGER_trg_ledger_after_insert = f"""
+CREATE_TRIGGER_trg_ledger_after_insert = """
 CREATE OR REPLACE TRIGGER trg_ledger_after_insert
 AFTER INSERT ON ledger
 FOR EACH ROW
@@ -593,7 +598,7 @@ CREATE_TRIGGER = [
 CREATE_TABLES = [CREATE_APPLICATION,
                  CREATE_APPLICATION_VIEW,
                  CREATE_BANKIDENTIFIER,
-                 CREATE_ISIN,                 
+                 CREATE_ISIN,
                  CREATE_CORPORATE_ACTIONS,
                  CREATE_CORPORATE_ACTIONS_ISIN_VIEW,
                  CREATE_CURRENCY,
@@ -756,7 +761,6 @@ DB_ultimate_debitor = 'ultimate_debitor'
 DB_validity = 'validity'
 DB_volume = 'volume'
 DB_wkn = 'wkn'
-DB_TYPES = ['SHARE', 'BOND', 'INDEX', 'SUBSCRIPTION RIGHT']
 
 """
 -------------------------------- Ledger MariaDB Table Fields --------------------------------------------------------
@@ -828,6 +832,7 @@ class IsinType(Enum):
     INDEX = "INDEX"
     SUBSCRIPTION_RIGHT = 'SUBSCRIPTION RIGHT'
 
+
 class ActionType(Enum):
     DIVIDEND = "DIVIDEND"
     SPLIT = "SPLIT"
@@ -853,16 +858,17 @@ class BondStatus(Enum):
     ACTIVE        Bond is outstanding and generally tradable.
     MATURED       Maturity reached; face value has been repaid.
     CALLED        Redeemed early by the issuer.
-    DEFAULTED     Issuer failed to make interest or principal payments.    
+    DEFAULTED     Issuer failed to make interest or principal payments.
     """
     ACTIVE = "ACTIVE"
     MATURED = "MATURED"
     CALLED = "CALLED"
     DEFAULTED = "DEFAULTED"
 
+
 #  REGISTERED_ENUMS;  BuiltTableRowBox creates  combo_field/list
-#                     Mustbe:  MariaDB datatype ENUM    
-REGISTERED_ENUMS = { 
+#                     Mustbe:  MariaDB datatype ENUM
+REGISTERED_ENUMS = {
     DB_type: IsinType,
     DB_action_type: ActionType,
     DB_coupon_type: CouponType,
@@ -874,7 +880,7 @@ REGISTERED_ENUMS = {
 class BondType(Enum):
     """
     MariaDB datatype VARCHAR
- 
+
     GOVERNMENT              Government Bond
     CORPORATE               Corporate Bond
     MUNICIPAL               Municipal Bond
