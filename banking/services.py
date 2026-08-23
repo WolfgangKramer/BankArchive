@@ -9,7 +9,7 @@ import csv
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Dict, List, Tuple, Any, Optional
-from datetime import datetime, time, date
+from datetime import date
 from abc import ABC, abstractmethod
 
 import banking.declarations as decl
@@ -27,20 +27,19 @@ from banking.mariadb import DatabaseErrorHandler
 
 class BuildHoldings:
     """
-    Creates holding records from transaction data.
+    Creates a holding position of a trading day from transaction data.
 
     This class processes transaction rows for a given IBAN and ISIN,
     calculates the daily holding state, enriches it with market prices,
-    and stores the resulting holding records in the database.
+    and stores the resulting holding position of a isin_code in the database.
     """
-    def build_holdings(
+    def build_trading_day_position(
             self,
             title,
-            state,
             iban,
             isin_code,
-            trading_days: list[date] | None = None
-    ) -> bool:
+            trading_day
+    ):
         """
         Creates holding records for the specified trading days.
 
@@ -49,160 +48,109 @@ class BuildHoldings:
 
         Args:
             title (str): Window title for information dialogs.
-            state (str): Insert or Replace.
             iban (str): Account IBAN.
             isin_code (str): Security ISIN.
             trading_days (list[date] | None):
                 Trading days for which holding rows shall be created.
 
-        Returns:
-            bool:
-                True if the holdings were successfully created,
-                otherwise False.
         """
-        last_state = None
         rows = self.repo.get_transactions_delta_of_iban_isin_code(
             iban,
             isin_code
         )
         if not rows:
             return
-        # Build the complete trading calendar only if no list was supplied.
-        if trading_days is None:
-            trading_days = xetra_cls.trading_days(
-                start=rows[0][declm.DB_price_date],
-                end=date_days.subtract(date.today(), 1),
-                as_str=False
-            )
-        if not trading_days:
-            return
-        isin_type = self.repo.select_isin_scalar(declm.DB_type, isin_code=isin_code)
-        if isin_type != declm.IsinType.BOND.value:
-            # ISIN is not a bond
-            # Load all market prices with one database query.
-            prices = self.repo.get_close_prices(
-                isin_code,
-                trading_days
-            )
         # Calculate the portfolio state after every transaction.
         daily_state = self._get_daily_state(rows)
         first_transaction_date = min(daily_state)
-
-        self.repo.start_transaction()
         try:
-            for price_date in trading_days:
-                if price_date in daily_state:
-                    # A transaction exists on this trading day.
-                    # Store the portfolio state calculated after the transaction.
-                    field_dict = self._holding_dict(
-                        iban,
-                        isin_code,
-                        price_date,
-                        daily_state[price_date],
-                        decl.ORIGIN_INSERTED
-                        )
-                    market_price = self._add_market_price(
-                        field_dict,
-                        prices,
-                        price_date
-                        )
-                    if market_price:
-                        text = msg.get_message(
-                            msg.MESSAGE_TEXT,
-                            "TEXT_TRANSACTION"
-                        )
-                        information = decl.INFORMATION
-                        self._insert_holding(field_dict, title, information, isin_code, price_date, text)
-                else:
-                    # No transaction on this trading day.
-                    if last_state is None:
-                        # Before the first transaction no holding exists.
-                        if price_date < first_transaction_date:
-                            continue
-                        # First holding after the initial transaction.
-                        last_state = daily_state[first_transaction_date]
-                    result = self.repo.duplicate_holding_row(
-                        iban,
-                        isin_code,
-                        price_date
+            if trading_day in daily_state:
+                # A transaction exists on this trading day.
+                # Store the portfolio state calculated after the transaction.
+                field_dict = self._holding_dict(
+                    iban,
+                    isin_code,
+                    trading_day,
+                    daily_state[trading_day],
+                    decl.ORIGIN_INSERTED
                     )
-                    if result:
-                        text = msg.get_message(
-                            msg.MESSAGE_TEXT,
-                            "TEXT_PREVIOUS_HOLDING"
-                        )
-                        information = decl.INFORMATION
-                        self._message_box_info(title, information, isin_code, price_date, text)
-                    else:
-                        field_dict = self._holding_dict(
-                            iban,
-                            isin_code,
-                            price_date,
-                            last_state,
-                            decl.ORIGIN_INSERTED
-                            )
-                        market_price = self._add_market_price(
-                            field_dict,
-                            prices,
-                            price_date
-                            )
-                        if market_price:
-                            text = msg.get_message(
-                                msg.MESSAGE_TEXT,
-                                "TEXT_FIRST_HOLDING_PRICE"
-                            )
-                            text = f"{text} {last_state[declm.DB_price_date]}"
-                            information = decl.WARNING
-                            self._insert_holding(field_dict, title, information, isin_code, price_date, text)
-                        else:
-                            field_dict[declm.DB_market_price] = (
-                                last_state[declm.DB_acquisition_price]
-                            )
-                            field_dict[declm.DB_total_amount] = (
-                                last_state[declm.DB_acquisition_amount]
-                            )
-                            text = msg.get_message(
-                                msg.MESSAGE_TEXT,
-                                "TEXT_FIRST_HOLDING_TRANSACTION"
-                            )
-                            text = f"{text} {last_state[declm.DB_price_date]}"
-                            information = decl.WARNING
-                            self._insert_holding(field_dict, title, information, isin_code, price_date, text)
-            self.repo.commit()
-        except Exception as e:
-            self.repo.rollback_transaction()
-            msg.MessageBoxInfo(
-                title=title,
-                info_storage=msg.Informations.HOLDING_INFORMATIONS,
-                information=decl.ERROR,
-                message=msg.get_message(
-                    msg.MESSAGE_TEXT,
-                    "HOLDING_TRANSACTION_ERROR",
-                    f"""
-                        {self.repo.get_name_of_isin_code(isin_code)} {price_date}: {str(e)}
-                     """
+                market_price = self._add_market_price(
+                    field_dict,
+                    trading_day,
+                    daily_state
+                    )
+                if market_price:
+                    text = msg.get_message(
+                        msg.MESSAGE_TEXT,
+                        "TEXT_TRANSACTION"
+                    )
+                    self._insert_holding(field_dict, title, isin_code, trading_day, text)
+                else:
+                    text = msg.get_message(
+                        msg.MESSAGE_TEXT,
+                        "TEXT_MARKET_PRICE_FAILED"
+                    )
+                    message = self._message_warning(isin_code, trading_day, text)
+                    raise RuntimeError(message)
+            else:
+                if trading_day < first_transaction_date:
+                    # Before the first transaction no holding exists.
+                    return
+                market_price = self.repo.get_close_price(
+                    isin_code,
+                    trading_day
+                    )
+                result = self.repo.duplicate_holding_row(
+                    iban,
+                    isin_code,
+                    trading_day,
+                    market_price
                 )
-            )
+                if result:
+                    text = msg.get_message(
+                        msg.MESSAGE_TEXT,
+                        "TEXT_PREVIOUS_HOLDING"
+                    )
+                    self._message_box_info(title, isin_code, trading_day, text)
+                else:
+                    text = msg.get_message(
+                        msg.MESSAGE_TEXT,
+                        "TEXT_FIRST_HOLDING_ERROR"
+                    )
+                    message = self._message_warning(isin_code, trading_day, text)
+                    raise RuntimeError(message)
+        except Exception:
+            raise
 
-    def _insert_holding(self, field_dict, title, information, isin_code, price_date, text):
+    def _insert_holding(self, field_dict, title, isin_code, price_date, text):
 
         result = self.repo.insert_holding(field_dict)
         if result:
-            self._message_box_info(title, information, isin_code, price_date, text)
+            self._message_box_info(title, isin_code, price_date, text)
 
-    def _message_box_info(self, title, information, isin_code, price_date, text):
+    def _message_box_info(self, title, isin_code, price_date, text):
 
         msg.MessageBoxInfo(
             title=title,
-            information=information,
+            information=decl.INFORMATION,
             info_storage=msg.Informations.HOLDING_INFORMATIONS,
             message=msg.get_message(
                 msg.MESSAGE_TEXT,
                 "HOLDING_TRANSACTION_CREATED",
-                self.repo.get_name_of_isin_code(isin_code),
+                self.repo.get_name_of_isin_code(isin_code).ljust(35),
                 price_date,
                 text
             )
+        )
+
+    def _message_warning(self, isin_code, price_date, text):
+
+        return msg.get_message(
+            msg.MESSAGE_TEXT,
+            "HOLDING_TRANSACTION_NOT_CREATED",
+            self.repo.get_name_of_isin_code(isin_code).ljust(35),
+            price_date,
+            text
         )
 
     def _holding_dict(
@@ -228,18 +176,31 @@ class BuildHoldings:
     def _add_market_price(
         self,
         field_dict,
-        prices,
-        price_date
+        price_date,
+        daily_state
     ):
-        market_price = prices.get(price_date)
-        if market_price is None:
-            return False
+
+        isin_type = self.repo.select_isin_scalar(declm.DB_type, isin_code=field_dict[declm.DB_ISIN])
+        if isin_type == declm.IsinType.BOND.value:
+            # Find the largest key that is lesss  a given date in transactions,
+            price_date = max((k for k in daily_state if k <= price_date), default=None)
+            if price_date:
+                market_price = daily_state.get(price_date)[declm.DB_acquisition_price]
+                total_amount = daily_state.get(price_date)[declm.DB_acquisition_amount]
+            else:
+                return False
+        else:
+            market_price = self.repo.get_close_price(
+                field_dict[declm.DB_ISIN],
+                price_date
+                )
+            if market_price:
+                total_amount = dec2.multiply(market_price, field_dict[declm.DB_pieces])
+            else:
+                return False
         field_dict[declm.DB_market_price] = market_price
-        field_dict[declm.DB_total_amount] = dec2.multiply(
-            market_price,
-            field_dict[declm.DB_pieces]
-        )
-        return True
+        field_dict[declm.DB_total_amount] = total_amount
+        return field_dict
 
     def _get_daily_state(self, rows):
         """
@@ -1004,6 +965,8 @@ class ImportServices:
                             value = value.strip()
                             if value == "":
                                 value = None
+                for csv_field, db_field in field_mapping.items():
+                    value = original_row[db_field]
                     # Apply transformer
                     if db_field in value_transformers:
                         value = value_transformers[db_field](
@@ -1099,6 +1062,18 @@ class ImportServices:
             )
 
     def import_transaction_flatex(self, iban: str, filename: str) -> None:
+        price_currency = []
+        with open(filename, "r", encoding="latin1", newline="") as f:
+            reader = csv.reader(f, delimiter=";")
+            for _ in range(1 - 1):
+                next(reader)
+            next(reader)
+            for row in reader:
+                price_currency.append(
+                    row[9].strip() if len(row) > 9 else None
+                )
+        price_currency_iter = iter(price_currency)
+        current_price_currency = [None]
         mapping = {
             "Buchungstag": declm.DB_price_date,
             "ISIN": declm.DB_ISIN,
@@ -1114,14 +1089,32 @@ class ImportServices:
             declm.DB_counter: 0,
             declm.DB_transaction_type: decl.TRANSACTION_RECEIPT,
         }
+
+        def transform_pieces(value, row):
+            current_price_currency[0] = next(price_currency_iter, None)
+            return abs(value)
+
+        def transform_posted_amount(value, row):
+            if (
+                current_price_currency[0] is not None
+                and current_price_currency[0].lower() == "pct"
+            ):
+                return abs(
+                    row[declm.DB_pieces]
+                    * row[declm.DB_price]
+                    / 100
+                    / row[declm.DB_exchange_rate]
+                )
+            return abs(value)
         transformers = {
             declm.DB_transaction_type: lambda value, row:
                 decl.TRANSACTION_RECEIPT
                 if row[declm.DB_posted_amount] > 0
                 else decl.TRANSACTION_DELIVERY,
-            declm.DB_price: lambda value, row: abs(value),
-            declm.DB_posted_amount: lambda value, row: abs(value),
-            declm.DB_pieces: lambda value, row: abs(value),
+            declm.DB_price: lambda value, row:
+                abs(value),
+            declm.DB_posted_amount: transform_posted_amount,
+            declm.DB_pieces: transform_pieces,
         }
         self.import_transaction_csv(
             csv_file=filename,
@@ -1135,10 +1128,11 @@ class ImportServices:
             title: str,
             isin_name_list: list[str],
             period_start: str = decl.START_DATE_PRICES,
-            state: str = decl.BUTTON_APPEND
+            state: str = decl.BUTTON_APPEND,
+            show_prices_already: bool = True
             ):
 
-        warning = False
+        imported = True
         period_start = date_days.convert_to_str(period_start)
         isin_code_name_dict = {}
         for name in isin_name_list:
@@ -1155,16 +1149,14 @@ class ImportServices:
             elif state == decl.BUTTON_REPLACE:
                 self.repo.delete_prices(isin_code)
                 self.repo.delete_corporate_actions_data(isin_code)
-            if datetime.now().time() >= time(19, 0):
-                end_date = date_days.today()
-            else:
-                end_date = date_days.subtract(date_days.today(), 1)
-            if start_date >= end_date:
-                msg.MessageBoxInfo(
-                    title=title,
-                    info_storage=msg.Informations.PRICES_INFORMATIONS,
-                    message=msg.get_message(msg.MESSAGE_TEXT, 'PRICES_ALREADY', name)
-                    )
+            end_date = date_days.today()
+            if start_date > end_date:
+                if show_prices_already:
+                    msg.MessageBoxInfo(
+                        title=title,
+                        info_storage=msg.Informations.PRICES_INFORMATIONS,
+                        message=msg.get_message(msg.MESSAGE_TEXT, 'PRICES_ALREADY', name)
+                        )
                 continue
             msg.MessageBoxInfo(
                 title=title,
@@ -1181,7 +1173,7 @@ class ImportServices:
             try:
                 isin_code_data_dict = self.repo.get_isin_symbol_data(isin_code)
                 if not isin_code_data_dict:
-                    warning = True
+                    imported = False
                     msg.MessageBoxInfo(
                         title=title,
                         info_storage=msg.Informations.PRICES_INFORMATIONS,
@@ -1205,7 +1197,7 @@ class ImportServices:
                 # Logs auswerten
                 for log in logs:
                     if "ERROR" in log or "WARNING" in log:
-                        warning = True
+                        imported = False
                         msg.MessageBoxInfo(
                             title=title,
                             info_storage=msg.Informations.PRICES_INFORMATIONS,
@@ -1244,7 +1236,7 @@ class ImportServices:
 
                     rows_to_delete = df_prices[df_prices[declm.DB_close] == 0]
                     if not rows_to_delete.empty:
-                        warning = True
+                        imported = False
                         msg.MessageBoxInfo(
                             title=title,
                             info_storage=msg.Informations.PRICES_INFORMATIONS,
@@ -1268,7 +1260,7 @@ class ImportServices:
                             str(len(df_prices)))
                         )
                 else:
-                    warning = True
+                    imported = False
                     msg.MessageBoxInfo(
                         title=title,
                         info_storage=msg.Informations.PRICES_INFORMATIONS,
@@ -1311,7 +1303,7 @@ class ImportServices:
                             str(len(actions_list)))
                         )
             except Exception as e:
-                warning = True
+                imported = False
                 msg.MessageBoxInfo(
                     title=title,
                     info_storage=msg.Informations.PRICES_INFORMATIONS,
@@ -1323,8 +1315,7 @@ class ImportServices:
                         isin_code,
                         e if isinstance(e, str) else str(e))
                     )
-            return warning
-        return True  # if an attempt was made to import only bond prices
+        return imported  # also for bonds, without import
 
 
 class ShowServices:
@@ -1773,6 +1764,18 @@ class TransactionOverviewService:
 
 
 class TradingCalendarService:
+
+    def missing_holding_dates(self, iban, period):
+
+        trading_days = xetra_cls.trading_days(
+            period[0],
+            period[1],
+            as_str=True
+        )
+        holding_dates = self.repo.get_price_dates_of_holdings(iban, period)
+        # invalid = [date_days.convert(d) for d in holding_dates if d not in trading_days]
+        missing = [date_days.convert(d) for d in trading_days if d not in holding_dates]
+        return missing
 
     def compare_dates(self, dates):
 

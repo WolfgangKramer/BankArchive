@@ -1,10 +1,12 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-07-20"
+__updated__ = "2026-08-15"
 @author: Wolfgang Kramer
 """
 from collections import namedtuple
 from enum import Enum
+
+MAX_STATEMENT_TIME = 120  # From the moment the value (in seconds) is set, that value applies to all subsequent statements in the session.
 
 TINYINT = 'tinyint'  # data_type only used as check button fields
 ENUM = 'enum'  # data_type used  enum classes, generates combo_fields
@@ -224,7 +226,7 @@ ENGINE=InnoDB
 
 CREATE_HOLDING_VIEW = """
 CREATE OR REPLACE ALGORITHM = UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `holding_view`
- AS SELECT t1.iban, t1.price_date, t1.isin_code, t2.name, t2.symbol, t1.price_currency, t1.market_price, t1.acquisition_price, t1.pieces, t1.amount_currency, t1.total_amount, t1.total_amount_portfolio, t1.acquisition_amount, t1.exchange_rate, t1.exchange_currency_1, t1.exchange_currency_2, t1.origin  FROM holding AS t1 INNER JOIN isin AS t2 USING(isin_code)  ;
+ AS SELECT t1.iban, t1.price_date, t1.isin_code, t2.name, t2.symbol, t2.industry, t1.price_currency, t1.market_price, t1.acquisition_price, t1.pieces, t1.amount_currency, t1.total_amount, t1.total_amount_portfolio, t1.acquisition_amount, t1.exchange_rate, t1.exchange_currency_1, t1.exchange_currency_2, t1.origin  FROM holding AS t1 INNER JOIN isin AS t2 USING(isin_code)  ;
 """
 
 CREATE_ISIN = """

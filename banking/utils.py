@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-06-11"
+__updated__ = "2026-08-11"
 @author: Wolfgang Kramer
 """
 from __future__ import annotations
@@ -540,7 +540,7 @@ class Datulate(object):
     """
     Methods with date operations
     PARAMETER:
-        date_format    YYY-MM-DD (standard
+        date_format    YYY-MM-DD (standard) len=10!
         date_unit      days (standard), weeks
     """
 
@@ -556,8 +556,10 @@ class Datulate(object):
 
         if isinstance(x, date):
             return x.strftime(self.date_format)  # returns string
-        if isinstance(x, str):
-            return datetime.strptime(x, self.date_format).date()  # returns date
+        elif isinstance(x, str):
+            return datetime.strptime(x[:10], self.date_format).date()  # returns date
+        elif isinstance(x, Timestamp):
+            return x.date().isoformat() # returns string
         return None
 
     def convert_to_str(self, x):
@@ -570,7 +572,7 @@ class Datulate(object):
     def convert_to_date(self, x):
 
         if isinstance(x, str):
-            return datetime.strptime(x, self.date_format).date()  # returns date
+            return datetime.strptime(x[:10], self.date_format).date()  # returns date
         else:
             return x
 
@@ -591,7 +593,7 @@ class Datulate(object):
             x = datetime.strptime(x[:10], csv_date_format).strftime(self.date_format)
             return x
         elif isinstance(x, Timestamp):
-            x = x.strftime("%Y-%m-%d")
+            x = x.date().isoformat()
             return x
         return x
 
@@ -742,6 +744,8 @@ class Amount():
                     self.amount.replace(',', '.'))
                 if self.currency == decl.EURO:
                     self.currency = u"\N{euro sign}"
+                elif self.currency == decl.PERCENT:
+                    self.currency = u"\N{percent sign}"    
         else:
             self.currency = ''
 

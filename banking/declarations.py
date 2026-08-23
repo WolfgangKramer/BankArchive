@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 """
 Created on 09.12.2019
-__updated__ = "2026-07-12"
+__updated__ = "2026-08-15"
 @author: Wolfgang Kramer
 """
 
@@ -145,6 +145,7 @@ MENU_TEXT = {
     'Transactions': 'Transactions',
     'Transaction Detail': 'Transaction Detail',
     'Transactions Table': 'Transactions Table',
+    'Transactions Table IsinCodes': 'Transactions Table IsinCodes',
     'Update': 'Update',
     'Update Holding Market Price by Closing Price': 'Insert/Change Holding using Closing Price',
     'Update Portfolio Total Amount': 'Update Portfolio Total Amount',
@@ -164,9 +165,10 @@ POPUP_MENU_TEXT = {
     'Delete selected Row': 'Delete selected Row',
     'Export to Excel': 'Export to Excel',
     # specials
-    'Show Holding Changed': 'Show Holding Changed',    
-    'Show Holding Daily': 'Show_Holding Daily',    
-}
+    'Show Holding Changed': 'Show Holding Changed',
+    'Show Holding Daily': 'Show_Holding Daily',
+    'Update ISIN': 'Update ISIN'
+    }
 
 CODE_3010 = '3010'  # Download bank data,    no entries exist'
 CODE_3040 = '3040'  # Download partially executed
@@ -350,6 +352,7 @@ BUTTON_DEBIT = 'SHOW DEBIT'
 BUTTON_DELETE = 'DELETE'
 BUTTON_DELETE_ALL = 'DELETE ALL'
 BUTTON_DATA = 'DATA'
+BUTTON_INDUSTRY = 'INDUSTRY'
 BUTTON_INIT = 'INIT'
 BUTTON_INSERT = 'INSERT'
 BUTTON_INDICATOR = 'SELECT INDICATOR'

@@ -1,6 +1,6 @@
 """
 Created on 26.11.2019
-__updated__ = "2026-07-13"
+__updated__ = "2026-08-09"
 @author: Wolfgang Kramer
 """
 import sqlalchemy
@@ -59,7 +59,7 @@ class MariaDBInitializer(metaclass=SingletonMeta):
         """
         self.connection = MariaDBConnection()
         self.connection.connect()
-        self.executor = MariaDBExecutor()
+        self.executor = MariaDBExecutor(self.connection)
         self.table_names: list[str] = []
         self._initialize_database()
         self._init_database_info()
@@ -202,8 +202,15 @@ class MariaDBInitializer(metaclass=SingletonMeta):
 class MariaDBConnection:
 
     def __init__(self):
-
         connectionresult.database = connectionresult.database.lower()
+
+        # Thread-unabhängige Verbindungsdaten
+        self.host = connectionresult.host
+        self.user = connectionresult.user
+        self.password = connectionresult.password
+        self.database = connectionresult.database
+
+        # Nur die Initialisierungs-/Legacy-Connection
         connectionresult.conn = None
         connectionresult.cursor = None
         connectionresult.engine = None
@@ -211,63 +218,130 @@ class MariaDBConnection:
     def connect(self):
         """
         Connects user to database.
-        Creates an empty database if it does not exist.
+
+        The singleton itself does NOT own the connection used by
+        service threads. It only initializes the database and
+        provides connection parameters.
         """
         with connect(
-            host=connectionresult.host,
-            user=connectionresult.user,
-            password=connectionresult.password
+            host=self.host,
+            user=self.user,
+            password=self.password
         ) as admin_conn:
+
             admin_cur = admin_conn.cursor()
+
             admin_cur.execute(
                 "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA "
                 "WHERE SCHEMA_NAME = ?",
-                (connectionresult.database,)
+                (self.database,)
             )
+
             exists = admin_cur.fetchone() is not None
+
             if not exists:
                 admin_cur.execute(
-                    f"CREATE DATABASE {connectionresult.database} "
+                    f"CREATE DATABASE {self.database}"
                 )
+
         self._connect_to_database()
 
     def _connect_to_database(self):
+        """
+        Creates the initial connection used during application
+        initialization.
 
+        Service threads must NOT use this connection.
+        """
         self._create_engine()
+
         connectionresult.conn = connect(
-            host=connectionresult.host,
-            user=connectionresult.user,
-            password=connectionresult.password,
-            database=connectionresult.database,
+            host=self.host,
+            user=self.user,
+            password=self.password,
+            database=self.database,
             local_infile=True
         )
+
         connectionresult.conn.autocommit = True
+
         connectionresult.cursor = connectionresult.conn.cursor()
-        connectionresult.cursor.execute("SELECT DATABASE()")
+
+    def create_connection(self):
+        """
+        Create an independent MariaDB connection.
+
+        Every service thread gets its own connection.
+        """
+        conn = connect(
+            host=self.host,
+            user=self.user,
+            password=self.password,
+            database=self.database,
+            local_infile=True
+        )
+
+        conn.autocommit = True
+        return conn
 
     def _create_engine(self):
+        credentials = (
+            f"{self.user}:{self.password}@"
+            f"{self.host}/{self.database}"
+        )
 
-        credentials = ''.join(
-            [connectionresult.user, ":", connectionresult.password, "@", connectionresult.host, "/", connectionresult.database])
-        connectionresult.engine = sqlalchemy.create_engine("mariadb+mariadbconnector://" + credentials)
+        connectionresult.engine = sqlalchemy.create_engine(
+            "mariadb+mariadbconnector://" + credentials
+        )
 
     def close(self):
+        """
+        Close the initial/legacy connection.
+
+        Thread-local service connections are closed by MariaDBExecutor.
+        """
         if connectionresult.conn and connectionresult.conn.is_connected():
-            connectionresult.cursor.close()
+            if connectionresult.cursor:
+                connectionresult.cursor.close()
+
             connectionresult.conn.close()
+
 
 class MariaDBExecutor:
     """
     Centralized SQL execution layer.
     GUI independent.
+
+    Each thread gets its own MariaDB connection.
     """
-
+    
     SELECT_RE = re.compile(r'^\s*(SELECT|WITH)\b', re.I)
-    MODIFY_RE = re.compile(r'^\s*(INSERT|UPDATE|DELETE|REPLACE)\b', re.I)
+    MODIFY_RE = re.compile(
+        r'^\s*(INSERT|UPDATE|DELETE|REPLACE)\b',
+        re.I
+    )
+    def __init__(self, connection: MariaDBConnection):
+        self._connection_manager = connection
+        self._local = threading.local()
 
-    def __init__(self):
+    @property
+    def connection(self):
+        if not hasattr(self._local, "conn"):
+            self._local.conn = (
+                self._connection_manager.create_connection()
+            )
 
-        self._conn = connectionresult.conn
+        return self._local.conn
+
+    def close_connection(self):
+        conn = getattr(self._local, "conn", None)
+
+        if conn is not None:
+            try:
+                if conn.is_connected():
+                    conn.close()
+            finally:
+                del self._local.conn
 
     def execute(
         self,
@@ -276,22 +350,13 @@ class MariaDBExecutor:
         *,
         duplicate: bool = False,
         result_dict: bool = False,
-        compress: bool = False,
+        compress: bool = False
     ):
         """
         Execute SQL statement.
 
-        Parameters:
-            sql: SQL string
-            vars_: bind parameters
-            duplicate: ignore duplicate key error (reserved)
-            result_dict: return list of dicts instead of tuples
-            compress: normalize whitespace in SQL
-
-        Returns:
-            SELECT/WITH   -> list[tuple] | list[dict]
-            INSERT/UPDATE/DELETE/REPLACE -> affected row count
-            otherwise -> None
+        The current thread's connection is used.
+        A new cursor is created for every execution.
         """
 
         sql = self._prepare_sql(sql, compress)
@@ -299,7 +364,9 @@ class MariaDBExecutor:
         try:
             DatabaseErrorHandler.EXCEPTION = None
 
-            with self._conn.cursor(dictionary=result_dict) as cursor:
+            conn = self.connection
+
+            with conn.cursor(dictionary=result_dict) as cursor:
 
                 self._execute(cursor, sql, vars_)
 
@@ -314,40 +381,43 @@ class MariaDBExecutor:
         except Exception as exc:
             exc.statement = sql
             exc.params = vars_
-            DatabaseErrorHandler.EXCEPTION = exc            
+
+            DatabaseErrorHandler.EXCEPTION = exc
+
             DatabaseErrorHandler.handle_error(
-                            title="load_csv_to_table",
-                            storage=msg.Informations.PRICES_INFORMATIONS,
-                            exc=exc,
-                            sql=sql,
-                            params=vars_,
-                         )                        
+                title=connectionresult.database,
+                duplicate=duplicate,
+                storage=msg.Informations.PRICES_INFORMATIONS,
+                exc=exc,
+                sql=sql,
+                params=vars_,
+            )
+
             raise
 
     def _prepare_sql(self, sql: str, compress: bool) -> str:
-
         if not compress:
             return sql
-        return re.sub(r"\s+", " ", sql.replace("\n", " ")).strip()
+
+        return re.sub(
+            r"\s+",
+            " ",
+            sql.replace("\n", " ")
+        ).strip()
 
     def _execute(self, cursor, sql: str, params):
-
-        #print(sql, "\n", params)
         if params is None:
             cursor.execute(sql)
         else:
             cursor.execute(sql, params)
 
     def _is_select(self, sql: str) -> bool:
-
         return bool(self.SELECT_RE.match(sql))
 
     def _is_modify(self, sql: str) -> bool:
-
         return bool(self.MODIFY_RE.match(sql))
 
     def _fetch(self, cursor):
-
         return cursor.fetchall()
 
 
@@ -395,13 +465,7 @@ class DatabaseErrorHandler:
             )
         # --- Duplicate key handling ------------------------------------
         if duplicate and errno == 1062:
-            msg.MessageBoxInfo(
-                title=title,
-                info_storage=storage,
-                information=decl.ERROR,
-                message="\n\n".join(messages)
-            )
-            raise
+            return True
         # --- LOAD statement handling -----------------------------------
         if sql and sql.upper().startswith('LOAD'):
             msg.MessageBoxInfo(
@@ -1605,6 +1669,53 @@ class MariaDB(
     Combines all MariaDB modules (Ledger, Transactions, Prices, Shelves, Selection,
     Application, Server, Services, Importer, Holdings, Statements, Tables, Initializer)
     into a single unified interface.
+
+    MariaDB Singleton
+           │
+           ├── MariaDBConnection
+           │       └── Credentials
+           │
+           └── MariaDBExecutor
+                   │
+                   └── threading.local()
+
+
+                         MariaDB Singleton
+                                │
+                          MariaDBExecutor
+                                │
+                         threading.local()
+                                │
+                  ┌─────────────┼─────────────┐
+                  │             │             │
+               Thread A      Thread B      Thread C
+                  │             │             │
+               Conn A         Conn B         Conn C
+                  │             │             │
+               Cursor A       Cursor B       Cursor C
+
+                                                    Thread starts
+                                                        │
+                                                        ▼
+                                                    service.select_...
+                                                        │
+                                                        ▼
+                                                    executor.execute()
+                                                        │
+                                                        ▼
+                                                    thread-local connection does not yet exist
+                                                        │
+                                                        ▼
+                                                    create_connection()
+                                                        │
+                                                        ▼
+                                                    eigene MariaDB Connection
+                                                        │
+                                                        ▼
+                                                    Cursor
+                                                        │
+                                                        ▼
+                                                    SELECT
 
     """
 

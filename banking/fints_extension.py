@@ -1,6 +1,6 @@
 """
 Created on 11.02.2020
-__updated__ = "2026-05-27"
+__updated__ = "2026-08-12"
 @author: Wolfgang Kramer
 
 Extensions of project fints source code  copied and modified

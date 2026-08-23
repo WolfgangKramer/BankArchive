@@ -352,6 +352,10 @@ class InputDateHolding(InputPeriod):
         field_dict          {'TO_Date':YYYY-MM-DD, 'From_Date':YYYY-MM-DD}
     """
 
+    def __init__(self, *args, **kwargs):
+        kwargs["button3_text"] = decl.BUTTON_INDUSTRY
+        super().__init__(*args, **kwargs)
+
     def validation_all_addon(self, field_defs):
         from_date = getattr(field_defs, decl.FN_FROM_DATE).widget.get()
         to_date = getattr(field_defs, decl.FN_TO_DATE).widget.get()
@@ -365,13 +369,13 @@ class InputDateHolding(InputPeriod):
             if _date:
                 getattr(self._field_defs, decl.FN_TO_DATE).textvar.set(
                     _date)  # adjusted date returned
-            """
             if from_date == to_date:
-                from_date = date_days.subtract(from_date, 1)
+                from_date, to_date = xetra_cls.last_trading_period()
                 getattr(self._field_defs, decl.FN_FROM_DATE).textvar.set(
                     from_date)  # adjusted date returned
+                getattr(self._field_defs, decl.FN_TO_DATE).textvar.set(
+                    to_date)  # adjusted date returned
                 self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE_ADJUSTED'))
-            """
             if (from_date > to_date):
                 self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'DATE', from_date))
 
@@ -397,6 +401,15 @@ class InputDateHolding(InputPeriod):
             return data[idx]
         else:
             return _date
+
+    def button_1_button3(self, event):
+
+        self.button_state = decl.BUTTON_INDUSTRY
+        self.validation()
+        if not self.footer.get():
+            if self.selection_name:
+                self.repo.selection_put(self.selection_name, self.field_dict)
+            self.quit_widget()
 
 
 class InputIsins(BuiltSelectBox):
@@ -761,10 +774,9 @@ class BankDataNew(BuiltEnterBox):
                 field_dict[declm.DB_bic])
         else:
             getattr(self._field_defs, decl.KEY_BIC).textvar.set('')
-        field_dict = self.repo.get_server_of_bankcode(bank_code)
-        if declm.DB_server in field_dict:
-            getattr(self._field_defs, decl.KEY_SERVER).textvar.set(
-                field_dict[declm.DB_server])
+        server = self.repo.get_server_of_bankcode(bank_code)
+        if server:
+            getattr(self._field_defs, decl.KEY_SERVER).textvar.set(server)
         else:
             getattr(self._field_defs, decl.KEY_SERVER).textvar.set('')
 
@@ -792,22 +804,29 @@ class BankDataChange(BuiltEnterBox):
     def __init__(self, title, bank_code, login_data):
 
         self.repo = Repository()
-        field_defs = [
+        self.bank_code = bank_code
+        FieldNames = namedtuple(
+            'FieldNames',
+            [decl.KEY_BANK_CODE, decl.KEY_BANK_NAME, decl.KEY_USER_ID, decl.KEY_PIN, decl.KEY_BIC, decl.KEY_SERVER,
+             decl.KEY_IDENTIFIER_DELIMITER, decl.KEY_DOWNLOAD_ACTIVATED, decl.KEY_LOGIN_ONLINE_BANKING
+             ]
+            )
+        field_defs = FieldNames(
+            FieldDefinition(name=decl.KEY_BANK_CODE, length=8, protected=True),
             FieldDefinition(name=decl.KEY_BANK_NAME, length=70, protected=True),
             FieldDefinition(name=decl.KEY_USER_ID, length=20),
             FieldDefinition(name=decl.KEY_PIN, length=10, mandatory=False),
             FieldDefinition(name=decl.KEY_BIC, length=11, lformat=decl.FORMAT_FIXED),
-            FieldDefinition(name=decl.KEY_SERVER, length=100,
-                            default_value=self.repo.get_server_of_bankcode(bank_code)),
-            FieldDefinition(name=decl.KEY_IDENTIFIER_DELIMITER, length=1, lformat=decl.FORMAT_FIXED,
-                            default_value=':'),
+            FieldDefinition(name=decl.KEY_SERVER, length=100, focus_out=True),
+            FieldDefinition(name=decl.KEY_IDENTIFIER_DELIMITER, length=1, lformat=decl.FORMAT_FIXED),
             FieldDefinition(name=decl.KEY_DOWNLOAD_ACTIVATED,
                             definition=decl.CHECK,
                             checkbutton_text=decl.KEY_DOWNLOAD_ACTIVATED),
             FieldDefinition(name=decl.KEY_LOGIN_ONLINE_BANKING, length=300,
                             mandatory=False)
-            ]
-        _set_defaults(field_defs, (login_data[decl.KEY_BANK_NAME],
+            )
+        _set_defaults(field_defs, (login_data[decl.KEY_BANK_CODE],
+                                   login_data[decl.KEY_BANK_NAME],
                                    login_data[decl.KEY_USER_ID], login_data[decl.KEY_PIN],
                                    login_data[decl.KEY_BIC], login_data[decl.KEY_SERVER],
                                    login_data[decl.KEY_IDENTIFIER_DELIMITER],
@@ -815,9 +834,19 @@ class BankDataChange(BuiltEnterBox):
                                    login_data[decl.KEY_LOGIN_ONLINE_BANKING],))
         super().__init__(title=title, field_defs=field_defs)
 
+    def focus_out_action(self, event):
+        if event.widget.myId == decl.KEY_SERVER:
+            server = getattr(self._field_defs, decl.KEY_SERVER).widget.get()
+            if not server:
+                getattr(self._field_defs, decl.KEY_SERVER).textvar.set(self.repo.get_server_of_bankcode(self.bank_code))
+
     def validation_addon(self, field_def):
 
         if field_def.name == decl.KEY_SERVER:
+            return
+            server = getattr(self._field_defs, decl.KEY_SERVER).widget.get()
+            if not server:
+                getattr(self._field_defs, decl.KEY_SERVER).textvar.set(self.repo.get_server_of_bankcode(self.bank_code))
             http_code = http_error_code(field_def.widget.get())
             if http_code not in decl.HTTP_CODE_OK:
                 self.footer.set(msg.get_message(msg.MESSAGE_TEXT, 'HTTP_INPUT', http_code, field_def.widget.get()))
@@ -1738,65 +1767,437 @@ class PandasBoxHoldingPercent(BuiltPandasBox):
 
     PARAMETER:
         dataframe           (data_to_date, data_from_date)
+
+    If the position dictionaries contain an "industry" key,
+    positions are grouped by industry.
+
+    Without "industry":
+        positions are sorted by name.
+
+    With "industry":
+        positions are grouped by industry and sorted by name
+        within each industry. The industry total is placed
+        immediately after its positions.
     """
 
     def _get_name(self, position_dict):
-
         return position_dict[declm.DB_name]
 
     def create_dataframe(self):
-
+        self.industries = []
         data_to_date, data_from_date = self.dataframe
 
-        to_map_set = {*map(self._get_name, data_to_date)}
-        from_map_set = {*map(self._get_name, data_from_date)}
-        # purchase positions: insert to data_from_date
-        inserts = to_map_set.difference(from_map_set)
-        data_to_date_insert = [
-            item for item in data_to_date if item[declm.DB_name] in inserts]
-        data_from_date = data_from_date + data_to_date_insert
-        # sale position delete form data_from_date
-        removes = from_map_set.difference(to_map_set)
-        data_from_date = [
-            item for item in data_from_date if item[declm.DB_name] not in removes]
+        current = DataFrame(data_to_date)
+        previous = DataFrame(data_from_date)
 
-        data_to_date = sorted(data_to_date, key=lambda i: (i[declm.DB_name]))
-        data_from_date = sorted(data_from_date, key=lambda i: (i[declm.DB_name]))
-        # create dataframe
-        self.dataframe = DataFrame(data_to_date)
-        dataframe_from_date = DataFrame(data_from_date)
-        columns = [declm.DB_total_amount, declm.DB_acquisition_amount,
-                   declm.DB_pieces, declm.DB_market_price]
-        self.dataframe[columns] = self.dataframe[columns].apply(to_numeric)
-        dataframe_from_date[columns] = dataframe_from_date[columns].apply(
-            to_numeric)
-        # adjust sales and purchases
-        if not dataframe_from_date[declm.DB_pieces].equals(self.dataframe[declm.DB_pieces]):
-            dataframe_from_date[declm.DB_total_amount] = (
-                dataframe_from_date[declm.DB_total_amount] * self.dataframe[declm.DB_pieces] / dataframe_from_date[declm.DB_pieces])
-        # add sum row
-        sum_row = {}
-        sum_row[declm.DB_total_amount] = self.dataframe[declm.DB_total_amount].sum()
-        sum_row[declm.DB_acquisition_amount] = self.dataframe[declm.DB_acquisition_amount].sum()
-        sum_row[declm.DB_amount_currency] = decl.EURO
-        self.dataframe.loc[len(self.dataframe.index)] = sum_row
-        sum_row[declm.DB_total_amount] = dataframe_from_date[declm.DB_total_amount].sum()
-        sum_row[declm.DB_acquisition_amount] = dataframe_from_date[declm.DB_acquisition_amount].sum()
-        dataframe_from_date.loc[len(dataframe_from_date.index)] = sum_row
+        numeric_columns = [
+            declm.DB_total_amount,
+            declm.DB_acquisition_amount,
+            declm.DB_pieces,
+            declm.DB_market_price,
+        ]
 
-        # compute percentages
-        self.dataframe[decl.FN_PROFIT_LOSS] = self.dataframe[declm.DB_total_amount] - \
-            self.dataframe[declm.DB_acquisition_amount]
-        self.dataframe[decl.FN_TOTAL_PERCENT] = (
-            self.dataframe[decl.FN_PROFIT_LOSS] / self.dataframe[declm.DB_acquisition_amount] * 100)
-        self.dataframe[decl.FN_PERIOD_PERCENT] = (
-            self.dataframe[declm.DB_total_amount] /
-            dataframe_from_date[declm.DB_total_amount]
-            * 100 - 100)
-        self.dataframe = self.dataframe.drop(
-            [decl.FN_PROFIT_LOSS, declm.DB_acquisition_amount], axis=1)
-        self.dataframe = self.dataframe[[declm.DB_name, declm.DB_total_amount, declm.DB_market_price, declm.DB_pieces,
-                                         decl.FN_TOTAL_PERCENT, decl.FN_PERIOD_PERCENT]]
+        current[numeric_columns] = current[
+            numeric_columns
+        ].apply(to_numeric)
+
+        previous[numeric_columns] = previous[
+            numeric_columns
+        ].apply(to_numeric)
+
+        # --------------------------------------------------------
+        # Determine whether industry information is available.
+        #
+        # The decision is based on the dictionaries of today's
+        # positions. No lookup in the ISIN table is necessary.
+        # --------------------------------------------------------
+        has_industry = (
+            bool(data_to_date)
+            and declm.DB_industry in data_to_date[0]
+        )
+
+        # --------------------------------------------------------
+        # Use position name as the key so that positions are
+        # always matched correctly, regardless of their order
+        # in the source data.
+        # --------------------------------------------------------
+        current = current.set_index(declm.DB_name)
+        previous = previous.set_index(declm.DB_name)
+
+        # Only positions that exist today can contribute to
+        # today's portfolio performance.
+        current_names = current.index
+
+        # Align yesterday's positions with today's positions.
+        previous = previous.reindex(current_names)
+
+        # --------------------------------------------------------
+        # If industry is available, use today's industry for
+        # the aligned previous positions as well.
+        # --------------------------------------------------------
+        if has_industry:
+            previous[declm.DB_industry] = current[
+                declm.DB_industry
+            ]
+
+        # --------------------------------------------------------
+        # Positions that did not exist yesterday are new
+        # positions.
+        # --------------------------------------------------------
+        new_positions = previous[
+            declm.DB_pieces
+        ].isna()
+
+        # For a new position there is no previous-day price
+        # performance. Use today's value as comparison value.
+        previous.loc[
+            new_positions,
+            declm.DB_total_amount,
+        ] = current.loc[
+            new_positions,
+            declm.DB_total_amount,
+        ]
+
+        previous.loc[
+            new_positions,
+            declm.DB_pieces,
+        ] = current.loc[
+            new_positions,
+            declm.DB_pieces,
+        ]
+
+        # --------------------------------------------------------
+        # Calculate the previous-day value at today's quantity.
+        #
+        # This removes the effect of purchases and sales.
+        # --------------------------------------------------------
+        previous_pieces = previous[
+            declm.DB_pieces
+        ]
+
+        current_pieces = current[
+            declm.DB_pieces
+        ]
+
+        valid_pieces = (
+            previous_pieces.ne(0)
+            & previous_pieces.notna()
+        )
+
+        previous.loc[
+            valid_pieces,
+            declm.DB_total_amount,
+        ] *= (
+            current_pieces[valid_pieces]
+            / previous_pieces[valid_pieces]
+        )
+
+        # --------------------------------------------------------
+        # Calculate position-level daily return.
+        # --------------------------------------------------------
+        previous_value = previous[
+            declm.DB_total_amount
+        ]
+
+        current_value = current[
+            declm.DB_total_amount
+        ]
+
+        current[decl.FN_PERIOD_PERCENT] = 0.0
+
+        valid_previous_value = (
+            previous_value.notna()
+            & previous_value.ne(0)
+        )
+
+        current.loc[
+            valid_previous_value,
+            decl.FN_PERIOD_PERCENT,
+        ] = (
+            current_value[valid_previous_value]
+            / previous_value[valid_previous_value]
+            * 100
+            - 100
+        )
+
+        # New positions have no previous-day performance.
+        current.loc[
+            new_positions,
+            decl.FN_PERIOD_PERCENT,
+        ] = 0.0
+
+        # --------------------------------------------------------
+        # Calculate total return relative to acquisition cost.
+        # --------------------------------------------------------
+        current[decl.FN_PROFIT_LOSS] = (
+            current[declm.DB_total_amount]
+            - current[declm.DB_acquisition_amount]
+        )
+
+        valid_acquisition = (
+            current[declm.DB_acquisition_amount].ne(0)
+        )
+
+        current[decl.FN_TOTAL_PERCENT] = 0.0
+
+        current.loc[
+            valid_acquisition,
+            decl.FN_TOTAL_PERCENT,
+        ] = (
+            current.loc[
+                valid_acquisition,
+                decl.FN_PROFIT_LOSS,
+            ]
+            / current.loc[
+                valid_acquisition,
+                declm.DB_acquisition_amount,
+            ]
+            * 100
+        )
+
+        # --------------------------------------------------------
+        # Calculate TRUE portfolio daily return.
+        #
+        # Yesterday's portfolio weights are used so that
+        # purchases and sales do not artificially create
+        # performance.
+        # --------------------------------------------------------
+        previous_portfolio_value = previous_value.sum()
+
+        if previous_portfolio_value != 0:
+            weights = (
+                previous_value
+                / previous_portfolio_value
+            )
+
+            position_returns = (
+                current[decl.FN_PERIOD_PERCENT]
+                / 100
+            )
+
+            portfolio_daily_return = (
+                weights * position_returns
+            ).sum() * 100
+        else:
+            portfolio_daily_return = 0.0
+
+        # --------------------------------------------------------
+        # Portfolio total return.
+        # --------------------------------------------------------
+        portfolio_value = current[
+            declm.DB_total_amount
+        ].sum()
+
+        portfolio_acquisition = current[
+            declm.DB_acquisition_amount
+        ].sum()
+
+        if portfolio_acquisition != 0:
+            portfolio_total_return = (
+                (
+                    portfolio_value
+                    - portfolio_acquisition
+                )
+                / portfolio_acquisition
+                * 100
+            )
+        else:
+            portfolio_total_return = 0.0
+
+        # ========================================================
+        # Prepare output rows.
+        #
+        # Case 1:
+        #   No industry -> sort all positions by name.
+        #
+        # Case 2:
+        #   Industry available -> group by industry and sort
+        #   positions by name inside each group.
+        # ========================================================
+        result_rows = []
+
+        if not has_industry:
+            # ----------------------------------------------------
+            # NO INDUSTRY
+            #
+            # Simply sort positions by name.
+            # ----------------------------------------------------
+            sorted_current = current.sort_index()
+
+            for position_name, position in sorted_current.iterrows():
+                result_rows.append(
+                    {
+                        declm.DB_name: position_name,
+                        declm.DB_total_amount: position[
+                            declm.DB_total_amount
+                        ],
+                        declm.DB_market_price: position[
+                            declm.DB_market_price
+                        ],
+                        declm.DB_pieces: position[
+                            declm.DB_pieces
+                        ],
+                        decl.FN_TOTAL_PERCENT: position[
+                            decl.FN_TOTAL_PERCENT
+                        ],
+                        decl.FN_PERIOD_PERCENT: position[
+                            decl.FN_PERIOD_PERCENT
+                        ],
+                    }
+                )
+
+        else:
+            # ----------------------------------------------------
+            # WITH INDUSTRY
+            #
+            # Sort industries and positions by name.
+            # ----------------------------------------------------
+            current[declm.DB_industry] = current[
+                declm.DB_industry
+            ].fillna(decl.NOT_ASSIGNED)
+
+            for industry, group in current.groupby(
+                declm.DB_industry,
+                sort=True,
+            ):
+                self.industries.append(industry.upper()) 
+                # Sort positions by name within industry.
+                group = group.sort_index()
+
+                # ------------------------------------------------
+                # Individual positions
+                # ------------------------------------------------
+                for position_name, position in group.iterrows():
+                    result_rows.append(
+                        {
+                            declm.DB_name: position_name,
+                            declm.DB_total_amount: position[
+                                declm.DB_total_amount
+                            ],
+                            declm.DB_market_price: position[
+                                declm.DB_market_price
+                            ],
+                            declm.DB_pieces: position[
+                                declm.DB_pieces
+                            ],
+                            decl.FN_TOTAL_PERCENT: position[
+                                decl.FN_TOTAL_PERCENT
+                            ],
+                            decl.FN_PERIOD_PERCENT: position[
+                                decl.FN_PERIOD_PERCENT
+                            ],
+                        }
+                    )
+
+                # ------------------------------------------------
+                # Industry total
+                #
+                # It is added immediately after the positions
+                # belonging to this industry.
+                # ------------------------------------------------
+                industry_value = group[
+                    declm.DB_total_amount
+                ].sum()
+
+                industry_acquisition = group[
+                    declm.DB_acquisition_amount
+                ].sum()
+
+                industry_previous_value = previous.loc[
+                    group.index,
+                    declm.DB_total_amount,
+                ].sum()
+
+                if industry_previous_value != 0:
+                    industry_daily_return = (
+                        (
+                            previous.loc[
+                                group.index,
+                                declm.DB_total_amount,
+                            ]
+                            * group[
+                                decl.FN_PERIOD_PERCENT
+                            ]
+                            / 100
+                        ).sum()
+                        / industry_previous_value
+                        * 100
+                    )
+                else:
+                    industry_daily_return = 0.0
+
+                if industry_acquisition != 0:
+                    industry_total_return = (
+                        (
+                            industry_value
+                            - industry_acquisition
+                        )
+                        / industry_acquisition
+                        * 100
+                    )
+                else:
+                    industry_total_return = 0.0
+
+                result_rows.append(
+                    {
+                        declm.DB_name: industry.upper(),
+                        declm.DB_total_amount: industry_value,
+                        declm.DB_market_price: None,
+                        declm.DB_pieces: group[
+                            declm.DB_pieces
+                        ].sum(),
+                        decl.FN_TOTAL_PERCENT: (
+                            industry_total_return
+                        ),
+                        decl.FN_PERIOD_PERCENT: (
+                            industry_daily_return
+                        ),
+                    }
+                )
+
+        # --------------------------------------------------------
+        # Portfolio total
+        # --------------------------------------------------------
+        result_rows.append(
+            {
+                declm.DB_name: decl.FN_TOTAL,
+                declm.DB_total_amount: portfolio_value,
+                declm.DB_market_price: None,
+                declm.DB_pieces: current[
+                    declm.DB_pieces
+                ].sum(),
+                decl.FN_TOTAL_PERCENT: (
+                    portfolio_total_return
+                ),
+                decl.FN_PERIOD_PERCENT: (
+                    portfolio_daily_return
+                ),
+            }
+        )
+
+        # --------------------------------------------------------
+        # Final DataFrame
+        # --------------------------------------------------------
+        self.dataframe = DataFrame(result_rows)[
+            [
+                declm.DB_name,
+                declm.DB_total_amount,
+                declm.DB_market_price,
+                declm.DB_pieces,
+                decl.FN_TOTAL_PERCENT,
+                decl.FN_PERIOD_PERCENT,
+            ]
+        ]
+
+    def set_row_format(self):
+
+        for i, row in self.pandas_table.model.df.iterrows():
+            if row[declm.DB_name] in self.industries:
+                self.pandas_table.setRowColors(
+                    rows=[i], clr='lightblue', cols='all')
+            if row[declm.DB_name] == decl.FN_TOTAL:
+                self.pandas_table.setRowColors(
+                    rows=[i], clr='lightgreen', cols='all')
 
 
 class PandasBoxHoldingPortfolios(PandasBoxHolding):
@@ -3275,7 +3676,7 @@ class PandasBoxTransactionDetail(BuiltPandasBox):
                     rows=[i], clr='yellow', cols='all')
 
 
-class PandasBoxTransactionTableShow (BuiltPandasBox):
+class PandasBoxTransactionTable (BuiltPandasBox):
     """
     TOP-LEVEL-WINDOW        TRANSACTION Pandastable
                             Row Actions: Show
@@ -3310,12 +3711,66 @@ class PandasBoxTransactionTableShow (BuiltPandasBox):
             return
         self.quit_widget()
 
+    def update_isin(self):
 
-class PandasBoxTransactionTable(PandasBoxTransactionTableShow):
-    """
-    TOP-LEVEL-WINDOW        TRANSACTION Pandastable
-                            Row Actions: Show, Delete, Update, New
-    """
+        row_dict = self.get_selected_row()
+        row_dict = self.repo.select_isin_table(isin_code=row_dict[declm.DB_ISIN])
+        if row_dict:
+            row_dict = row_dict[0]
+            if row_dict[declm.DB_type] == declm.IsinType.INDEX:
+                protected = [declm.DB_ISIN, declm.DB_wkn, declm.DB_industry]
+            else:
+                protected = [declm.DB_ISIN]
+            mandatory = [declm.DB_name, declm.DB_type, declm.DB_validity, declm.DB_currency]
+            focus_out = [declm.DB_ISIN, declm.DB_name, declm.DB_type, declm.DB_origin_symbol]
+            upper = [declm.DB_symbol]
+            if row_dict[declm.DB_symbol] == decl.NOT_ASSIGNED:
+                button3_text = None
+            else:
+                button3_text = decl.BUTTON_PRICES_IMPORT  # symbol mandatory for import of prices
+            isin = IsinTableRowBox(
+                declm.ISIN, declm.ISIN, row_dict,
+                combo_dict=self._create_combo_dict(name=row_dict[declm.DB_name]), combo_insert_value=[declm.DB_industry, declm.DB_symbol],
+                protected=protected, mandatory=mandatory,
+                focus_out=focus_out, upper=upper,
+                title=self.title, button1_text=decl.BUTTON_UPDATE,
+                button3_text=button3_text)
+            self.button_state = isin.button_state
+            if isin.button_state == decl.WM_DELETE_WINDOW:
+                return
+            elif isin.button_state == decl.BUTTON_UPDATE:
+                isin.field_dict[declm.DB_symbol] = isin.field_dict[declm.DB_symbol].split(" ", 1)[0]
+                if not isin.field_dict[declm.DB_last_check]:
+                    isin.field_dict[declm.DB_last_check] = date_days.today()
+                self.repo.replace_isin(isin.field_dict)
+                self.message = msg.get_message(
+                    msg.MESSAGE_TEXT,
+                    'DATA_CHANGED',
+                    ' '.join(
+                        [
+                            self.title,
+                            declm.DB_ISIN.upper(),
+                            isin.field_dict[declm.DB_ISIN],
+                            isin.field_dict[declm.DB_name]
+                            ]
+                        )
+                    )
+            elif isin.button_state == decl.BUTTON_PRICES_IMPORT:
+                self.selected_row_dict = isin.field_dict
+        self.quit_widget()
+
+    def _create_combo_dict(self, name=None):
+
+        currency_dict = {declm.DB_currency: self.repo.get_enabled_currencies()}
+        origin_symbol_dict = {declm.DB_origin_symbol: decl.ORIGIN_SYMBOLS}
+        industry_list = self.repo.get_isin_industries()
+        industry_dict = {declm.DB_industry: industry_list}
+        if name:
+            yahoo_symbols = self.repo.get_yahoo_symbols(name)
+            symbol_dict = {declm.DB_symbol: yahoo_symbols}
+            return {**currency_dict, **origin_symbol_dict, **industry_dict, **symbol_dict}
+        else:
+            return {**currency_dict, **origin_symbol_dict, **industry_dict}
 
     def del_row(self):
 
@@ -3392,6 +3847,13 @@ class PandasBoxTransactionTable(PandasBoxTransactionTableShow):
                         )
                     )
         self.quit_widget()
+
+
+class PandasBoxTransactionTableIsin(PandasBoxTransactionTable):
+    """
+    TOP-LEVEL-WINDOW        TRANSACTION Pandastable
+                            Row Actions: Show, Delete, Update, New
+    """
 
     def new_row(self):
 
@@ -3504,7 +3966,7 @@ class PandasBoxPiecesConsistency(BuiltPandasBox):
         title = msg.get_message(msg.MESSAGE_TEXT, 'TRANSACTION_PIECES', name)
         while True:
             data = self.repo.get_transactions_of_iban_isin_code(iban, isin_code, period)
-            transaction_table = PandasBoxTransactionTable(
+            transaction_table = PandasBoxTransactionTableIsin(
                 title, data, message, iban, isin_code, name, mode=decl.EDIT_ROW)
             message = transaction_table.message
             if transaction_table.button_state == decl.WM_DELETE_WINDOW:

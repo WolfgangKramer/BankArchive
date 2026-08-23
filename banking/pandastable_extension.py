@@ -1,6 +1,6 @@
 """
 Created on 12.04.2021
-__updated__ = "2026-07-05"
+__updated__ = "2026-07-26"
 @author: Wolfgang Kramer
 
     Modified code of:
@@ -420,6 +420,9 @@ class RowHeaderCallForms(RowHeader):
         if hasattr(self.root, 'update_row'):
             defaultactions.update(
                 {decl.POPUP_MENU_TEXT['Update selected Row']: lambda: self.root.update_row()})
+        if hasattr(self.root, 'update_isin'):
+            defaultactions.update(
+                {decl.POPUP_MENU_TEXT['Update ISIN']: lambda: self.root.update_isin()})
         if hasattr(self.root, 'del_row'):
             defaultactions.update(
                 {decl.POPUP_MENU_TEXT['Delete selected Row']: lambda: self.root.del_row()})

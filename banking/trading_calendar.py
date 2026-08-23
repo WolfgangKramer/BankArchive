@@ -1,9 +1,4 @@
 from __future__ import annotations
-'''
-Created on 02.02.2026
-
-@author: Wolfg
-'''
 """
 Created on 02.02.2026
 
@@ -135,8 +130,8 @@ class TradingCalendar:
         # Return formatted strings if requested
         if as_str:
             return (
-                start.strftime("%Y-%m-%d"),
-                end.strftime("%Y-%m-%d"),
+                start.date().isoformat(),
+                end.date().isoformat(),
             )
 
         return start, end
@@ -231,7 +226,7 @@ class TradingCalendar:
         )
 
         if as_str:
-            return [d.strftime("%Y-%m-%d") for d in days]
+            return [d.date().isoformat() for d in days]
 
         return list(days)
 

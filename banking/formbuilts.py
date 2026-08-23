@@ -1,6 +1,6 @@
 """
 Created on 28.01.2020
-__updated__ = "2026-07-14"
+__updated__ = "2026-08-11"
 @author: Wolfgang Kramer
 """
 import re
@@ -1817,7 +1817,7 @@ class BuiltPandasBox(Frame):
         self.window_id = self.__class__.__name__
         self.button_state = ''
         if not self.title.startswith(connectionresult.database.upper()):
-            self.title = ' '.join([connectionresult.database.upper(), self.title])
+            self.title = ' '.join([self.title, '          DB:', connectionresult.database.upper()])
         self.repo = Repository()
         # Changes must be made in the duplicate (deepcopy) of the DataFrame, if a DataFrame is passed,
         # because Pandastable saves changes in the passed original
@@ -2361,7 +2361,9 @@ class BaseViewer(ABC):
             header="HEADER",
             content='CONTENT',
             suffix=".txt"):
+
         self.window_id = self.__class__.__name__
+
         if not msg.is_main_thread():
             msg.MessageBoxInfo(
                 title=title,
@@ -2374,28 +2376,69 @@ class BaseViewer(ABC):
             raise RuntimeError(
                 f"{self.window_id} must run in GUI thread"
             )
+
         self.title = title
         self.header = header
         self.content = content
+
         self.temp_filename = (
             decl.temp_file_manager.create_temp_file(
                 self.content,
                 suffix=suffix
             )
         )
+
         decl.temp_file_manager.register(
             self.temp_filename
         )
+
         self._window = Toplevel()
         self._window.title(title)
-        self._window.geometry("1200x700")
+
+        # --------------------------------------------------------------
+        # Fensterhöhe abhängig von der Anzahl der Textzeilen
+        # --------------------------------------------------------------
+        line_count = len(content.splitlines())
+
+        if header:
+            line_count += 3  # Header + ===== + Leerzeile
+
+        # Höhe einer Textzeile ungefähr 18 Pixel
+        line_height = 18
+
+        # Zusätzlicher Platz für Menü, Scrollbar etc.
+        extra_height = 80
+
+        min_height = 250
+        max_height = 900
+
+        calculated_height = (
+            line_count * line_height
+            + extra_height
+        )
+
+        window_height = max(
+            min_height,
+            min(calculated_height, max_height)
+        )
+
+        self._window.geometry(
+            f"1200x{window_height}"
+        )
+
         self._create_menu()
         self._create_text_area()
         self.set_content(header, content)
-        # --------------------------------------------------------------
+
         self._window.protocol(
-            decl.WM_DELETE_WINDOW, self._wm_deletion_window)
+            decl.WM_DELETE_WINDOW,
+            self._wm_deletion_window
+        )
+
         self._window.wait_window()
+
+
+
 
     def _create_menu(self):
         """

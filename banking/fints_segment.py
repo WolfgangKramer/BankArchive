@@ -1,6 +1,6 @@
 """
 Created on 18.11.2019
-__updated__ = "2026-05-27"
+__updated__ = "2026-08-12"
 @author: Wolfgang Kramer
 """
 
@@ -195,7 +195,7 @@ class Segments():
         Abschnitt: Formate fuer Signatur und Verschluesselung
         """
         server = self.repo.get_server_of_bankcode(bank.bank_code)
-        if server and b"atruvia" in server:
+        if server and "atruvia" in server:
             """
             Atruvia provided new public HBCI keys in May 2025
             These keys are said to be 2048 bits, which indicates a security adjustment.
@@ -420,7 +420,7 @@ class Segments():
         message += hkcaz(
                 account=hkcaz._fields['account'].type.from_sepa_account(
                     _sepaaccount(bank)),
-                supported_camt_messages=SupportedMessageTypes(bank.supported_camt_messages[0]),
+                supported_camt_messages=SupportedMessageTypes(bank.supported_camt_messages),
                 all_accounts=False,
                 date_start=bank.from_date,
                 date_end=bank.to_date

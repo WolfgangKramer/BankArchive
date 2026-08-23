@@ -7,21 +7,17 @@ import os
 import tempfile
 import json
 import re
-import pandas as pd
-
 
 from pathlib import Path
 from decimal import Decimal
 from itertools import chain
-from typing import Dict, Optional, Iterable, List, Tuple, Any, Union
+from typing import Dict, Optional, Iterable, Tuple, Any, Union
 from datetime import date
 from collections import defaultdict
-
 
 import banking.declarations as decl
 import banking.declarations_mariadb as declm
 import banking.currency as crny
-from banking.connect_data import connectionresult
 
 from banking.mariadb import MariaDB
 from banking.utils import date_days
@@ -41,7 +37,6 @@ class BaseRepository(metaclass=SingletonNoLockMeta):
 
     def __init__(self):
         self.db = MariaDB()
-
 
 class ApplicationRepository(BaseRepository):
 
@@ -102,7 +97,7 @@ class ApplicationRepository(BaseRepository):
 
         return self.alpha_vantage_get(declm.DB_alpha_vantage_function)
 
-    def put_alpha_vantage_functions(self, function_list: List):
+    def put_alpha_vantage_functions(self, function_list: list):
 
         self.alpha_vantage_put(declm.DB_alpha_vantage_function, function_list)
 
@@ -188,6 +183,9 @@ class BankIdentifierRepository(BaseRepository):
 
 class BondMasterRepository(BaseRepository):
 
+    def __init__(self):
+        super().__init__()
+
     def get_bond_master_rows(self) -> dict:
 
         result = self.db.select_rows(
@@ -203,6 +201,10 @@ class BondMasterRepository(BaseRepository):
     def delete_bond_master(self, isin_code):
 
         self.db.execute_delete(declm.BOND_MASTER, isin_code=isin_code)
+
+    def get_bond_denomination(self, isin_code):
+
+        return self.db.select_scalar(declm.BOND_MASTER_VIEW, declm.DB_denomination, isin_code=isin_code)
 
 
 class CorporateActionsRepository(BaseRepository):
@@ -287,7 +289,7 @@ class CurrencyRepository(BaseRepository):
         result = self.db.select_table(declm.CURRENCY, declm.DB_iso_code, enabled=True)
         return list(map(lambda x: x[0], result))
 
-    def get_currency(self) -> List[Dict]:
+    def get_currency(self) -> list[Dict]:
 
         result = self.db.select_table(
             declm.CURRENCY,
@@ -368,32 +370,23 @@ class HoldingRepository(BaseRepository):
     def __init__(self):
         super().__init__()
 
-    def get_price_dates(self, period: tuple[str, str]) -> list[str]:
+    def get_price_dates_of_holdings(self, iban, period) -> list[str]:
+        result = self.db.select_table_distinct(
+            declm.HOLDING,
+            declm.DB_price_date,
+            order=declm.DB_price_date,
+            date_name=declm.DB_price_date,
+            iban=iban,
+            period=period)
+        return [item[0].isoformat() for item in result]
 
-        sql = """
-            SELECT DISTINCT price_date
-            FROM holding
-            WHERE price_date IS NOT NULL
-              AND price_date BETWEEN %s AND %s
-            ORDER BY price_date
-        """
-
-        df = pd.read_sql(
-            sql,
-            connectionresult.engine,
-            params=period
-        )
-
-        return (
-            pd.to_datetime(df["price_date"])
-              .dt.strftime("%Y-%m-%d")
-              .tolist()
-        )
 
     def get_holding_pieces_of_isin_code(self, iban, isin_code, period):
 
         field_list = [declm.DB_price_date, declm.DB_pieces, declm.DB_origin]
-        return self.select_holding_view_table_of_iban(field_list=field_list, iban=iban, isin_code=isin_code, period=period)
+        return self.db.select_table(
+                declm.HOLDING_VIEW, field_list=field_list, result_dict=True, date_name=declm.DB_price_date,
+                iban=iban, isin_code=isin_code, period=period)
 
     def get_rows_with_pieces_change(self, iban, isin_code):
 
@@ -623,7 +616,7 @@ class HoldingRepository(BaseRepository):
         *,
         result_dict: bool = True,
         **kwargs
-    ) -> List[dict] | List[tuple]:
+    ) -> list[dict] | list[tuple]:
         """
         Select holding data from HOLDING_VIEW with optional filters.
 
@@ -751,7 +744,22 @@ class HoldingRepository(BaseRepository):
             return result[0]
         return result
 
+    def get_holding_of_iban_date_with_industry(self, iban, price_date):
+
+        field_list = (
+            declm.DB_ISIN, declm.DB_name, declm.DB_total_amount, declm.DB_acquisition_amount,
+            declm.DB_pieces, declm.DB_market_price, declm.DB_price_currency, declm.DB_amount_currency,
+            declm.DB_industry
+        )
+        result = self._select_holding_data(field_list, iban=iban, price_date=price_date)
+        return result
+
     def get_holding_of_iban_date(self, iban, price_date):
+
+        result = self._select_holding_data(iban=iban, price_date=price_date)
+        return result
+
+    def get_holding_of_iban_datey(self, iban, price_date):
 
         result = self._select_holding_data(iban=iban, price_date=price_date)
         return result
@@ -760,7 +768,7 @@ class HoldingRepository(BaseRepository):
 
         # HOLDING previous entry
         clause = ' ' + declm.DB_price_date + ' < ' + \
-            '"' + price_date.strftime("%Y-%m-%d") + '"'
+            '"' + price_date.isoformat() + '"'
         result = self.db.select_scalar(declm.HOLDING, f"MAX({declm.DB_price_date})", iban=iban, clause=clause)
         return result
 
@@ -828,7 +836,7 @@ class HoldingRepository(BaseRepository):
         iban: str,
         selected_isins: Union[str, Iterable[str]],
         period: tuple
-    ) -> List[dict] | List[tuple]:
+    ) -> list[dict] | list[tuple]:
         return self._select_holding_data(
             field_list=field_list, iban=iban, isin_code=selected_isins, period=period)
 
@@ -838,7 +846,7 @@ class HoldingRepository(BaseRepository):
         field_list: Union[str, Iterable[str]],
         selected_isins: Union[str, Iterable[str]],
         period: tuple
-    ) -> List[dict] | List[tuple]:
+    ) -> list[dict] | list[tuple]:
         return self._select_holding_data(
             field_list=field_list, isin_code=selected_isins, period=period)
 
@@ -879,12 +887,12 @@ class HoldingRepository(BaseRepository):
             *,
             field_list: Union[str, Iterable[str]] = '*',
             iban: str,
-            isin_code: str = '*',
             period: tuple
-            ) -> List[dict]:
+            ) -> list[dict]:
+        
         return self.db.select_table(
                 declm.HOLDING_VIEW, field_list=field_list, result_dict=True, date_name=declm.DB_price_date,
-                iban=iban, isin_code=isin_code, period=period)
+                iban=iban, period=period)
 
     def holding_max_date(
         self,
@@ -904,54 +912,62 @@ class HoldingRepository(BaseRepository):
             field_list: Union[str, Iterable[str]],
             iban: str,
             period: tuple
-            ) -> List[dict]:
+            ) -> list[dict]:
         return self.db.select_table(
                 declm.HOLDING, field_list=field_list, result_dict=True, date_name=declm.DB_price_date,
                 iban=iban, period=period)
 
-    def duplicate_holding_row(self, iban, isin_code, price_date):
+    def duplicate_holding_row(self, iban, isin_code, price_date, price):
+
+        if price is None:
+            # no prices available if its a bond
+            market_price_select = "market_price"
+            total_amount_select = "total_amount"
+        else:
+            market_price_select = str(price)
+            total_amount_select = f"{price} * pieces"
 
         sql = f"""
-            INSERT INTO holding (
-                iban,
-                price_date,
-                isin_code,
-                price_currency,
-                market_price,
-                acquisition_price,
-                pieces,
-                amount_currency,
-                total_amount,
-                total_amount_portfolio,
-                acquisition_amount,
-                exchange_rate,
-                exchange_currency_1,
-                exchange_currency_2,
-                origin
-            )
-            SELECT
-                iban,
-                '{price_date}',
-                isin_code,
-                price_currency,
-                market_price,
-                acquisition_price,
-                pieces,
-                amount_currency,
-                total_amount,
-                total_amount_portfolio,
-                acquisition_amount,
-                exchange_rate,
-                exchange_currency_1,
-                exchange_currency_2,
-                origin
-            FROM holding
-            WHERE iban = '{iban}'
-              AND isin_code = '{isin_code}'
-              AND price_date < '{price_date}'
-            ORDER BY price_date DESC
-            LIMIT 1;
-                    """
+        INSERT INTO holding (
+            iban,
+            price_date,
+            isin_code,
+            price_currency,
+            market_price,
+            acquisition_price,
+            pieces,
+            amount_currency,
+            total_amount,
+            total_amount_portfolio,
+            acquisition_amount,
+            exchange_rate,
+            exchange_currency_1,
+            exchange_currency_2,
+            origin
+        )
+        SELECT
+            iban,
+            '{price_date}',
+            isin_code,
+            price_currency,
+            {market_price_select},
+            acquisition_price,
+            pieces,
+            amount_currency,
+            {total_amount_select},
+            total_amount_portfolio,
+            acquisition_amount,
+            exchange_rate,
+            exchange_currency_1,
+            exchange_currency_2,
+            origin
+        FROM holding
+        WHERE iban = '{iban}'
+          AND isin_code = '{isin_code}'
+          AND price_date < '{price_date}'
+        ORDER BY price_date DESC
+        LIMIT 1;
+        """
         return self.db.executor.execute(sql)
 
     def insert_holding(self, field_dict: Dict):
@@ -1021,7 +1037,7 @@ class IsinRepository(BaseRepository):
     def __init__(self):
         super().__init__()
 
-    def get_isin_industries(self) -> List:
+    def get_isin_industries(self) -> list:
 
         result = self.db.select_table_distinct(declm.ISIN, declm.DB_industry)
         return sorted([item[0] for item in result])
@@ -1103,11 +1119,20 @@ class IsinRepository(BaseRepository):
     def get_names_isin_dict(self):
         return self.db.select_dict(declm.ISIN, declm.DB_name, declm.DB_ISIN, order=declm.DB_name)
 
+    def get_industry_of_isin_codes(self, isin_codes):
+        
+
+        isin_codes = ", ".join(f"'{item}'" for item in isin_codes)
+        clause=f"""{declm.DB_ISIN} IN ({isin_codes})"""
+        field_list = [declm.DB_ISIN, declm.DB_industry]
+        return self.db.select_table(declm.ISIN, field_list=field_list, result_dict=True, clause=clause)
+     
+
     def select_isin_table(
             self,
             field_list: Union[str, Iterable[str]] | None = None,
             **kwargs
-            ) -> List[dict]:
+            ) -> list[dict]:
         if field_list is None:
             field_list = '*'
         return self.db.select_table(declm.ISIN, field_list=field_list, result_dict=True, order=declm.DB_name, **kwargs)
@@ -1122,7 +1147,7 @@ class IsinRepository(BaseRepository):
         result = [x[0] for x in tuples_list]
         return result
 
-    def isin_names_with_ticker(self, origin_symbol=decl.YAHOO) -> List:
+    def isin_names_with_ticker(self, origin_symbol=decl.YAHOO) -> list:
 
         tuples_list = self.db.select_table(
             declm.ISIN,
@@ -1252,7 +1277,7 @@ class LedgerCoaRepository(BaseRepository):
             return None
         return result
 
-    def get_ledger_coa(self) -> List[Dict]:
+    def get_ledger_coa(self) -> list[Dict]:
 
         result = self.db.select_table(
             declm.LEDGER_COA,
@@ -1273,7 +1298,7 @@ class LedgerCoaRepository(BaseRepository):
             return result[0]
         return {}
 
-    def get_all_accounts(self) -> List[Tuple]:
+    def get_all_accounts(self) -> list[Tuple]:
 
         return self.db.select_table(
             declm.LEDGER_COA,
@@ -1290,7 +1315,7 @@ class LedgerCoaRepository(BaseRepository):
         )
         return result
 
-    def get_balance_accounts(self) -> List[Dict]:
+    def get_balance_accounts(self) -> list[Dict]:
 
         field_list = [declm.DB_account, declm.DB_name, declm.DB_iban, declm.DB_portfolio,
                       declm.DB_asset_accounting]
@@ -1315,7 +1340,7 @@ class LedgerCoaRepository(BaseRepository):
             return result[0]
         return {}
 
-    def get_balance_assets(self) -> List[Dict]:
+    def get_balance_assets(self) -> list[Dict]:
 
         field_list = [declm.DB_account, declm.DB_name, declm.DB_iban, declm.DB_portfolio,
                       declm.DB_asset_accounting]
@@ -2178,7 +2203,7 @@ class PricesRepository(BaseRepository):
 
         return self.db.select_scalar(declm.PRICES, 'COUNT(*)')
 
-    def get_isin_names(self) -> List[Dict]:
+    def get_isin_names(self) -> list[Dict]:
 
         isin_names = self.db.select_table_distinct(
             declm.PRICES_ISIN_VIEW, [declm.DB_ISIN, declm.DB_name], result_dict=True, order=declm.DB_name)
@@ -2203,7 +2228,7 @@ class PricesRepository(BaseRepository):
         if not trading_days:
             return {}
 
-        trading_days = ", ".join(date_days.convert_to_str(x) for x in trading_days)
+        trading_days = ", ".join(f"'{date_days.convert_to_str(x)}'" for x in trading_days)
         rows = self.db.select_dict(
             declm.PRICES,
             declm.DB_price_date,
@@ -2527,7 +2552,7 @@ class StatementRepository(BaseRepository):
     def __init__(self):
         super().__init__()
 
-    def get_statements_of_amount(self, iban: str, period: Tuple, status: str, amount: Decimal) -> List[Dict]:
+    def get_statements_of_amount(self, iban: str, period: Tuple, status: str, amount: Decimal) -> list[Dict]:
 
         result = self.db.select_table(
             declm.STATEMENT,
@@ -2541,7 +2566,7 @@ class StatementRepository(BaseRepository):
         )
         return result
 
-    def get_statements_with_amount(self, iban: str, period: Tuple) -> List[Dict]:
+    def get_statements_with_amount(self, iban: str, period: Tuple) -> list[Dict]:
 
         result = self.db.select_table(
             declm.STATEMENT,
@@ -2646,7 +2671,7 @@ class StatementRepository(BaseRepository):
             return statement_row[0]
         return {}
 
-    def get_statement_without_ledger(self, field_list, period) -> List[Dict]:
+    def get_statement_without_ledger(self, field_list, period) -> list[Dict]:
 
         if declm.DB_amount in field_list and declm.DB_status not in field_list:
             field_list.append(declm.DB_status)
@@ -2681,11 +2706,7 @@ class ServerRepository(BaseRepository):
 
     def get_server_of_bankcode(self, bank_code):
 
-        result = self.db.select_table(declm.SERVER, declm.DB_server, result_dict=True, code=bank_code)
-        if result:
-            return result[0]
-        else:
-            return {}
+        return self.db.select_scalar(declm.SERVER, declm.DB_server, code=bank_code)
 
     def count_server(self) -> int:
 
@@ -2993,7 +3014,7 @@ class TransactionRepository(BaseRepository):
         self,
         iban: str,
         period: tuple
-    ) -> List[Tuple[str, str, Decimal, str, Decimal]]:
+    ) -> list[Tuple[str, str, Decimal, str, Decimal]]:
 
         where_sql, vars_ = self.db._where_clause(iban=iban, period=period)
         sql = self._transaction_profit_closed_sql(where_sql)
@@ -3008,7 +3029,7 @@ class TransactionRepository(BaseRepository):
         self,
         iban: str,
         period: tuple
-    ) -> List[Tuple[str, str, Decimal, str, Decimal]]:
+    ) -> list[Tuple[str, str, Decimal, str, Decimal]]:
 
         where_sql, vars_ = self.db._where_clause(iban=iban, period=period)
 
@@ -3441,3 +3462,5 @@ class Repository:
     def __init__(self):
         for name, cls in REPOSITORIES.items():
             setattr(self, name, cls())
+
+        self.db.executor.execute(f"SET SESSION max_statement_time ={declm.MAX_STATEMENT_TIME};")

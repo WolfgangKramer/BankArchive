@@ -1,13 +1,12 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-07-20"
+__updated__ = "2026-08-17"
 Author: Wolfang Kramer
 """
 import requests
 import webbrowser
 import textwrap
 
-from time import sleep
 from datetime import date, timedelta, datetime
 from threading import Thread
 from pandas import DataFrame
@@ -38,7 +37,7 @@ from banking.forms import (
     PandasBoxCorporateActionsTable, PandasBoxCorporateDividendsTable,
     PandasBoxHoldingPercent, PandasBoxTotals, PandasBoxTransactionDetail,
     PandasBoxHoldingPortfolios, PandasBoxBalanceAll, PandasBoxBalance,
-    PandasBoxTransactionTable, PandasBoxTransactionTableShow, PandasBoxTransactionProfit,
+    PandasBoxTransactionTableIsin, PandasBoxTransactionTable, PandasBoxTransactionProfit,
     PandasBoxPrices, PandasBoxLedgerAccountCategory, PandasBoxPiecesConsistency,
     ProtocolViewer, PandasBoxBondMasterTable, PandasBoxCurrencyTable,
     LedgerTableSearchRowBox, StatementTableSearchRowBox,
@@ -108,6 +107,10 @@ def _wrapper(before=None, after=None):
 def websites(site):
 
     webbrowser.open(site)
+
+
+class AbortHoldingBuild(Exception):
+    pass
 
 
 class BankProcessor:
@@ -324,23 +327,37 @@ class DownloadWorkFlow(BaseWorkflow):
                                 )
             bank.opened_bank_code = None  # triggers bank opening messages
             self.progress.start()
+            
             for bank_code in banks_download:
                 bank = self._bank_init(bank_code)
                 self.footer.set(
-                    msg.get_message(msg.MESSAGE_TEXT, 'DOWNLOAD_RUNNING', bank.bank_name))
+                    msg.get_message(
+                        msg.MESSAGE_TEXT,
+                        'DOWNLOAD_RUNNING',
+                        bank.bank_name
+                    )
+                )
+            
                 download_thread = Thread(
-                    name=bank.bank_name, target=self.srv.all_accounts, args=(bank,))
+                    name=bank.bank_name,
+                    target=self.srv.all_accounts,
+                    args=(bank,)
+                )
                 download_thread.start()
-                seconds = 0
-                while download_thread.is_alive() and seconds < 60:
-                    sleep(1)
-                    seconds += 1
-                    self.progress.update_progressbar()
+                download_thread.join()
+            
                 if bank.scraper:
                     bank.logoff()
+            
             self.progress.stop()
             self.footer.set(
-                msg.get_message(msg.MESSAGE_TEXT, 'DOWNLOAD_DONE', CANCELED, 10 * '!'))
+                msg.get_message(
+                    msg.MESSAGE_TEXT,
+                    'DOWNLOAD_DONE',
+                    CANCELED,
+                    10 * '!'
+                )
+            )
         else:
             for bank_code in self.repo.listbank_codes():
                 if self.repo.shelve_get_download_activated(bank_code):
@@ -1061,53 +1078,79 @@ class DatabaseWorkFlow(BaseWorkflow):
             period = (data_dict.get(decl.FN_FROM_DATE, date_days.subtract(date.today(), 60)),
                       data_dict.get(decl.FN_TO_DATE, date_days.today())
                       )
-            _, missing = self.srv.compare_dates(self.repo.get_price_dates(period))
+            missing = self.srv.missing_holding_dates(iban, period)
             if missing:
-                while True:
-                    missing_days = SelectMissingTradingDays(title=title, checkbutton_texts=missing)
-                    if missing_days.button_state == decl.WM_DELETE_WINDOW:
-                        self._show_informations()
-                        return
+                missing_days = SelectMissingTradingDays(title=title, checkbutton_texts=missing)
+                if missing_days.button_state == decl.WM_DELETE_WINDOW:
+                    self._show_informations()
+                    return
+                self.progress.start()
+                
+                try:
                     for trading_day in missing_days.field_list:
                         isin_codes = self.repo.get_isin_codes_with_position_in_trading_day(
                             iban,
                             trading_day
                         )
+                
                         build_holding = True
+                
                         for isin_code in isin_codes:
-                            name = self.repo.get_name_of_isin_code(isin_code)
-                            # import price data
-                            import_prices = self.srv.import_prices_and_corporate_actions(
-                                msg.MESSAGE_TITLE,
-                                [name],
-                                state=decl.BUTTON_APPEND
+                            result = self.repo.get_close_price(isin_code, trading_day)
+                            if not result and trading_day != date.today(
+                                
+                                ):
+                                name = self.repo.get_name_of_isin_code(isin_code)
+                                import_prices = self.srv.import_prices_and_corporate_actions(
+                                    msg.MESSAGE_TITLE,
+                                    [name],
+                                    state=decl.BUTTON_APPEND,
+                                    show_prices_already=False
                                 )
-                            if not import_prices:
-                                build_holding = False
+                                if not import_prices:
+                                    build_holding = False
+                
                         if build_holding:
+                            self.repo.start_transaction()
+                
                             for isin_code in isin_codes:
-                                self.srv.build_holdings(
-                                    title=title,
-                                    state=decl.BUTTON_INSERT,
-                                    iban=iban,
-                                    isin_code=isin_code,
-                                    trading_days=[trading_day]
-                                )
-                        else:
-                            msg.MessageBoxInfo(
-                                title=title,
-                                information=decl.WARNING,
-                                info_storage=msg.Informations.HOLDING_INFORMATIONS,
-                                message=msg.get_message(
-                                    msg.MESSAGE_TEXT,
-                                    "PRICE_ADJUSTMENT_NEEDED",
-                                    name,
-                                    trading_day
-                                )
+                                try:
+                                    self.srv.build_trading_day_position(
+                                        title,
+                                        iban,
+                                        isin_code,
+                                        trading_day
+                                    )
+                                except Exception as e:
+                                    msg.MessageBoxInfo(
+                                        title=title,
+                                        info_storage=msg.Informations.HOLDING_INFORMATIONS,
+                                        information=decl.ERROR,
+                                        message=msg.get_message(
+                                            msg.MESSAGE_TEXT,
+                                            "HOLDING_TRANSACTION_ERROR",
+                                            f"{self.repo.get_name_of_isin_code(isin_code)} {trading_day}: {e}"
+                                        )
+                                    )
+                                    self.repo.rollback_transaction()
+                                    raise AbortHoldingBuild()
+                
+                            self.repo.update_total_holding_amount(
+                                iban=iban,
+                                price_date=trading_day
                             )
+                            self.repo.commit()
+                            self.footer.set(
+                                msg.get_message(msg.MESSAGE_TEXT, 'TRADING_DAY_INSERTED', bank_name, iban, trading_day))
+                            self.progress.update_progressbar()
+                
+                except AbortHoldingBuild:
+                    pass
+                       
             else:
                 msg.MessageBoxInfo(
                     title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'NO_MISSING_TRADING_DAY', period))
+            self.progress.stop()
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def data_update_holding_and_prices(self, bank_name, iban):
@@ -1127,73 +1170,73 @@ class DatabaseWorkFlow(BaseWorkflow):
             if date_days.isweekend(date_day):
                 msg.MessageBoxInfo(
                     title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'DATE_NO_WORKDAY', date_day))
-            break
-        holdings = self.repo.select_holding_view_table_of_iban(
-                field_list='*', iban=iban, period=(date_day, date_day))
-        if not holdings:  # duplicate holding positions
-            message_box_ask = msg.MessageBoxAsk(
-                title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'HOLDING_INSERT', date_day))
-            if message_box_ask.result:
-                price_date = self.repo.holding_max_date(to_date=date_day)
-                holdings = self.repo.select_holding_table_of_iban(
-                    field_list='*', period=(price_date, price_date), iban=iban)
-                for holding_dict in holdings:
-                    holding_dict[declm.DB_price_date] = date_day
-                    holding_dict[declm.DB_origin] = decl.ORIGIN_INSERTED
-                    self.repo.insert_holding(holding_dict)
-
-                    msg.holding_informations_append(
-                        decl.INFORMATION,
-                        ' '.join(
-                            ['\n',
-                             bank_name,
-                             msg.get_message(
-                                 msg.MESSAGE_TEXT, 'HOLDING_INSERT', date_day
-                                 ),
-                             '\n',
-                             holding_dict[declm.DB_ISIN],
-                             '\n']
-                            )
-                        )
             else:
-                msg.MessageBoxInfo(
-                    title=title,
-                    message=msg.get_message(
-                        msg.MESSAGE_TEXT, 'DATA_NO',
-                        declm.HOLDING.upper(),
-                        (date_days.convert_to_str(decl.START_DATE_HOLDING), date_day)
-                        )
-                    )
-                return
-            holdings = self.repo.select_holding_view_table_of_iban(
-                    field_list='*', iban=iban, period=(date_day, date_day))
-        if holdings:  # update holding positions
-            for holding_dict in holdings:
-                title_download = ' '.join(
-                    [title, get_menu_text("Download"), get_menu_text("Prices")])
-                result = self._data_update_holding_price(
-                    title_download, bank_name, iban, holding_dict)
-                if not result:
-                    origin_symbol = self.repo.select_isin_scalar(declm.DB_origin_symbol, isin_code=holding_dict[declm.DB_ISIN])
-                    msg.holding_informations_append(
-                        decl.WARNING,
-                        msg.get_message(
-                            msg.MESSAGE_TEXT, 'PRICES_NO',
-                            ' '.join(
-                                [
-                                    '\n', bank_name, declm.HOLDING.upper(),
-                                    declm.DB_price_date.upper(),
-                                    date_days.convert(holding_dict[declm.DB_price_date])
-                                    ]
-                                ),
-                            holding_dict[declm.DB_symbol],
-                            origin_symbol,
-                            holding_dict[declm.DB_ISIN],
-                            holding_dict[declm.DB_name]
+                holdings = self.repo.select_holding_view_table_of_iban(
+                        field_list='*', iban=iban, period=(date_day, date_day))
+                if not holdings:  # duplicate holding positions
+                    message_box_ask = msg.MessageBoxAsk(
+                        title=title, message=msg.get_message(msg.MESSAGE_TEXT, 'HOLDING_INSERT', date_day))
+                    if message_box_ask.result:
+                        price_date = self.repo.holding_max_date(to_date=date_day)
+                        holdings = self.repo.select_holding_table_of_iban(
+                            field_list='*', period=(price_date, price_date), iban=iban)
+                        for holding_dict in holdings:
+                            holding_dict[declm.DB_price_date] = date_day
+                            holding_dict[declm.DB_origin] = decl.ORIGIN_INSERTED
+                            self.repo.insert_holding(holding_dict)
+            
+                            msg.holding_informations_append(
+                                decl.INFORMATION,
+                                ' '.join(
+                                    ['\n',
+                                     bank_name,
+                                     msg.get_message(
+                                         msg.MESSAGE_TEXT, 'HOLDING_INSERT', date_day
+                                         ),
+                                     '\n',
+                                     holding_dict[declm.DB_ISIN],
+                                     '\n']
+                                    )
+                                )
+                    else:
+                        msg.MessageBoxInfo(
+                            title=title,
+                            message=msg.get_message(
+                                msg.MESSAGE_TEXT, 'DATA_NO',
+                                declm.HOLDING.upper(),
+                                (date_days.convert_to_str(decl.START_DATE_HOLDING), date_day)
+                                )
                             )
-                        )
-            self.repo.update_total_holding_amount(
-                iban=iban, period=(date_day, date_day))
+                        return
+                    holdings = self.repo.select_holding_view_table_of_iban(
+                            field_list='*', iban=iban, period=(date_day, date_day))
+                if holdings:  # update holding positions
+                    for holding_dict in holdings:
+                        title_download = ' '.join(
+                            [title, get_menu_text("Download"), get_menu_text("Prices")])
+                        result = self._data_update_holding_price(
+                            title_download, bank_name, iban, holding_dict)
+                        if not result:
+                            origin_symbol = self.repo.select_isin_scalar(declm.DB_origin_symbol, isin_code=holding_dict[declm.DB_ISIN])
+                            msg.holding_informations_append(
+                                decl.WARNING,
+                                msg.get_message(
+                                    msg.MESSAGE_TEXT, 'PRICES_NO',
+                                    ' '.join(
+                                        [
+                                            '\n', bank_name, declm.HOLDING.upper(),
+                                            declm.DB_price_date.upper(),
+                                            date_days.convert(holding_dict[declm.DB_price_date])
+                                            ]
+                                        ),
+                                    holding_dict[declm.DB_symbol],
+                                    origin_symbol,
+                                    holding_dict[declm.DB_ISIN],
+                                    holding_dict[declm.DB_name]
+                                    )
+                                )
+                    self.repo.update_total_holding_amount(
+                        iban=iban, period=(date_day, date_day))
 
     def _data_update_holding_price(self, title, bank_name, iban, holding_dict):
         """
@@ -1297,7 +1340,33 @@ class DatabaseWorkFlow(BaseWorkflow):
     def data_transaction_table(self, bank_name, iban):
 
         title = ' '.join([bank_name,
-                          get_menu_text("Transactions T able")])
+                          get_menu_text("Transactions Table")])
+        data_dict = {decl.FN_FROM_DATE: date_days.subtract(date.today(), 60),
+                     decl.FN_TO_DATE: date_days.today()}
+        while True:
+            input_period = InputPeriod(title=title, data_dict=data_dict)
+            if input_period.button_state == decl.WM_DELETE_WINDOW:
+                return
+            data_dict = input_period.field_dict
+            period = (data_dict.get(decl.FN_FROM_DATE, date_days.subtract(date.today(), 60)),
+                      data_dict.get(decl.FN_TO_DATE, date_days.today())
+                      )
+            title_period = ' '.join(
+                [title, period[0], '-', period[1]])
+            message = msg.get_message(msg.MESSAGE_TEXT, 'HELP_PANDASTABLE')
+            data = self.repo.get_transaction_view_data_of_iban_period('*', iban, period)
+            if data:
+                transaction_table = PandasBoxTransactionTable(
+                        title_period, data, message, iban, '', '', mode=decl.EDIT_ROW)
+                message = transaction_table.message
+                if transaction_table.button_state == decl.WM_DELETE_WINDOW:
+                    break
+
+    @_wrapper(before="_delete_footer", after="_show_informations")
+    def data_transaction_table_isin_code(self, bank_name, iban):
+
+        title = ' '.join([bank_name,
+                          get_menu_text("Transactions Table IsinCodes")])
         names = self.repo.isin_names()
         data_dict = {}
         while True:
@@ -1313,11 +1382,12 @@ class DatabaseWorkFlow(BaseWorkflow):
             message = msg.get_message(msg.MESSAGE_TEXT, 'HELP_PANDASTABLE')
             while True:
                 data = self.repo.get_transactions_of_iban_isin_code(iban, isin, (from_date, to_date))
-                transaction_table = PandasBoxTransactionTable(
+                transaction_table = PandasBoxTransactionTableIsin(
                     title_period, data, message, iban, isin, name, mode=decl.EDIT_ROW)
                 message = transaction_table.message
                 if transaction_table.button_state == decl.WM_DELETE_WINDOW:
                     break
+
 
     @_wrapper(before="_delete_footer", after="_show_informations")
     def data_prices(self, sign):
@@ -1832,7 +1902,7 @@ class ShowWorkFlow(BaseWorkflow):
             title_period = ' '.join([title, str(period)])
             if data:
                 while True:
-                    table = PandasBoxTransactionTableShow(
+                    table = PandasBoxTransactionTable(
                         title_period, data, iban, message, mode=decl.EDIT_ROW)
                     message = table.message
                     if table.button_state == decl.WM_DELETE_WINDOW:
@@ -1858,8 +1928,13 @@ class ShowWorkFlow(BaseWorkflow):
             if input_period.button_state == decl.WM_DELETE_WINDOW:
                 return
             data_dict = input_period.field_dict
-            data_from_date = self.repo.get_holding_of_iban_date(iban, data_dict[decl.FN_FROM_DATE])
-            data_to_date = self.repo.get_holding_of_iban_date(iban, data_dict[decl.FN_TO_DATE])
+            if input_period.button_state == decl.BUTTON_OK:
+                data_from_date = self.repo.get_holding_of_iban_date(iban, data_dict[decl.FN_FROM_DATE])
+                data_to_date = self.repo.get_holding_of_iban_date(iban, data_dict[decl.FN_TO_DATE])
+            else:
+                data_from_date = self.repo.get_holding_of_iban_date_with_industry(iban, data_dict[decl.FN_FROM_DATE])
+                data_to_date = self.repo.get_holding_of_iban_date_with_industry(iban, data_dict[decl.FN_TO_DATE])
+                    
             title_period = ' '.join(
                 [title, msg.get_message(msg.MESSAGE_TEXT, 'PERIOD', data_dict[decl.FN_FROM_DATE], data_dict[decl.FN_TO_DATE])])
             while True:

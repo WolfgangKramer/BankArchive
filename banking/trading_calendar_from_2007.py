@@ -71,7 +71,7 @@ class TradingCalendar:
         )
 
         if as_str:
-            return sessions.strftime("%Y-%m-%d").tolist()
+            return sessions.date().isoformat().tolist()
 
         return list(sessions)
 
@@ -111,8 +111,8 @@ class TradingCalendar:
 
         if as_str:
             return (
-                start.strftime("%Y-%m-%d"),
-                end.strftime("%Y-%m-%d"),
+                start.date().isoformat(),
+                end.date().isoformat(),
             )
 
         return start, end
@@ -131,8 +131,8 @@ class TradingCalendar:
         prev = cal.previous_session(last)
 
         return (
-            prev.strftime("%Y-%m-%d"),
-            last.strftime("%Y-%m-%d"),
+            prev.date().isoformat(),
+            last.date().isoformat(),
         )
 
 

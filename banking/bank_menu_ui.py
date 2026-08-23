@@ -1,6 +1,6 @@
 """
 Created on 09.12.2019
-__updated__ = "2026-07-20"
+__updated__ = "2026-08-10"
 Author: Wolfang Kramer
 """
 import sys
@@ -164,6 +164,8 @@ class Menue:
         """
         self.menu = Menu(window, font=menu_font)
         window.config(menu=self.menu, borderwidth=10, relief=GROOVE)
+        if self.bank_names != {} and application_store.get(None):  # application customizing is done
+            self._create_menu_online(self.menu, menu_font)        
         self.bank_owner_account = self.repo.get_bank_owner_accounts()
         if application_store.get(declm.DB_ledger):
             self._create_menu_ledger(self.menu, menu_font)
@@ -175,6 +177,22 @@ class Menue:
             self._create_menu_database(
                 self.menu, menu_font, self.bank_owner_account)
         self._create_menu_customizing(self.menu, menu_font)
+
+    def _create_menu_online(self, menu, menu_font):
+        """
+         ONLINE Menu
+        """
+        online_menu = Menu(
+            menu, tearoff=0, font=menu_font, bg='Lightblue')
+        menu.add_cascade(
+            label=get_menu_text("Online"), menu=online_menu)
+        for bank_code, bank_name in self.bank_names.items():        
+            if self.repo.shelve_get_loging_online_banking(bank_code):
+                login_website = self.repo.shelve_get_loging_online_banking(bank_code)
+                if login_website:
+                    online_menu.add_command(
+                        label=get_menu_text(bank_name),
+                        command=lambda x=login_website: self.w_show.websites(x))        
 
     def _create_menu_ledger(self, menu, menu_font):
         """
@@ -445,12 +463,6 @@ class Menue:
         Populate account menu with balances, statements, holdings, and transactions
         using a concise mapping-driven approach.
         """
-        if self.repo.shelve_get_loging_online_banking(bank_code):
-            login_website = self.repo.shelve_get_loging_online_banking(bank_code)
-            if login_website:
-                account_menu.add_command(
-                    label=get_menu_text("Login Online Banking"),
-                    command=lambda x=login_website: self.w_show.websites(x))
         account_menu.add_command(
             label=get_menu_text("Balances"),
             command=lambda bc=bank_code, bn=bank_name: self.w_show.show_balances(bc, bn, owner_name=owner_name)
@@ -521,6 +533,10 @@ class Menue:
                         label=get_menu_text("Transactions Table"),
                         command=(lambda x=bank_name,
                                  y=acc[decl.KEY_ACC_IBAN]: self.w_db.data_transaction_table(x, y)))
+                    account_menu.add_command(
+                        label=get_menu_text("Transactions Table IsinCodes"),
+                        command=(lambda x=bank_name,
+                                 y=acc[decl.KEY_ACC_IBAN]: self.w_db.data_transaction_table_isin_code(x, y)))
                     account_menu.add_command(
                         label=get_menu_text("Holding Table"),
                         command=(lambda x=bank_name,
